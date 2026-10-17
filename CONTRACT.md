@@ -53,3 +53,15 @@ Open source project. Every source must be free, keyless, openly licensed, attrib
 - Terrain: AWS Terrain Tiles (Mapzen/Tilezen, SRTM etc.), Copernicus GLO-30
 - Weather: Open-Meteo (CC BY 4.0, no key)
 - npm deps: MIT/BSD/ISC/Apache only. No Esri/Mapbox/Google/login-gated data.
+
+## Round 2 ownership (declutter + "Your place" + model fidelity)
+| Owner | Files |
+|---|---|
+| layout | `index.html`, `src/style.css`, `src/main.ts`, `src/ui/**` except `src/ui/place.*`, `src/map/features.ts`, `src/map/analysisLayers.ts`, `src/map/mapView.ts`, `src/map/colors.ts` |
+| place  | `src/place/**`, `src/ui/place.ts`, `src/ui/place.css`, `src/map/routeLayer.ts`, `place-demo.html` |
+| model  | `scripts/**`, `public/data/**` (except `hotspots.json`), `src/sim/**` |
+| integrator | `package.json`, `README.md`, `CONTRACT.md`, wiring `mountPlace` into `main.ts` after layout is done |
+
+Integration hooks: layout provides an empty `<div id="place-mount">` inside a collapsible "Your place" sidebar section (hidden while empty).
+Place exports `mountPlace(container, opts) -> { setHour(h), refresh(), destroy() }` (see place agent brief).
+Public APIs stay stable: `createMap`, `loadDataset`/`OsmFC` (src/ui/api.ts), `FloodEngine`, `computeImpact`, `loadTerrain`.
