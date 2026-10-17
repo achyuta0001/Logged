@@ -1,12 +1,36 @@
-# Logged — flood-risk explorer for Bengaluru 560098
+# Logged — flood explorer for Bengaluru Urban
 
-An open-source, in-browser 3D map that finds the depressions and low-lying ground of **Rajarajeshwari Nagar (pincode 560098)**, runs a rainfall-driven flood simulation from live weather forecasts, and translates water depth into daily-life impact: which roads stall two-wheelers, which schools and hospitals get cut off, which homes take water on the ground floor.
+An open-source, in-browser 3D map of flood risk across **Bengaluru Urban**. It opens on a city overview: every pincode in the district, coloured by a precomputed flood-susceptibility index. Pick a pincode by number, by locality name or by clicking the map. Its data pack then loads, and you get the full experience first built for **Rajarajeshwari Nagar (560098)**:
+
+- the depressions and low-lying ground
+- a rainfall-driven flood simulation from live forecasts or historical scenarios
+- what the water depth means for daily life: which roads stall two-wheelers, which schools and hospitals get cut off, and which homes take water on the ground floor
 
 Inspired by the Claude wildfire analysis prototype. Everything here runs on free, keyless, openly licensed data.
 
 > **Prototype, not a warning system.** Depths are modelled from a ~30 m elevation model and simplified drainage. Use it to understand *where* water collects and *why*, not to make safety decisions. Follow BBMP / KSNDMC advisories.
 
-## What it does
+## City overview
+
+- **The map:** the district outline (OSM relation `2020589`) and the **117 pincodes** that lie at least half inside it, coloured by susceptibility. A dashed outline marks a pincode whose 3D flood model has been built. Hover a pincode for its numbers, and click one to open it.
+- **Search:** the "Pincodes" section of the sidebar finds a pincode by number (`560103`, `5601`) or by area name (`Bellandur`, `HSR`, `Electronic City`). Search is offline, over the pincode index, and calls no geocoder. A ranked list gives the same information as a table.
+- **Links:** `?pin=<code>` opens a pincode directly, and the back button returns to the overview. Every other URL parameter below still works.
+- **Fallback:** if the overview data is missing, the app opens 560098 as before.
+
+### Susceptibility index
+
+`npm run data:city` computes the index on a district-wide 60 m grid. The inputs are the Copernicus GLO-30 elevation model (with a 3×3 low-percentile filter so building and tree tops count less) and OSM drains, lakes, buildings, roads and landuse. The steps are priority-flood filling, D8 flow, flow accumulation and HAND. Each pincode is then ranked against the others on four measures:
+
+| Weight | Measure |
+|---|---|
+| 0.35 | share of area with HAND < 2 m (ground less than 2 m above the nearest drainage line, i.e. ≥ 0.5 km² catchment, a mapped drain or a lake) |
+| 0.25 | depression storage per km² (fill depth × area) |
+| 0.20 | mean impervious share (buildings 95 %, roads 90 %, landuse defaults) |
+| 0.20 | upstream area draining in from outside the pincode, relative to its own area |
+
+The index is the weighted mean of the four percentile ranks, from 0 to 1. The legend bands are lower (< 0.25), moderate, high and very high (≥ 0.75). **It ranks pincodes against each other**. It is not a probability or a forecast, and it is not calibrated to flood events.
+
+## What it does (in a pincode)
 
 - **Terrain analysis**: priority-flood depression filling, D8 flow accumulation, height-above-nearest-drainage (HAND), and 103 detected basins with volume and catchment.
 - **Live weather**: hourly Open-Meteo forecast for the past 2 days plus the next 7. Shows a best estimate and a worst case (the hourly max across 4 models).
@@ -23,12 +47,45 @@ Inspired by the Claude wildfire analysis prototype. Everything here runs on free
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
-npm test           # simulation tests (node:test)
-npm run data       # rebuild public/data from source (optional; results are committed)
+npm run dev        # http://localhost:5173  (city overview; ?pin=560098 for RR Nagar)
+npm test           # node:test suites in src/**/__tests__ (sim, routing, packs, codec)
 ```
 
-Requires Node 24+ (tests use native TypeScript type stripping).
+Requires Node 22.18+ or 24+. The tests and data scripts import TypeScript directly, using native type stripping.
+
+## Data pipeline
+
+| Command | What it does |
+|---|---|
+| `npm run data:osm` | Streams the OSM planet from the public AWS bucket `osm-pds` (≈95 GB, nothing stored) through `osmium extract`. The result is `.cache/osm/blr-region.osm.pbf`, about 60 MB, covering the bbox 77.15–78.05 E and 12.45–13.45 N. It takes 20–40 min, once. Needs `osmium-tool` (`apt install osmium-tool`). A Geofabrik extract works too: see `scripts/osm-extract.sh`. |
+| `npm run data:city` | Builds the pincode index, the district outline, the pincode polygons and the susceptibility index (≈40 s). Writes `public/data/pins/index.json`, `public/data/city/city.geojson` and `.cache/pins/catalog.json`. |
+| `npm run data -- --pin <code>` | Builds one pincode's pack into `public/data/pins/<code>/` (5–25 s; 560098 builds into `public/data/`). |
+| `npm run data:all [-- --pins a,b] [--jobs 2] [--force]` | Builds every pack (or the listed ones), then refreshes the index. It is resumable: packs that already exist are skipped. It is polite to public servers: OSM comes from the local extract and Copernicus windows are cached, and failures back off exponentially. |
+| `node scripts/calibrate.mjs --pin <code> --impact` | Runs the scenarios headlessly. Reports peak flooded area, recession time, buildings with water over plinth, road closed, and model depth near the pack's reported flood spots. |
+
+Without the local extract, `npm run data -- --pin <code>` falls back to one Overpass query per pack (cached).
+
+Reported flood spots outside 560098 live in `scripts/data/hotspots-blr.json`. Each event there has a source URL, and each place is located from a named OSM object, never a geocoder or memory. The pack build copies the spots inside a pack's grid into that pack's `hotspots.json`.
+
+### Pack format
+
+`CONTRACT.md` ("Multi-region") documents the format, and `src/types.ts` (`PinIndex`, `PackInfo`, `LayerInfo`) holds the types.
+
+- **Format 2** is used by every pack except 560098:
+  - grids are quantised to u16/u8, and smooth surfaces are row-delta coded and byte-shuffled
+  - `filled` is derived on load
+  - `osm.geojson` coordinates are rounded to 1e-5° (≈1 m)
+  - per-feature grid cells are rebuilt on load (`src/pack/osm.ts`)
+- **Grid cell size:** 15 m like 560098. Large pincodes use a coarser cell, so a pack stays near 140k cells (Yelahanka 560064: 50 m).
+- **Format 1:** the 560098 reference pack keeps format 1 and stays in `public/data/` (`pack.path: "."`), so old links and the calibration baseline are unchanged.
+
+### Hosting the packs
+
+The repository commits the pipeline, the index and the city overview, plus the 560098 pack and a few small sample packs. Every other pack is built by `npm run data:all` into `public/data/pins/<code>/`, which is git-ignored.
+
+To publish them:
+- **Release asset or any static host:** upload `public/data/pins/`. Then open the app with `?packs=https://host/path/pins`, or build it with `VITE_PACKS_URL=https://host/path/pins`. The hosted folder needs its own `index.json` (written by `data:all`).
+- **GitHub Actions:** `.github/workflows/packs.yml` (manual `workflow_dispatch` only) builds everything and uploads `public/data/pins` and `public/data/city` as an artifact.
 
 ## How it works
 
@@ -53,6 +110,12 @@ src/map/, src/ui/        MapLibre 3D map, panels, timeline, tour
 
 ## Limitations
 
+- **Multi-region:**
+  - Pincode boundaries come from OSM `boundary=postal_code` relations, sourced there from NIC PostalGIS. 22 of the 139 `56xxxx` relations in the region are less than half inside Bengaluru Urban and are left out.
+  - Some areas inside the district have no pincode relation in OSM; they show as dark gaps on the overview.
+- **Catchments cross pincode edges:** each pack simulates only its padded bbox. `data:city` records how much upstream area drains in from outside each pack (`upstreamOutsideKm2`), and the app shows a quiet caveat when that is large. That inflow is not simulated, so valley-floor depths there are likely too low.
+- **Scenarios:** the "20 Oct 2024" scenario replays the rainfall recorded at RR Nagar for every pincode; other parts of the city had different totals that day.
+- **Drains:** storm drains are modelled as capacity sinks, so the model does not show drains surcharging at bottlenecks. News reports blame much of Bengaluru's flooding on exactly that.
 - The elevation model is Copernicus GLO-30, a ~30 m **surface** model that includes some building and tree height. Small dips, underpasses and plinth levels are not resolved, and some pits are artefacts.
 - The drain network comes from OSM and is incomplete. Real drain capacity varies block by block.
 - There is no live sensor feed for flood depth. Validation relies on news reports of past events.
@@ -63,9 +126,10 @@ src/map/, src/ui/        MapLibre 3D map, panels, timeline, tour
 |---|---|---|
 | Elevation | [Copernicus DEM GLO-30](https://registry.opendata.aws/copernicus-dem/) (AWS open data) | © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA; free licence |
 | Elevation (fallback, map terrain) | [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (Mapzen/Tilezen) | SRTM and others, see their attribution |
-| Roads, buildings, drains, facilities, boundary | [OpenStreetMap](https://www.openstreetmap.org/copyright) via Overpass | © OpenStreetMap contributors, **ODbL 1.0** |
+| Roads, buildings, drains, facilities, boundaries | [OpenStreetMap](https://www.openstreetmap.org/copyright): planet from AWS Open Data [`osm-pds`](https://registry.opendata.aws/osm/) via osmium (or Overpass) | © OpenStreetMap contributors, **ODbL 1.0** |
+| Pincode boundaries | OSM `boundary=postal_code` relations (tagged as sourced from NIC PostalGIS) | © OpenStreetMap contributors, ODbL 1.0 |
 | Weather | [Open-Meteo](https://open-meteo.com/) | CC BY 4.0 |
 | Basemap | [OpenFreeMap](https://openfreemap.org/) | OSM data, ODbL; OpenMapTiles schema |
-| Flood reports | Deccan Herald, The News Minute, Citizen Matters, Gulf News (links in `public/data/hotspots.json`) | cited, facts only |
+| Flood reports | Deccan Herald, The News Minute, Citizen Matters, Gulf News, OneIndia, South First (links in `public/data/hotspots.json` and `scripts/data/hotspots-blr.json`) | cited, facts only |
 
 **Code**: MIT, see [LICENSE](LICENSE). **Derived data** in `public/data/` remains under the source licences above. OSM-derived files are ODbL.
