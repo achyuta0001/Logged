@@ -25,6 +25,7 @@ export class Timeline {
   private W = 800;
   private readonly H = 92;
   private head!: SVGGElement;
+  private peak: { x: number; lbl: SVGTextElement } | null = null;
 
   constructor(el: HTMLElement, h: TimelineHandlers) {
     this.el = el;
@@ -112,7 +113,22 @@ export class Timeline {
       const bw = this.W / n;
       this.head.setAttribute('transform', `translate(${(h + 0.5) * bw},0)`);
       this.svg.querySelectorAll('.bar').forEach((b, i) => b.classList.toggle('past', i <= h));
+      this.placePeak((h + 0.5) * bw);
     }
+  }
+
+  /** Put the "peak" label on whichever side of the peak keeps it clear of the playhead. */
+  private placePeak(headX: number) {
+    const p = this.peak;
+    if (!p) return;
+    const w = p.lbl.getComputedTextLength() || (p.lbl.textContent ?? '').length * 5.8;
+    const fitsR = p.x + 6 + w <= this.W - 2;
+    const fitsL = p.x - 6 - w >= 2;
+    const hitR = headX >= p.x + 3 && headX <= p.x + 9 + w;
+    const hitL = headX >= p.x - 9 - w && headX <= p.x - 3;
+    const left = !fitsR || (hitR && fitsL && !hitL);
+    p.lbl.setAttribute('x', String(left ? p.x - 6 : p.x + 6));
+    p.lbl.setAttribute('text-anchor', left ? 'end' : 'start');
   }
 
   private draw() {
@@ -126,6 +142,7 @@ export class Timeline {
     svg.setAttribute('width', String(W));
     svg.setAttribute('height', String(H));
     svg.innerHTML = '';
+    this.peak = null;
     if (!s) return;
     const n = s.mm.length;
     const bw = W / n;
@@ -171,7 +188,10 @@ export class Timeline {
         const px = (peak + 0.5) * bw;
         const py = baseY - topSpace * 0.95;
         el('circle', { cx: px, cy: py, r: 2.5, class: 'tl-peak' });
-        el('text', { x: Math.min(W - 70, px + 6), y: Math.max(rainH * 0.6, py + 3), class: 'tl-lbl peak' }).textContent = `peak ${fmtArea(maxA)}`;
+        // below the deepest rain bar, beside (never under) the playhead: see placePeak()
+        const lbl = el('text', { x: px + 6, y: Math.min(baseY - 6, rainH + 12), class: 'tl-lbl peak' }) as SVGTextElement;
+        lbl.textContent = `peak ${fmtArea(maxA)}`;
+        this.peak = { x: px, lbl };
       }
     }
     // rain hanging from the top
