@@ -3,3 +3,5 @@ dist
 .cache
 # built packs (npm run data:all); a few small samples are committed explicitly
 public/data/pins/*/
+!public/data/pins/560034/
+!public/data/pins/560071/
