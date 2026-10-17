@@ -786,6 +786,10 @@ input[type='range']::-moz-range-thumb {
 }
 .tl-lbl.peak {
   fill: #c7d3ff;
+  paint-order: stroke;
+  stroke: rgba(7, 13, 24, 0.85);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 .tl-now {
   stroke: var(--amber);
@@ -1152,11 +1156,12 @@ input[type='range']::-moz-range-thumb {
   .panel.right.open ~ .drawer-btn.right {
     right: calc(var(--rw) + var(--gap) * 2);
   }
-  .maplibregl-ctrl-top-right {
+  /* #map beats maplibre-gl.css, which loads after this file */
+  #map .maplibregl-ctrl-top-right {
     right: 0;
     top: 56px;
   }
-  .maplibregl-ctrl-bottom-right {
+  #map .maplibregl-ctrl-bottom-right {
     right: 0;
   }
   .tl-read span:last-child {
@@ -1174,14 +1179,22 @@ input[type='range']::-moz-range-thumb {
   .seg.small {
     display: none;
   }
+  /* full-width drawers open below the two drawer buttons, which stay put as toggles */
+  .panel.left,
+  .panel.right {
+    top: calc(var(--gap) + 50px);
+  }
   .panel.left.open ~ .drawer-btn.left {
-    left: auto;
-    right: calc(var(--gap) + 8px);
-    top: calc(var(--gap) + 8px);
+    left: var(--gap);
   }
   .panel.right.open ~ .drawer-btn.right {
-    right: calc(var(--gap) + 8px);
-    top: calc(var(--gap) + 8px);
+    right: var(--gap);
+  }
+  .tl-top {
+    gap: 10px;
+  }
+  .tl-time {
+    min-width: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {
