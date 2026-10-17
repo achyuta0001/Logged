@@ -15,6 +15,8 @@ export interface StoryOptions {
   onTour?(): void;
   /** start with the "Why" card collapsed (default: open) */
   collapsed?: boolean;
+  /** show the sourced "Why RR Nagar floods" card (560098 only; default true) */
+  why?: boolean;
 }
 
 export interface StoryPanel {
@@ -93,14 +95,18 @@ export function mountStoryPanel(container: HTMLElement, opts: StoryOptions): Sto
       <div class="st-g-row hot"><span>Recent peaks</span><div class="st-g-bar"><i style="--w:${(125 / 130) * 100}%"></i></div><b>~125<small>mm/h</small></b></div>
     </figure>`;
 
-  el.innerHTML = `
+  const why =
+    opts.why === false
+      ? ''
+      : `
     <details class="st-why"${opts.collapsed ? '' : ' open'}>
       <summary><h2>Why RR Nagar floods</h2>${iconSvg('chevron', 15, 1.8)}</summary>
       ${gauge}
       <ol class="st-facts">${FACTS.map(
         (f) => `<li><p><b>${esc(f.lead)}</b> ${esc(f.text)}</p><a href="${f.href}" target="_blank" rel="noopener">${esc(f.by)}</a></li>`,
       ).join('')}</ol>
-    </details>
+    </details>`;
+  el.innerHTML = `${why}
     <div class="st-mvr">
       <div class="st-mvr-head"><h2>Model vs reported</h2><span class="st-score" aria-live="polite"></span></div>
       <p class="st-hint">Places where flooding was reported, compared with the deepest street water the model shows within 300 m — reports name neighbourhoods, not exact streets. Click a row to fly there.</p>
