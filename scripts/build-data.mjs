@@ -999,6 +999,16 @@ async function main() {
   const osmOut = FORMAT === 2 ? outFeatures.map(compactFeature) : outFeatures;
   fs.writeFileSync(path.join(OUT, 'osm.geojson'), JSON.stringify({ type: 'FeatureCollection', ...(FORMAT === 2 ? { format: 2 } : {}), features: osmOut }));
   fs.writeFileSync(path.join(OUT, 'depressions.json'), JSON.stringify(depressions));
+  // sourced flood reports inside this pack's grid (560098 keeps its own hand-sourced hotspots.json)
+  if (PINCODE !== LEGACY.code) {
+    const src = path.join(ROOT, 'scripts', 'data', 'hotspots-blr.json');
+    const all = fs.existsSync(src) ? JSON.parse(fs.readFileSync(src, 'utf8')).hotspots : [];
+    const here = all.filter((h) => G.cellOf(h.coord[0], h.coord[1]) >= 0).map(({ osm, ...h }) => h);
+    const hf = path.join(OUT, 'hotspots.json');
+    if (here.length) fs.writeFileSync(hf, JSON.stringify(here, null, 1));
+    else fs.rmSync(hf, { force: true });
+    log(`sourced flood reports in this pack: ${here.length}`);
+  }
   // pack.json: what the pincode index records about this pack (sizes, date, sources)
   const files = ['meta.json', 'grids.bin', 'osm.geojson', 'depressions.json', 'hotspots.json'].filter((f) => fs.existsSync(path.join(OUT, f)));
   const bytes = files.reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
