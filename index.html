@@ -8,17 +8,16 @@
     <title>560098 Flood Outlook</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&display=swap" rel="stylesheet" />
+    <!-- SF on Apple devices via the system font stack; Inter (SIL OFL) elsewhere -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="map" aria-label="3D flood map of Rajarajeshwari Nagar"></div>
 
-    <aside class="panel left" id="left" aria-label="Rain and settings"></aside>
-    <aside class="panel right" id="right" aria-label="Impact"></aside>
-    <footer class="panel timeline" id="timeline" aria-label="Timeline"></footer>
-
-    <button class="drawer-btn left" id="open-left" aria-controls="left" aria-label="Show rain and settings"></button>
-    <button class="drawer-btn right" id="open-right" aria-controls="right" aria-label="Show impact"></button>
+    <aside class="glass sidebar" id="sidebar" aria-label="Flood outlook"></aside>
+    <nav class="glass rail" id="rail" aria-label="Sidebar sections"></nav>
+    <footer class="glass timeline" id="timeline" aria-label="Timeline"></footer>
+    <div class="focus-bar" id="focus-bar" role="toolbar" aria-label="Focus mode"></div>
 
     <div class="tip" id="tip" role="tooltip" hidden></div>
 
