@@ -67,7 +67,7 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
 
   const bb = bbox(city.district.geometry);
   const center: [number, number] = [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
-  const map = await createMap(document.getElementById('map')!, city.district.geometry, 1.4, center);
+  const map = await createMap(document.getElementById('map')!, city.district.geometry, 1.4, center, { demMaxZoom: 10 });
   loader.set(0.7);
 
   // feature ids for hover state
