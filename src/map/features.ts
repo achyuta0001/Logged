@@ -20,6 +20,9 @@ export const FACILITY_LABEL: Record<string, string> = {
   market: 'Market',
 };
 
+/** facility kinds hidden in the overview (below z15) unless flooded */
+const MINOR_FACILITIES: OsmKind[] = ['bus_stop', 'school', 'market'];
+
 const ROAD_WIDTH: Record<string, number> = { motorway: 4, trunk: 3.6, primary: 3.2, secondary: 2.6, tertiary: 2.1, residential: 1.2, unclassified: 1.2, service: 0.8 };
 
 export class FeatureLayers {
@@ -54,9 +57,10 @@ export class FeatureLayers {
         layout: { 'line-cap': 'round', 'line-join': 'round' },
         paint: {
           'line-color': ['step', depth, 'rgba(0,0,0,0)', 0.15, '#ffb02e', 0.3, '#ff7a1a', 0.5, '#ff3b4f'],
-          'line-width': ['*', ['get', 'w'], 4.5],
-          'line-blur': 6,
-          'line-opacity': ['step', depth, 0, 0.15, 0.55],
+          // capped for motorway/trunk so a flooded NICE Road reads as a line, not a smear
+          'line-width': ['interpolate', ['linear'], ['zoom'], 12, ['*', ['min', ['get', 'w'], 2.4], 1.8], 16, ['*', ['min', ['get', 'w'], 2.4], 4.2]],
+          'line-blur': ['interpolate', ['linear'], ['zoom'], 12, 2.5, 16, 6],
+          'line-opacity': ['step', depth, 0, 0.15, ['case', ['>=', ['get', 'w'], 3.6], 0.35, 0.55]],
         },
       },
       before,
@@ -121,7 +125,9 @@ export class FeatureLayers {
       id: 'facilities',
       type: 'symbol',
       source: 'facilities',
-      filter: ['any', ['!=', ['get', 'kind'], 'bus_stop'], ['get', 'hit'], ['>=', ['zoom'], 14.6]],
+      // overview stays readable: everyday places (bus stops, schools, markets) only
+      // appear once zoomed in, unless the water reaches them
+      filter: ['any', ['get', 'hit'], ['>=', ['zoom'], 15], ['!', ['in', ['get', 'kind'], ['literal', MINOR_FACILITIES]]]],
       layout: {
         'icon-image': ['concat', 'fac-', ['get', 'kind'], ['case', ['get', 'hit'], '-hit', '']],
         'icon-size': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'hit'], 0.38, 0.28], 16, ['case', ['get', 'hit'], 0.56, 0.46]],
