@@ -20,7 +20,14 @@ export let OVERLAY_ANCHOR: string | undefined;
 /** Basemap vector layer ids that hide when satellite is on. */
 let vectorBaseLayers: string[] = [];
 
+let baseStyle: Promise<StyleSpecification> | null = null;
+/** fetched once per page: switching regions rebuilds the map from a fresh copy */
 async function loadBaseStyle(): Promise<StyleSpecification> {
+  baseStyle ??= fetchBaseStyle();
+  return structuredClone(await baseStyle);
+}
+
+async function fetchBaseStyle(): Promise<StyleSpecification> {
   try {
     const ctl = new AbortController();
     const to = setTimeout(() => ctl.abort(), 6000);
@@ -65,7 +72,7 @@ function retheme(style: StyleSpecification) {
   vectorBaseLayers = keep.filter((l) => l.type !== 'symbol' && l.type !== 'background').map((l) => l.id);
 }
 
-export async function createMap(container: HTMLElement, boundary: GeoJSON.Geometry, exaggeration: number): Promise<MLMap> {
+export async function createMap(container: HTMLElement, boundary: GeoJSON.Geometry, exaggeration: number, center: [number, number] = CENTER): Promise<MLMap> {
   const style = await loadBaseStyle();
   retheme(style);
 
@@ -112,7 +119,7 @@ export async function createMap(container: HTMLElement, boundary: GeoJSON.Geomet
   const map = new maplibregl.Map({
     container,
     style,
-    center: [CENTER[0] - 0.002, CENTER[1] - 0.012],
+    center: [center[0] - 0.002, center[1] - 0.012],
     zoom: 13.55,
     pitch: 62,
     bearing: -18,
