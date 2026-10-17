@@ -8,6 +8,11 @@
 }
 .st h2 {
   margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--label-2);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 .st-why summary {
   list-style: none;
@@ -67,7 +72,6 @@
   text-align: right;
   font-size: 17px;
   font-weight: 650;
-  font-stretch: 70%;
   font-variant-numeric: tabular-nums;
   color: var(--c);
 }
@@ -174,7 +178,6 @@
   justify-self: end;
   font-variant-numeric: tabular-nums;
   font-weight: 650;
-  font-stretch: 75%;
   font-size: 15px;
   color: var(--faint);
 }
@@ -209,17 +212,16 @@
 }
 
 /* ================= guided tour ================= */
-/* While the tour runs the dashboard panels step aside. */
-body.tour-on .panel,
-body.tour-on .drawer-btn,
+/* While the tour runs the sidebar, rail, timeline and map chrome step aside. */
+body.tour-on .sidebar,
+body.tour-on .rail,
+body.tour-on .timeline,
+body.tour-on .focus-bar,
+body.tour-on .legend,
 body.tour-on .maplibregl-ctrl-top-right {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.5s;
-}
-.panel,
-.drawer-btn {
-  transition: opacity 0.5s;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .tour-vignette {
@@ -242,21 +244,21 @@ body.tour-on .maplibregl-ctrl-top-right {
   --p: 0;
   position: fixed;
   z-index: 9;
-  left: 32px;
-  bottom: 32px;
+  left: 24px;
+  bottom: 24px;
   width: min(470px, calc(100vw - 32px));
-  max-height: calc(100vh - 64px);
+  max-height: calc(100vh - 48px);
   overflow-y: auto;
   scrollbar-width: thin;
-  background: var(--glass);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 30px 70px -20px rgba(0, 0, 0, 0.9);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 0.5px solid var(--glass-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--glass-highlight), var(--glass-shadow);
   opacity: 0;
   transform: translateY(14px);
-  transition: opacity 0.45s, transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: opacity 0.45s, transform 0.45s var(--ease-spring);
 }
 .tour-card.in {
   opacity: 1;
@@ -309,10 +311,10 @@ body.tour-on .maplibregl-ctrl-top-right {
 }
 .tour-num {
   flex: none;
-  font-size: 26px;
+  font-size: 22px;
   line-height: 0.9;
   font-weight: 700;
-  font-stretch: 62%;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
   color: var(--c);
 }
@@ -323,9 +325,9 @@ body.tour-on .maplibregl-ctrl-top-right {
 .tour-kt {
   min-width: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   white-space: nowrap;
   overflow: hidden;
@@ -333,18 +335,17 @@ body.tour-on .maplibregl-ctrl-top-right {
 }
 .tour-title {
   margin: 0 0 8px;
-  font-size: 27px;
-  line-height: 1.05;
-  font-weight: 650;
-  font-stretch: 76%;
+  font-size: 26px;
+  line-height: 1.1;
+  font-weight: 700;
   color: var(--text);
-  letter-spacing: -0.005em;
+  letter-spacing: -0.02em;
   text-wrap: balance;
 }
 .tour-text {
   margin: 0 0 12px;
-  color: #c4d1e3;
-  font-size: 13.5px;
+  color: rgba(235, 235, 245, 0.82);
+  font-size: 15px;
   line-height: 1.5;
   text-wrap: pretty;
 }
@@ -371,7 +372,6 @@ body.tour-on .maplibregl-ctrl-top-right {
   font-size: 17px;
   line-height: 1.05;
   font-weight: 650;
-  font-stretch: 68%;
   font-variant-numeric: tabular-nums;
   color: var(--water-pale);
   white-space: nowrap;
@@ -483,21 +483,20 @@ body.tour-on .maplibregl-ctrl-top-right {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: 1px solid var(--line-hi);
-  background: var(--glass-hi);
+  border: 0;
+  background: var(--fill);
   color: var(--text);
   cursor: pointer;
 }
 .tour-b:hover {
-  border-color: rgba(30, 200, 255, 0.55);
-  background: rgba(30, 200, 255, 0.16);
+  background: rgba(118, 118, 128, 0.36);
 }
 .tour-b[data-a='prev'] .ico {
   transform: rotate(180deg);
 }
 .tour-b[data-a='play'] {
-  border-color: rgba(30, 200, 255, 0.55);
-  background: linear-gradient(180deg, rgba(30, 200, 255, 0.24), rgba(30, 120, 255, 0.16));
+  color: #00202e;
+  background: var(--accent);
 }
 
 /* map pin for the current stop */
