@@ -69,6 +69,8 @@ export interface Shell {
   timelineEl: HTMLElement;
   layout: Layout;
   index: PinIndex;
+  /** the city overview data loaded (otherwise the app is pincode-only) */
+  hasCity: boolean;
   /** switch region: a pincode, or the city overview (null) */
   go(pin: string | null): void;
 }
@@ -121,13 +123,14 @@ async function boot() {
   loader.set(0.02, 'Loading the pincode index');
   const root = packsRoot();
   const [index, city] = await Promise.all([loadPinIndex(root), loadCity()]);
-  const shell: Shell = { loader, sidebar, timeline, timelineEl, layout, index, go };
+  const shell: Shell = { loader, sidebar, timeline, timelineEl, layout, index, hasCity: !!city, go };
 
   // navigation is serialised: a region is fully torn down before the next one loads
   let nav = Promise.resolve();
   let first = true;
   function go(pin: string | null, push = true) {
     nav = nav.then(async () => {
+      if (!pin && !city) pin = LEGACY_PIN;
       const entry = pin ? index.pins.find((p) => p.code === pin) : undefined;
       if (pin && !entry?.pack) {
         // unknown pincode, or one without a data pack: fall back to the overview (or 560098 without one)
@@ -157,7 +160,9 @@ async function boot() {
         region = e ? await openPin(shell, e, packBase(root, e)) : await openCity(shell, city!);
       } catch (err) {
         console.error(err);
-        loader.error(`Could not load ${pin ? `pincode ${pin}` : 'the city overview'}: ${err instanceof Error ? err.message : String(err)}`);
+        const back = !!pin && !!city;
+        loader.error(`Could not load ${pin ? `pincode ${pin}` : 'the city overview'}: ${err instanceof Error ? err.message : String(err)}${back ? '. Back to the overview in a moment.' : ''}`);
+        if (back) setTimeout(() => go(null), 3500);
       }
     });
   }
@@ -183,7 +188,7 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
   loader.show('Loading terrain, buildings and roads');
   loader.set(0.04);
   sidebar.setScope('pin');
-  sidebar.setRegion(pin.code, legacy ? 'Rajarajeshwari Nagar, Bengaluru' : `${placeName ? `${placeName}, ` : ''}Bengaluru`, { back: shell.index.pins.length > 1 });
+  sidebar.setRegion(pin.code, legacy ? 'Rajarajeshwari Nagar, Bengaluru' : `${placeName ? `${placeName}, ` : ''}Bengaluru`, { back: shell.hasCity });
   sidebar.setTitle('story', legacy ? 'Why RR Nagar floods' : 'Model vs reported');
   sidebar.setStatus('none', 'Working out the flood outlook', '');
   // M4: catchments cross pincode edges; say so quietly when a lot of land drains in from outside the grid
