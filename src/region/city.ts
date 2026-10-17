@@ -75,7 +75,11 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     type: 'FeatureCollection',
     features: city.pins.features.map((f, i) => ({ ...f, id: i, properties: { ...f.properties, pack: byCode.get(f.properties.code)?.pack ? 1 : 0 } })),
   };
-  map.addSource('pins', { type: 'geojson', data, promoteId: undefined });
+  map.addSource('pins', {
+    type: 'geojson',
+    data,
+    attribution: 'Pincodes &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL); susceptibility from Copernicus DEM GLO-30 &copy; DLR e.V., &copy; Airbus Defence and Space GmbH, provided under COPERNICUS by the EU and ESA',
+  });
   const ramp = SUSC_RAMP.flatMap(([v, c]) => [v, c]);
   map.addLayer({
     id: 'pins-fill',
