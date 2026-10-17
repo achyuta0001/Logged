@@ -3,6 +3,7 @@ const TZ = 'Asia/Kolkata';
 export const fmtHour = (t: number) => new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: TZ });
 export const fmtDay = (t: number) => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ });
 export const fmtDayShort = (t: number) => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', timeZone: TZ });
+export const fmtWeekday = (t: number) => new Date(t).toLocaleDateString('en-GB', { weekday: 'short', timeZone: TZ });
 export const istHour = (t: number) => Number(new Date(t).toLocaleTimeString('en-GB', { hour: '2-digit', hour12: false, timeZone: TZ }).slice(0, 2)) % 24;
 
 export function fmtDepth(m: number): string {
