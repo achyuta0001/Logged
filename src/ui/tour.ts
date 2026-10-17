@@ -79,19 +79,13 @@ export function distM(a: [number, number], b: [number, number]): number {
   return Math.hypot(dx, dy);
 }
 /**
- * Max modelled depth within ~60 m of a point. Hotspot coordinates come from news reports
- * and are approximate, so a small neighbourhood is fairer than a single cell.
+ * Modelled depth for a reported spot. The app's lookup already takes the deepest street
+ * water within 300 m (hotspot coordinates are neighbourhood-level), so probe once.
  */
 export function probeDepth(fn: ((lng: number, lat: number) => number | undefined) | undefined, c: [number, number]): number | undefined {
   if (!fn) return undefined;
-  const r = 0.00055;
-  let best: number | undefined;
-  for (const dx of [-r, 0, r])
-    for (const dy of [-r, 0, r]) {
-      const v = fn(c[0] + dx, c[1] + dy);
-      if (v !== undefined && Number.isFinite(v)) best = best === undefined ? v : Math.max(best, v);
-    }
-  return best;
+  const v = fn(c[0], c[1]);
+  return v !== undefined && Number.isFinite(v) ? v : undefined;
 }
 export function fmtModelDepth(m: number): string {
   if (m < 0.02) return 'dry';
@@ -358,7 +352,7 @@ export function createTour(map: MLMap, opts: TourOptions): Tour {
       : '';
     const model =
       depth !== undefined
-        ? `<p class="tour-line model">${iconSvg('flood', 15)}<span>Modelled max depth here: <b>${esc(fmtModelDepth(depth))}</b></span></p>`
+        ? `<p class="tour-line model">${iconSvg('flood', 15)}<span>Deepest street water the model shows within 300 m: <b>${esc(fmtModelDepth(depth))}</b></span></p>`
         : '';
     const rep = s.reported
       ? `<p class="tour-line rep">${iconSvg('alert', 15)}<span>Reported: <b>${esc(fmtEventDate(s.reported.date))}</b> — ${esc(s.reported.summary)}${
@@ -419,7 +413,8 @@ export function createTour(map: MLMap, opts: TourOptions): Tour {
     renderCard(s);
     setMarker(s);
     opts.onStep?.(idx);
-    const cam = { center: s.center, zoom: s.zoom, pitch: s.pitch, bearing: s.bearing, offset: cameraOffset() };
+    // the app's panels hide during the tour, so frame against the whole screen
+    const cam = { center: s.center, zoom: s.zoom, pitch: s.pitch, bearing: s.bearing, offset: cameraOffset(), padding: { top: 0, bottom: 0, left: 0, right: 0 } };
     map.stop();
     const arrive = () => {
       if (my !== token || !running) return;
