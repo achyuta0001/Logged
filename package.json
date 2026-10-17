@@ -8,6 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "data": "node scripts/build-data.mjs",
+    "data:osm": "bash scripts/osm-extract.sh",
+    "data:city": "node --max-old-space-size=8192 scripts/build-city.mjs",
+    "data:all": "node scripts/build-all.mjs",
     "preview:data": "node scripts/preview.mjs",
     "test": "node --test 'src/**/__tests__/*.test.ts'",
     "calibrate": "node scripts/calibrate.mjs"
