@@ -9,10 +9,17 @@
  *    (K = 0.2 < 1/4, the explicit 2D diffusion limit) so water surfaces never overshoot/oscillate,
  *    which allows large adaptive time steps (seconds to minutes).
  *  - Positivity: per-cell outgoing volume is scaled to the water available (mass exactly conserved).
- *  - Sources/sinks: rain, Horton-like infiltration on the pervious fraction (with soil storage),
+ *  - Sources/sinks: rain, Horton-like infiltration on the pervious fraction (with soil storage; once
+ *    the soil is saturated, ponded water still seeps under its own head, Green-Ampt style),
  *    storm drains (30% of capacity acts everywhere as roadside drains, 70% at inlets within 2 cells
- *    of drainMask sized by the area each serves, radius 500 m), lake/tank storage (0.5 m freeboard),
+ *    of drainMask sized by the area each serves, radius 500 m), post-storm drainage of ponds (below),
+ *    lake/tank storage (freeboard grows with tank area: small tanks fill and spill first),
  *    free outflow through grid edges.
+ *  - Post-storm drainage: every cell belongs to the basin of the local low point its steepest-descent
+ *    path ends in. Roadside drains run along paved ground and converge on that low point, so once the
+ *    rain falls below their capacity, the capacity of the basin's dry paved area is free to empty the
+ *    basin's pond (removed in proportion to depth, booked as `drained`). While it rains hard, the same
+ *    drains are busy with direct runoff and the term is off.
  * All storage in Float64 so the volume budget closes to round-off.
  */
 import type { SimParams } from '../types.ts';
@@ -59,7 +66,19 @@ const H_MIN_FLOW = 1e-4; // m; thinner films don't route
 const SOIL_CAP_M = 0.1; // soil storage on fully pervious ground before infiltration slows
 const SOIL_SAT_FACTOR = 0.15; // infiltration rate fraction once soil storage is full
 const SOIL_RECOVERY_M_S = 2 / 1000 / 3600; // soil storage drains at ~2 mm/h
-const LAKE_FREEBOARD_M = 0.5; // extra storage depth a lake/tank can absorb before spilling
+const PONDED_HEAD_M = 0.3; // Green-Ampt: saturated seepage grows by (1 + h / this) under ponded water
+/**
+ * Flood cushion of a tank before it spills, m: Bengaluru tanks are kept near full by sewage inflow, so
+ * only the band below the waste weir is free; bigger tanks have bigger bunds/weirs. 0.3 m at 1 ha,
+ * +0.1 m per tenfold area, clamped 0.15..0.6 m (a flat 0.5 m let small tanks swallow any storm).
+ */
+export function lakeFreeboardM(areaM2: number): number {
+  const d = 0.3 + 0.1 * Math.log10(Math.max(1, areaM2) / 1e4);
+  return Math.min(0.6, Math.max(0.15, d));
+}
+const POND_MIN_M = 0.01; // water shallower than this is a film, not a pond (not drained by the basin term)
+/** drains keep carrying upstream runoff after the rain eases: spare capacity builds up as 1 - exp(-t / this) */
+const DRAIN_LAG_S = 1.5 * 3600;
 const INLET_RADIUS = 2; // cells around a drainMask cell that act as inlets
 const SERVE_RADIUS_M = 500;
 const DRAIN_LOCAL_SHARE = 0.3; // share of drain capacity acting everywhere (unmapped roadside drains); calibrated so 35 mm/3 h gives only minor ponding
@@ -102,8 +121,20 @@ export class SimCore {
   private wetRowMax: Int32Array;
   private lastVmax = 0.5;
   private hoursSinceRain = 1e9;
+  /** s since rain last exceeded the roadside drains' capacity */
+  private drainIdleS = 1e9;
+  /** share of drain capacity acting as distributed roadside drains (1 when no drains are mapped) */
+  private localShare = DRAIN_LOCAL_SHARE;
   private edgeOut: Float64Array;
   private lakeRoomInit: Float64Array;
+  /** sealed fraction per cell (0..1) */
+  private imp: Float64Array;
+  /** basin id per cell: the local low point its D8 steepest-descent path (unfilled z) ends in */
+  readonly basin: Int32Array;
+  /** sum of sealed fraction over each basin's cells (roadside-drain "frontage", in cells) */
+  private basinImp: Float64Array;
+  private basinWetImp: Float64Array; // per-step scratch
+  private basinPond: Float64Array; // per-step scratch: sum of pond depth (m*cells)
 
   constructor(g: CoreGrids, params: Partial<SimParams> = {}) {
     this.params = { ...DEFAULT_PARAMS, ...params };
@@ -123,8 +154,10 @@ export class SimCore {
     }
     this.invN = new Float64Array(n);
     this.pervious = new Float64Array(n);
+    this.imp = new Float64Array(n);
     for (let i = 0; i < n; i++) {
       const imp = g.impervious ? Math.min(1, Math.max(0, g.impervious[i] || 0)) : 0.5;
+      this.imp[i] = imp;
       this.pervious[i] = 1 - imp;
       // sealed surfaces ~0.015, vegetated/rough ~0.06
       this.invN[i] = 1 / (0.015 * imp + 0.06 * (1 - imp));
@@ -198,6 +231,7 @@ export class SimCore {
     } else {
       // no mapped drains: the whole capacity acts as distributed roadside drains
       this.inletRate.fill(1);
+      this.localShare = 1;
     }
 
     // ---- lakes ----
@@ -221,13 +255,57 @@ export class SimCore {
           const nb = [c + 1 < w ? i + 1 : -1, c > 0 ? i - 1 : -1, r + 1 < H ? i + w : -1, r > 0 ? i - w : -1];
           for (const j of nb) if (j >= 0 && lm[j] && this.lakeComp[j] < 0) { this.lakeComp[j] = id; stack.push(j); }
         }
-        rooms.push(count * this.area * LAKE_FREEBOARD_M);
+        const a = count * this.area;
+        rooms.push(a * lakeFreeboardM(a));
       }
     }
     this.lakeCells = Int32Array.from(lakeCellsArr);
     this.lakeRoom = Float64Array.from(rooms);
     this.lakeRoomInit = Float64Array.from(rooms);
     this.edgeOut = new Float64Array(4 * (w + H) + 8);
+
+    // ---- basins (for post-storm drainage) ----
+    const z = this.z;
+    const down = new Int32Array(n).fill(-1);
+    const d2 = Math.SQRT2;
+    for (let r = 0; r < H; r++)
+      for (let c = 0; c < w; c++) {
+        const i = r * w + c;
+        let best = 0, bj = -1;
+        for (let dr = -1; dr <= 1; dr++)
+          for (let dc = -1; dc <= 1; dc++) {
+            if (!dr && !dc) continue;
+            const rr = r + dr, cc = c + dc;
+            if (rr < 0 || cc < 0 || rr >= H || cc >= w) continue;
+            const j = rr * w + cc;
+            const s = (z[i] - z[j]) / (dr && dc ? d2 : 1);
+            if (s > best) { best = s; bj = j; }
+          }
+        down[i] = bj;
+      }
+    const basin = (this.basin = new Int32Array(n).fill(-1));
+    const path: number[] = [];
+    let nb = 0;
+    for (let s = 0; s < n; s++) {
+      if (basin[s] >= 0) continue;
+      let i = s;
+      path.length = 0;
+      while (basin[i] < 0 && down[i] >= 0) { path.push(i); i = down[i]; } // strictly descending: no cycles
+      if (basin[i] < 0) basin[i] = nb++;
+      const b = basin[i];
+      for (const p of path) basin[p] = b;
+    }
+    this.basinImp = new Float64Array(nb);
+    for (let i = 0; i < n; i++) if (this.lakeComp[i] < 0) this.basinImp[basin[i]] += this.imp[i];
+    this.basinWetImp = new Float64Array(nb);
+    this.basinPond = new Float64Array(nb);
+  }
+
+  /** per-lake storage capacity and what is still free, m3 (diagnostics) */
+  lakeStatus(): { cells: number; capacityM3: number; freeM3: number }[] {
+    const cells = new Array<number>(this.lakeRoom.length).fill(0);
+    for (const i of this.lakeCells) cells[this.lakeComp[i]]++;
+    return Array.from(this.lakeRoomInit, (cap, k) => ({ cells: cells[k], capacityM3: cap, freeM3: this.lakeRoom[k] }));
   }
 
   reset(): void {
@@ -238,6 +316,7 @@ export class SimCore {
     this.time = 0;
     this.lastVmax = 0.5;
     this.hoursSinceRain = 1e9;
+    this.drainIdleS = 1e9;
   }
 
   setParams(p: Partial<SimParams>): void {
@@ -261,6 +340,7 @@ export class SimCore {
     // quiescent shortcut: no rain and essentially no surface water
     if (dry && this.totalVolume() < 1e-3) {
       this.recoverSoil(3600);
+      this.drainIdleS += 3600;
       this.time += 3600;
       return this.stats(b0, 0);
     }
@@ -319,6 +399,43 @@ export class SimCore {
     for (let i = 0; i < this.n; i++) if (s[i] > 0) s[i] = Math.max(0, s[i] - d);
   }
 
+  /**
+   * Remove ponded water through the basin's free roadside-drain capacity. `capDepth` = free capacity
+   * per fully sealed cell this step (m). Returns the removed depth summed over cells (m*cells).
+   */
+  private drainPonds(capDepth: number): number {
+    const { n, h, basin, imp, lakeComp } = this;
+    const wetImp = this.basinWetImp, pond = this.basinPond, bImp = this.basinImp;
+    wetImp.fill(0);
+    pond.fill(0);
+    let any = false;
+    for (let i = 0; i < n; i++) {
+      const d = h[i];
+      if (d <= POND_MIN_M) continue;
+      const b = basin[i];
+      wetImp[b] += imp[i]; // wet cells' own drains are already counted by the local inlet term
+      if (lakeComp[i] < 0) { pond[b] += d; any = true; }
+    }
+    if (!any) return 0;
+    // per-basin fraction of the pond that can leave this step
+    for (let b = 0; b < pond.length; b++) {
+      if (pond[b] <= 0) continue;
+      const room = capDepth * (bImp[b] - wetImp[b]);
+      pond[b] = room <= 0 ? 0 : room >= pond[b] ? 1 : room / pond[b];
+    }
+    let removed = 0;
+    for (let i = 0; i < n; i++) {
+      const d = h[i];
+      if (d <= POND_MIN_M || lakeComp[i] >= 0) continue;
+      const f = pond[basin[i]];
+      if (f <= 0) continue;
+      const r = d * f;
+      h[i] = d - r;
+      removed += r;
+    }
+    return removed;
+  }
+
   /** One explicit step of length dt seconds. */
   step(dt: number, rainRate: number): void {
     const { w, hgt: H, n, dx, area: A, h, z, invN } = this;
@@ -335,7 +452,8 @@ export class SimCore {
       const pv = perv[i];
       let s = soil[i];
       if (pv > 0 && infBase > 0) {
-        const pot = infBase * (s < SOIL_CAP_M ? 1 : SOIL_SAT_FACTOR) * pv;
+        // saturated soil still takes ponded water, faster under a deeper head (small pits leak away)
+        const pot = infBase * (s < SOIL_CAP_M ? 1 : SOIL_SAT_FACTOR * (1 + d / PONDED_HEAD_M)) * pv;
         if (d > 0 && pot > 0) {
           const inf = d < pot ? d : pot;
           d -= inf;
@@ -362,6 +480,15 @@ export class SimCore {
         const r = d < m ? d : m;
         h[i] = d - r;
         dr += r;
+      }
+      // post-storm drainage: once rain is below the roadside drains' capacity, the spare capacity of
+      // each basin's dry paved area drains that basin's pond (deepest water first, mass-exact)
+      const local = cap * this.localShare;
+      if (rainDepth >= local) this.drainIdleS = 0;
+      else {
+        this.drainIdleS += dt;
+        const spare = (1 - rainDepth / local) * (1 - Math.exp(-this.drainIdleS / DRAIN_LAG_S));
+        dr += this.drainPonds(spare * local);
       }
       this.budget.drained += dr * A;
     }
