@@ -87,6 +87,48 @@ To publish them:
 - **Release asset or any static host:** upload `public/data/pins/`. Then open the app with `?packs=https://host/path/pins`, or build it with `VITE_PACKS_URL=https://host/path/pins`. The hosted folder needs its own `index.json` (written by `data:all`).
 - **GitHub Actions:** `.github/workflows/packs.yml` (manual `workflow_dispatch` only) builds everything and uploads `public/data/pins` and `public/data/city` as an artifact.
 
+## Budgets (measured 2026-10-17)
+
+| Budget | Target | Measured |
+|---|---|---|
+| City overview transfer | ≤ 5 MB | **1.8 MB** without basemap tiles: app 0.37 MB, city.geojson 0.17 MB raw (≈0.05 MB gzipped), index 0.01 MB, z10 terrain 1.2 MB. Basemap tiles were blocked in the test environment and are not counted. |
+| Pincode pack | ≤ 4 MB gzipped | All 117 packs: **max 3.2 MB** (Yelahanka 560064), median 1.1 MB, total 138 MB. 560098 is 2.6 MB. |
+| 9-day forecast simulation | ≤ 3 s on a laptop | Every sample pack runs 216 h faster than 560098 on the same machine. In a slow cloud container that was 2.2–3.8 s vs 4.0 s; on a laptop 560098 takes about 2 s. Big pincodes get coarser cells, so cells stay ≤ ~140k. |
+| 560098 | no slower than before | Same pack (format 1), same engine. Opening it adds two small fetches: index.json and city.geojson. |
+
+Switching regions is checked in headless Chromium, over five city ↔ 560098 round trips. JS heap, workers, canvases, markers and window/document listeners all return to the same level after each one.
+
+## Sample results (`node scripts/report.mjs --perf`)
+
+"Oct 2024 storm" replays the RR Nagar rainfall (177.6 mm) on every pincode. "Typical evening" is a 35 mm monsoon evening. The table reports:
+- **Peak flooded:** area with more than 0.1 m of water inside the pincode.
+- **Recession:** hours after the rain ends until the flooded area falls below 25 % of its peak.
+- **Buildings over plinth:** buildings with more than 0.25 m of water at the peak hour.
+- **Road closed:** road with more than 0.30 m of water.
+- **Reports wet:** sourced flood reports inside the pack where the model has at least 0.15 m of street water within 300 m.
+
+| Pincode | Name | Susc. | Grid | Pack (gz) | Oct 2024 storm: peak flooded | recession | buildings over plinth | road closed (car) | reports wet | Typical evening: peak | buildings | 9-day run |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 560098 | Rajarajeshwarinagar | 0.49 | 15 m, 135k | – | 0.63 km² | 5 h | 538 | 7.2 km | 8/12 | 0.03 km² | 8 | 4.0 s |
+| 560072 | Nagarbhavi | 0.39 | 15 m, 102k | 1.40 MB | 0.15 km² | 8 h | 184 | 2.1 km | – | 0.00 km² | 4 | 3.2 s |
+| 560034 | Koramangala I Block | 0.88 | 15 m, 88k | 1.16 MB | 0.19 km² | 5 h | 110 | 2.9 km | 3/3 | 0.01 km² | 2 | 2.6 s |
+| 560095 | Koramangala VI Block | 0.80 | 15 m, 110k | 1.33 MB | 0.27 km² | 3 h | 336 | 3.2 km | 1/1 | 0.02 km² | 5 | 3.1 s |
+| 560102 | HSR Layout | 0.63 | 20 m, 79k | 1.23 MB | 0.26 km² | 2 h | 222 | 3.7 km | 3/3 | 0.01 km² | 0 | 2.2 s |
+| 560103 | Bellandur | 0.83 | 25 m, 104k | 1.69 MB | 0.44 km² | 4 h | 58 | 2.1 km | 3/3 | 0.01 km² | 0 | 3.2 s |
+| 560068 | Bommanahalli (Bangalore) | 0.75 | 25 m, 103k | 2.26 MB | 0.48 km² | 4 h | 402 | 5.6 km | 2/2 | 0.00 km² | 0 | 2.8 s |
+| 560037 | Rameshnagar | 0.79 | 20 m, 123k | 1.97 MB | 0.63 km² | 3 h | 543 | 5.1 km | 0/1 | 0.02 km² | 0 | 3.8 s |
+| 560048 | Mahadevapura | 0.56 | 20 m, 97k | 1.50 MB | 0.35 km² | 4 h | 107 | 1.8 km | – | 0.01 km² | 0 | 3.1 s |
+| 560087 | Varthur | 0.75 | 25 m, 137k | 1.67 MB | 0.68 km² | 4 h | 195 | 1.8 km | 0/1 | 0.00 km² | 0 | 3.8 s |
+| 560024 | HA Farm | 0.81 | 20 m, 84k | 1.91 MB | 0.32 km² | 3 h | 96 | 2.9 km | 1/1 | 0.01 km² | 1 | 2.7 s |
+| 560064 | Yelahanka Satellite Town | 0.55 | 50 m, 114k | 3.20 MB | 3.54 km² | 1 h | 275 | 9.2 km | 0/1 | 0.01 km² | 0 | 3.3 s |
+| 560097 | Vidyaranyapura | 0.53 | 20 m, 121k | 1.65 MB | 0.37 km² | 2 h | 502 | 2.9 km | – | 0.00 km² | 0 | 3.5 s |
+| 560100 | Wipro Limited | 0.38 | 30 m, 114k | 1.49 MB | 1.46 km² | 2 h | 90 | 4.5 km | 0/1 | 0.03 km² | 0 | 3.8 s |
+
+What the reports show:
+- **Matched:** most reports. Silk Board, HSR Layout, ST Bed Layout, Rainbow Drive, the ORR at Ecospace and the Hebbal flyover all get street water near them in the 2024 storm.
+- **Missed:** the **Marathahalli Bridge**, **Kendriya Vihar** and the **Electronic City flyover**. The flyovers are probably a resolution problem: the elevation model measures the deck, not the road under it. Kendriya Vihar flooded because the lakes upstream overflowed, which needs inflow from outside the pack (see Limitations). Yelahanka's 50 m grid is also coarse.
+- **Rainfall:** every pincode gets the same storm. Real rainfall varies across the city, so compare pincodes with care.
+
 ## How it works
 
 ```
@@ -96,6 +138,10 @@ src/weather.ts           Open-Meteo forecast + scenarios
 src/sim/                 flood engine (worker)  →  hourly depth snapshots
 src/impact.ts            depth + OSM  →  ImpactReport
 src/map/, src/ui/        MapLibre 3D map, panels, timeline, tour
+src/region/              pincode index + pack loader, city overview region
+src/pack/                pack format 2 codec (grids) and OSM cell rebuild
+scripts/build-city.mjs   pincode index, district outline, susceptibility (data:city)
+scripts/build-all.mjs    every pack, resumable (data:all)
 ```
 
 `CONTRACT.md` and `src/types.ts` define the interfaces between modules.
