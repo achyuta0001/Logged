@@ -136,3 +136,54 @@ export interface ImpactReport {
   dailyLife: { icon: string; title: string; detail: string; severity: Severity }[];
   overall: Severity;
 }
+
+// ---------------------------------------------------------------- multi-region (Bengaluru Urban)
+
+/** Pack format version. 1 = f32 grids (560098 reference pack); 2 = quantised grids (see CONTRACT.md). */
+export type PackFormat = 1 | 2;
+
+/** One pincode in public/data/pins/index.json */
+export interface PinEntry {
+  /** "560098" */
+  code: string;
+  /** locality name from OSM (`name` / `note` of the postal_code relation, else the largest place inside) */
+  name: string;
+  /** other locality names inside the pincode (search) */
+  localities?: string[];
+  /** OSM relation id of the boundary=postal_code relation */
+  relation: number;
+  /** [west, south, east, north] of the boundary */
+  bbox: [number, number, number, number];
+  /** [lon, lat] */
+  centroid: [number, number];
+  areaKm2: number;
+  /** share of the pincode's area inside Bengaluru Urban (0..1) */
+  districtShare: number;
+  /** precomputed flood-susceptibility index 0..1 (see README "Susceptibility index") */
+  susceptibility?: number;
+  /** a data pack exists for this pincode */
+  pack?: PackInfo;
+}
+
+export interface PackInfo {
+  /** pack folder, relative to the packs root (e.g. "560098"); "." = the legacy pack in public/data */
+  path: string;
+  format: PackFormat;
+  /** total bytes of the pack files (uncompressed) and gzipped */
+  bytes: number;
+  gzipBytes: number;
+  /** ISO date of the build */
+  built: string;
+  sources: string[];
+  /** upstream area draining in from outside the padded bbox, km² (M4) */
+  upstreamOutsideKm2?: number;
+}
+
+export interface PinIndex {
+  version: 1;
+  generated: string;
+  district: { relation: number; name: string };
+  /** how pincodes were selected (documented rule) */
+  rule: string;
+  pins: PinEntry[];
+}
