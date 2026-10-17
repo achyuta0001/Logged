@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "data": "node scripts/build-data.mjs",
     "preview:data": "node scripts/preview.mjs",
-    "test": "node --test 'src/sim/__tests__/*.test.ts'",
+    "test": "node --test 'src/**/__tests__/*.test.ts'",
     "calibrate": "node scripts/calibrate.mjs"
   },
   "devDependencies": {
