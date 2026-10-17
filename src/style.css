@@ -2375,3 +2375,20 @@ body.mode-phone .tour-btn {
 .city-more[hidden] {
   display: none;
 }
+
+.sb-caveat {
+  display: flex;
+  gap: 5px;
+  align-items: flex-start;
+  margin: 4px 0 0;
+  color: var(--label-3);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+.sb-caveat[hidden] {
+  display: none;
+}
+.sb-caveat .ico {
+  flex: none;
+  margin-top: 1px;
+}
