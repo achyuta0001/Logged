@@ -4,6 +4,8 @@
 //
 //   npm run data:city                 full build (needs .cache/osm/blr-region.osm.pbf + osmium-tool)
 //   npm run data:city -- --index-only refresh public/data/pins/index.json from built packs' pack.json
+//   ... --only-committed              list only packs git tracks (use before committing index.json;
+//                                     a hosted copy built by data:all lists every built pack)
 //
 // Writes
 //   public/data/pins/index.json    PinIndex (src/types.ts): every pincode kept, with its pack if built
@@ -71,7 +73,8 @@ async function loadBoundaries() {
     if (t['@type'] !== 'relation') continue;
     if (t['@id'] === DISTRICT_REL) district = f;
     if (t.boundary !== 'postal_code') continue;
-    const code = [t.postal_code, t.ref, t.name].map((v) => String(v ?? '').replace(/\s+/g, '')).find((v) => /^\d{6}$/.test(v));
+    // postal_code tag, else a 6-digit code in ref or name ("Rajarajeshwarinagar - 560098")
+    const code = [t.postal_code, t.ref, t.name].map((v) => String(v ?? '').match(/(?:^|\D)(\d{6})(?:\D|$)/)?.[1]).find(Boolean);
     if (!code || !code.startsWith('56')) continue;
     const area = turf.area(f);
     const prev = pins.get(code);
@@ -236,6 +239,16 @@ const r6 = (v) => Math.round(v * 1e6) / 1e6;
 const round = (v, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
 
 /** merge built packs (pack.json) into the catalog and write public/data/pins/index.json */
+const ONLY_COMMITTED = process.argv.includes('--only-committed');
+function gitIgnored(dir) {
+  try {
+    execFileSync('git', ['check-ignore', '-q', path.join(dir, 'pack.json')], { cwd: ROOT, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function writeIndex(catalog) {
   const pins = catalog.pins.map((p) => {
     const e = { ...p };
@@ -243,7 +256,7 @@ function writeIndex(catalog) {
     const legacy = p.code === '560098' && fs.existsSync(path.join(ROOT, 'public', 'data', 'pack.json'));
     const dir = legacy ? path.join(ROOT, 'public', 'data') : path.join(PINS_OUT, p.code);
     const pj = path.join(dir, 'pack.json');
-    if (fs.existsSync(pj)) {
+    if (fs.existsSync(pj) && !(ONLY_COMMITTED && !legacy && gitIgnored(dir))) {
       const k = JSON.parse(fs.readFileSync(pj, 'utf8'));
       e.pack = { path: legacy ? '.' : p.code, format: k.format, bytes: k.bytes, gzipBytes: k.gzipBytes, built: k.built, sources: k.sources, ...(p.hydro?.upstreamOutsideKm2 !== undefined ? { upstreamOutsideKm2: p.hydro.upstreamOutsideKm2 } : {}) };
     } else if (p.code === '560098') {
@@ -291,7 +304,10 @@ async function main() {
     const f = turf.feature(p.geometry);
     const inside = places.filter((q) => turf.booleanPointInPolygon(q.coord, f)).sort((a, b) => a.rank - b.rank);
     const names = [...new Set(inside.map((q) => q.name))];
-    const own = [p.tags['name:en'], p.tags.name, p.tags.note].find((v) => v && !/^\d+$/.test(String(v).replace(/\s/g, '')) && !/postal|pin ?code/i.test(v));
+    // "Rajarajeshwarinagar - 560098" -> "Rajarajeshwarinagar"
+    const own = [p.tags['name:en'], p.tags.name]
+      .map((v) => String(v ?? '').replace(p.code, '').replace(/^[\s\-–,:]+|[\s\-–,:(]+$/g, '').replace(/\(\s*\)/g, '').trim())
+      .find((v) => v && !/^\d+$/.test(v) && !/postal|pin ?code/i.test(v));
     p.name = own ?? names[0] ?? `Pincode ${p.code}`;
     p.localities = names.filter((n) => n !== p.name).slice(0, 15);
     p.bbox = turf.bbox(f).map(r6);
