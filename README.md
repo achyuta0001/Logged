@@ -109,7 +109,7 @@ Switching regions is checked in headless Chromium, over five city ↔ 560098 rou
 
 | Pincode | Name | Susc. | Grid | Pack (gz) | Oct 2024 storm: peak flooded | recession | buildings over plinth | road closed (car) | reports wet | Typical evening: peak | buildings | 9-day run |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| 560098 | Rajarajeshwarinagar | 0.49 | 15 m, 135k | – | 0.63 km² | 5 h | 538 | 7.2 km | 8/12 | 0.03 km² | 8 | 4.0 s |
+| 560098 | Rajarajeshwarinagar | 0.49 | 15 m, 135k | 2.64 MB | 0.63 km² | 5 h | 538 | 7.2 km | 8/12 | 0.03 km² | 8 | 4.0 s |
 | 560072 | Nagarbhavi | 0.39 | 15 m, 102k | 1.40 MB | 0.15 km² | 8 h | 184 | 2.1 km | – | 0.00 km² | 4 | 3.2 s |
 | 560034 | Koramangala I Block | 0.88 | 15 m, 88k | 1.16 MB | 0.19 km² | 5 h | 110 | 2.9 km | 3/3 | 0.01 km² | 2 | 2.6 s |
 | 560095 | Koramangala VI Block | 0.80 | 15 m, 110k | 1.33 MB | 0.27 km² | 3 h | 336 | 3.2 km | 1/1 | 0.02 km² | 5 | 3.1 s |
