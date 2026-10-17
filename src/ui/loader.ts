@@ -15,8 +15,13 @@ export class Loader {
     this.pct.textContent = `${Math.round(p * 100)}%`;
     if (msg) this.msg.textContent = msg;
   }
+  /** big label + name line (pincode and locality, or the district) */
+  setTitle(big: string, name: string) {
+    (this.el.querySelector('.ld-pin') as HTMLElement).textContent = big;
+    (this.el.querySelector('.ld-name') as HTMLElement).textContent = name;
+  }
   show(msg: string) {
-    this.el.classList.remove('done');
+    this.el.classList.remove('done', 'error');
     this.el.classList.add('overlay');
     this.set(0, msg);
   }
