@@ -1,11 +1,15 @@
 #!/usr/bin/env node
-// Data pipeline for the 560098 (Rajarajeshwari Nagar) flood prototype.
-// Produces public/data/{meta.json,grids.bin,osm.geojson,depressions.json}.
+// Data pipeline: builds one pincode's data pack.
+// Produces <out>/{meta.json,grids.bin,osm.geojson,depressions.json,pack.json}:
+//   560098 (the reference pack)  -> public/data/
+//   any other pincode            -> public/data/pins/<code>/   (git-ignored except committed samples)
 // Raw downloads are cached in .cache/ so re-runs are fast and offline-safe.
 //
-//   node scripts/build-data.mjs            (DEM=copernicus by default, falls back to terrarium)
-//   DEM=terrarium node scripts/build-data.mjs
-//   REFRESH=1 node scripts/build-data.mjs  (ignore cached OSM)
+//   npm run data -- --pin 560034   (pincode from public/data/pins/index.json; default 560098)
+//   DEM=terrarium npm run data      (DEM=copernicus by default, falls back to terrarium)
+//   REFRESH=1 npm run data          (ignore cached OSM)
+// OSM comes from the local Bengaluru extract (.cache/osm/blr-region.osm.pbf, scripts/osm-extract.sh)
+// when it and osmium-tool exist, otherwise from Overpass (one query per pack, cached).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,19 +17,41 @@ import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import osmtogeojson from 'osmtogeojson';
 import * as turf from '@turf/turf';
+import { gzipSync } from 'node:zlib';
+import { regionAvailable, regionOverpassJson } from './lib/osm-local.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.cache');
-const OUT = path.join(ROOT, 'public', 'data');
 fs.mkdirSync(CACHE, { recursive: true });
-fs.mkdirSync(OUT, { recursive: true });
 
-const PINCODE = '560098';
-const RELATION_ID = 17817376;
-const APPROX_BBOX = [77.499, 12.8924, 77.5323, 12.9363]; // W S E N (fallback only)
+const arg = (name, def) => {
+  const i = process.argv.indexOf(`--${name}`);
+  return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : def;
+};
+const LEGACY = { code: '560098', name: 'Rajarajeshwari Nagar', relation: 17817376, bbox: [77.499, 12.8924, 77.5323, 12.9363] };
+const PIN = pinEntry(arg('pin', LEGACY.code));
+const PINCODE = PIN.code;
+const RELATION_ID = PIN.relation;
+const APPROX_BBOX = PIN.bbox; // W S E N of the boundary (the grid uses the boundary itself once loaded)
+const OUT = arg('out', PINCODE === LEGACY.code ? path.join(ROOT, 'public', 'data') : path.join(ROOT, 'public', 'data', 'pins', PINCODE));
+const PIN_CACHE = path.join(CACHE, 'pins', PINCODE);
+fs.mkdirSync(OUT, { recursive: true });
+fs.mkdirSync(PIN_CACHE, { recursive: true });
 const PAD_DEG = 0.006;
 const CELL_M = 15;
-const UA = 'flood-prototype-560098/0.1 (research prototype; contact achyuta0001@gmail.com)';
+const UA = 'logged-flood-explorer/0.2 (open-source research prototype; github.com/achyuta0001/Logged)';
+
+/** pincode -> { code, name, relation, bbox } from the pincode index (npm run data:city) */
+function pinEntry(code) {
+  if (!/^\d{6}$/.test(code)) throw new Error(`--pin must be a 6-digit pincode, got "${code}"`);
+  for (const f of [path.join(CACHE, 'pins', 'catalog.json'), path.join(ROOT, 'public', 'data', 'pins', 'index.json')]) {
+    if (!fs.existsSync(f)) continue;
+    const p = JSON.parse(fs.readFileSync(f, 'utf8')).pins?.find((x) => x.code === code);
+    if (p) return { code, name: p.name, relation: p.relation, bbox: p.bbox };
+  }
+  if (code === LEGACY.code) return LEGACY;
+  throw new Error(`pincode ${code} is not in the pincode index; run npm run data:city first`);
+}
 const OVERPASS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
   'https://overpass-api.de/api/interpreter',
@@ -53,7 +79,10 @@ async function fetchRetry(url, opts = {}, tries = 4) {
 }
 
 async function overpass(query, cacheName) {
-  const file = path.join(CACHE, cacheName);
+  const file = path.join(PIN_CACHE, cacheName);
+  // the reference pack's cache predates per-pincode folders
+  const legacy = path.join(CACHE, cacheName);
+  if (PINCODE === LEGACY.code && !fs.existsSync(file) && fs.existsSync(legacy) && !process.env.REFRESH) return JSON.parse(fs.readFileSync(legacy, 'utf8'));
   if (fs.existsSync(file) && !process.env.REFRESH) return JSON.parse(fs.readFileSync(file, 'utf8'));
   let lastErr;
   for (let round = 0; round < 3; round++) {
@@ -86,9 +115,20 @@ async function overpass(query, cacheName) {
 }
 
 // ---------------------------------------------------------------- OSM
+let osmSource = 'Overpass API';
 async function loadOsm() {
   const [w, s, e, n] = [APPROX_BBOX[0] - 0.012, APPROX_BBOX[1] - 0.012, APPROX_BBOX[2] + 0.012, APPROX_BBOX[3] + 0.012];
   const bb = `${s},${w},${n},${e}`;
+  const cached = path.join(PIN_CACHE, 'osm-raw.json');
+  if (!(fs.existsSync(cached) && !process.env.REFRESH) && regionAvailable(ROOT) && !process.env.OVERPASS) {
+    log(`OSM from the local extract (${bb}) ...`);
+    const raw = regionOverpassJson(ROOT, [w, s, e, n], [RELATION_ID], path.join(PIN_CACHE, 'tmp'));
+    fs.writeFileSync(cached, JSON.stringify(raw));
+    const info = path.join(CACHE, 'osm', 'blr-region.json');
+    osmSource = fs.existsSync(info) ? `OSM extract ${JSON.parse(fs.readFileSync(info, 'utf8')).built.slice(0, 10)} (planet via AWS osm-pds, osmium)` : 'local OSM extract';
+    log(`OSM elements: ${raw.elements.length}`);
+    return osmtogeojson(raw, { flatProperties: false });
+  }
   const q = `[out:json][timeout:240][bbox:${bb}];
 (
   relation(${RELATION_ID});
@@ -230,9 +270,30 @@ function lineLengthM(coords) {
 
 // ---------------------------------------------------------------- DEM
 async function demCopernicus(G) {
-  // GLO-30 1x1 deg tile covering N12-13, E077-078
-  const name = 'Copernicus_DSM_COG_10_N12_00_E077_00_DEM';
-  const cacheFile = path.join(CACHE, `cop30_${G.w.toFixed(4)}_${G.n.toFixed(4)}_${G.width}x${G.height}.json`);
+  // GLO-30 1x1 deg tiles; Bengaluru Urban straddles N12/N13 (and the grid can straddle E77/E78)
+  const tiles = [];
+  for (let lat = Math.floor(G.s); lat <= Math.floor(G.n); lat++)
+    for (let lon = Math.floor(G.w); lon <= Math.floor(G.e); lon++) tiles.push([lat, lon]);
+  const wins = [];
+  for (const [lat, lon] of tiles) {
+    const sub = { ...G, w: Math.max(G.w, lon), e: Math.min(G.e, lon + 1), s: Math.max(G.s, lat), n: Math.min(G.n, lat + 1) };
+    wins.push(await copWindow(G, sub, `Copernicus_DSM_COG_10_N${String(lat).padStart(2, '0')}_00_E${String(lon).padStart(3, '0')}_00_DEM`, tiles.length === 1));
+  }
+  const sample = (lon, lat) => {
+    const win = wins.find((w) => lon >= w.lon0 && lon < w.lon0 + 1 && lat >= w.lat0 && lat < w.lat0 + 1) ?? wins[0];
+    // pixel-is-area: pixel centre at origin + (i+0.5)*res
+    const fx = (lon - win.ox) / win.rx - 0.5 - win.x0;
+    const fy = (lat - win.oy) / win.ry - 0.5 - win.y0;
+    return bilinear(win.data, win.w, win.h, fx, fy);
+  };
+  return resample(G, sample);
+}
+
+async function copWindow(G, B, name, legacyCache) {
+  // the single-tile cache name predates multi-tile support (keeps the 560098 cache valid)
+  const cacheFile = legacyCache
+    ? path.join(CACHE, `cop30_${G.w.toFixed(4)}_${G.n.toFixed(4)}_${G.width}x${G.height}.json`)
+    : path.join(CACHE, `cop30_${name.slice(22, 39)}_${B.w.toFixed(4)}_${B.n.toFixed(4)}_${B.e.toFixed(4)}_${B.s.toFixed(4)}.json`);
   let win;
   if (fs.existsSync(cacheFile)) win = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
   else {
@@ -243,19 +304,16 @@ async function demCopernicus(G) {
     const img = await tiff.getImage();
     const [ox, oy] = img.getOrigin();
     const [rx, ry] = img.getResolution(); // ry negative
-    const x0 = Math.floor((G.w - ox) / rx) - 3, x1 = Math.ceil((G.e - ox) / rx) + 3;
-    const y0 = Math.floor((G.n - oy) / ry) - 3, y1 = Math.ceil((G.s - oy) / ry) + 3;
+    const clampX = (x) => Math.max(0, Math.min(img.getWidth(), x)), clampY = (y) => Math.max(0, Math.min(img.getHeight(), y));
+    const x0 = clampX(Math.floor((B.w - ox) / rx) - 3), x1 = clampX(Math.ceil((B.e - ox) / rx) + 3);
+    const y0 = clampY(Math.floor((B.n - oy) / ry) - 3), y1 = clampY(Math.ceil((B.s - oy) / ry) + 3);
     const [band] = await img.readRasters({ window: [x0, y0, x1, y1] });
     win = { ox, oy, rx, ry, x0, y0, w: x1 - x0, h: y1 - y0, data: Array.from(band, (v) => Math.round(v * 100) / 100) };
     fs.writeFileSync(cacheFile, JSON.stringify(win));
   }
-  const sample = (lon, lat) => {
-    // pixel-is-area: pixel centre at origin + (i+0.5)*res
-    const fx = (lon - win.ox) / win.rx - 0.5 - win.x0;
-    const fy = (lat - win.oy) / win.ry - 0.5 - win.y0;
-    return bilinear(win.data, win.w, win.h, fx, fy);
-  };
-  return resample(G, sample);
+  win.lon0 = Math.round(win.ox);
+  win.lat0 = Math.round(win.oy) - 1;
+  return win;
 }
 
 async function demTerrarium(G, z = 15) {
@@ -587,7 +645,7 @@ async function main() {
       `${BARE.qLow * 100}th/${100 - BARE.qLow * 100}th percentile) blended in where OSM buildings, trees or built-up land make the surface model unreliable`,
   );
   sources.push(`DEM smoothed with Gaussian sigma=${SIGMA} cells; OSM drains burned (-1..2.5 m) and lakes lowered 0.5 m`);
-  sources.push('© OpenStreetMap contributors, ODbL 1.0 (openstreetmap.org/copyright), fetched once via Overpass API and cached');
+  sources.push(`© OpenStreetMap contributors, ODbL 1.0 (openstreetmap.org/copyright), from ${osmSource}, cached`);
 
   // ------------------------------------------------ rasterise OSM
   const S = 3; // sub-cells per cell for coverage fractions
@@ -893,7 +951,7 @@ async function main() {
   }
   const meta = {
     pincode: PINCODE,
-    name: 'Rajarajeshwari Nagar',
+    name: PIN.name,
     bbox: [G.w, G.s, G.e, G.n].map((v) => Math.round(v * 1e7) / 1e7),
     width: W,
     height: H,
@@ -906,6 +964,12 @@ async function main() {
   fs.writeFileSync(path.join(OUT, 'meta.json'), JSON.stringify(meta));
   fs.writeFileSync(path.join(OUT, 'osm.geojson'), JSON.stringify({ type: 'FeatureCollection', features: outFeatures }));
   fs.writeFileSync(path.join(OUT, 'depressions.json'), JSON.stringify(depressions));
+  // pack.json: what the pincode index records about this pack (sizes, date, sources)
+  const files = ['meta.json', 'grids.bin', 'osm.geojson', 'depressions.json', 'hotspots.json'].filter((f) => fs.existsSync(path.join(OUT, f)));
+  const bytes = files.reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
+  const gzipBytes = files.reduce((a, f) => a + gzipSync(fs.readFileSync(path.join(OUT, f)), { level: 9 }).length, 0);
+  const pack = { code: PINCODE, format: 1, bytes, gzipBytes, built: new Date().toISOString().slice(0, 10), files, sources };
+  fs.writeFileSync(path.join(OUT, 'pack.json'), JSON.stringify(pack, null, 1));
 
   // ------------------------------------------------ report
   const sz = (f) => (fs.statSync(path.join(OUT, f)).size / 1e6).toFixed(2) + ' MB';
