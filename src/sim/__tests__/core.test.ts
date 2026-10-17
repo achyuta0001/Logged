@@ -29,6 +29,47 @@ test('mass is conserved with infiltration, drains, lakes', () => {
   assert.ok(s.budget.infiltrated > 0 && s.budget.drained > 0 && s.budget.lake > 0 && s.budget.outflow > 0);
 });
 
+test('post-storm pond drainage is mass-conserving, off in heavy rain, and empties a closed bowl', () => {
+  const g = bowlAndChannel(); // fully sealed: no infiltration path, only drains / edge outflow
+  const p = { drainCapacityMmHr: 20, infiltrationMmHr: 0, drainBlockage: 0 };
+  const s = new SimCore(g, p);
+  const wet = s.stepHour(60); // 60 mm/h >> roadside capacity: the basin term must stay off
+  // during heavy rain only the local inlet term (no mapped drains: 20 mm/h per cell) removes water
+  assert.ok(wet.drainedM3 <= 0.02 * g.width * g.height * 15 * 15 * (1 + 1e-9), `drained in rain ${wet.drainedM3}`);
+  const pondAfterRain = s.totalVolume();
+  const dry = [];
+  for (let k = 0; k < 8; k++) dry.push(s.stepHour(0));
+  const { err } = closure(s);
+  assert.ok(err < 1e-9, `relative budget error ${err}`);
+  // per-hour stats close too: storage change = rain - losses
+  let v = pondAfterRain;
+  for (const h of dry) {
+    const expect = v + h.rainM3 - h.infiltratedM3 - h.drainedM3 - h.lakeM3 - h.outflowM3;
+    assert.ok(Math.abs(expect - h.volumeM3) < 1e-6 * pondAfterRain, `hour budget ${expect} vs ${h.volumeM3}`);
+    v = h.volumeM3;
+  }
+  // the bowl (closed, ~1.5 m deep pond) drains through its catchment's free roadside capacity,
+  // much faster than its own 20 mm/h local inlets alone would allow
+  const centre = (g.height / 2) * g.width + g.width / 4;
+  const localOnly = 1.5 - 8 * 0.02; // what 8 h of the 20 mm/h local inlets alone would leave at the centre
+  assert.ok(s.h[centre] < 0.25 && s.h[centre] < localOnly / 4, `bowl centre still ${s.h[centre]} m after 8 dry hours`);
+  // lagged onset: the same pond drains faster once the network has been idle for hours
+  const fresh = new SimCore(g, p);
+  fresh.stepHour(60);
+  const idle = new SimCore(g, p);
+  idle.stepHour(60);
+  idle.h.set(fresh.h); // same pond...
+  (idle as unknown as { drainIdleS: number }).drainIdleS = 1e9; // ...but drains long idle
+  const a = fresh.stepHour(0).drainedM3, b = idle.stepHour(0).drainedM3;
+  assert.ok(b > a * 1.05, `idle network should drain more in the first dry hour (${b} vs ${a})`);
+});
+
+test('lake freeboard grows with tank area', async () => {
+  const { lakeFreeboardM } = await import('../core.ts');
+  assert.ok(lakeFreeboardM(900) < lakeFreeboardM(1e4) && lakeFreeboardM(1e4) < lakeFreeboardM(3e5));
+  assert.ok(lakeFreeboardM(1) >= 0.15 && lakeFreeboardM(1e9) <= 0.6);
+});
+
 test('bowl fills and forms a flat pond; channel drains', () => {
   const n = 120;
   const g = bowlAndChannel(n);
