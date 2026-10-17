@@ -1,0 +1,539 @@
+/**
+ * Pure (DOM-free) 2D surface-water model used by the Web Worker and by tests.
+ *
+ * Scheme: explicit finite-volume diffusive-wave on a 4-neighbour grid.
+ *  - Face discharge from Manning: Q = hf^(5/3)/n * sqrt(|dη|/dx) * dx, where η = z + h and
+ *    hf = max(η_i, η_j) - max(z_i, z_j) is the flow depth at the face (handles wet/dry fronts
+ *    and lets water spill over the rim of a depression only once it is full).
+ *  - Stability limiter: the volume moved across a face per step is capped at K * |dη| * A
+ *    (K = 0.2 < 1/4, the explicit 2D diffusion limit) so water surfaces never overshoot/oscillate,
+ *    which allows large adaptive time steps (seconds to minutes).
+ *  - Positivity: per-cell outgoing volume is scaled to the water available (mass exactly conserved).
+ *  - Sources/sinks: rain, Horton-like infiltration on the pervious fraction (with soil storage),
+ *    storm drains (30% of capacity acts everywhere as roadside drains, 70% at inlets within 2 cells
+ *    of drainMask sized by the area each serves, radius 500 m), lake/tank storage (0.5 m freeboard),
+ *    free outflow through grid edges.
+ * All storage in Float64 so the volume budget closes to round-off.
+ */
+import type { SimParams } from '../types.ts';
+
+export interface CoreGrids {
+  width: number;
+  height: number;
+  cellSizeM: number;
+  elevation: Float32Array;
+  impervious?: Float32Array;
+  drainMask?: Uint8Array;
+  lakeMask?: Uint8Array;
+  boundaryMask?: Uint8Array;
+}
+
+export const DEFAULT_PARAMS: SimParams = { drainCapacityMmHr: 50, infiltrationMmHr: 10, drainBlockage: 0.4 };
+
+export interface HourStats {
+  /** m3 of surface water at end of hour */
+  volumeM3: number;
+  /** cells with depth > 0.1 m inside boundary, m2 */
+  floodedAreaM2: number;
+  maxDepthM: number;
+  rainM3: number;
+  infiltratedM3: number;
+  drainedM3: number;
+  lakeM3: number;
+  outflowM3: number;
+  steps: number;
+}
+
+export interface Budget {
+  rain: number;
+  infiltrated: number;
+  drained: number;
+  lake: number;
+  outflow: number;
+}
+
+/** time-step tuning (seconds); exported for experiments */
+export const DT_TUNING = { minRain: 4, minDry: 10, quiet: 30, recessionHours: 3 };
+const K_LIMIT = 0.2; // fraction of |dη|*A allowed across a face per step
+const H_MIN_FLOW = 1e-4; // m; thinner films don't route
+const SOIL_CAP_M = 0.1; // soil storage on fully pervious ground before infiltration slows
+const SOIL_SAT_FACTOR = 0.15; // infiltration rate fraction once soil storage is full
+const SOIL_RECOVERY_M_S = 2 / 1000 / 3600; // soil storage drains at ~2 mm/h
+const LAKE_FREEBOARD_M = 0.5; // extra storage depth a lake/tank can absorb before spilling
+const INLET_RADIUS = 2; // cells around a drainMask cell that act as inlets
+const SERVE_RADIUS_M = 500;
+const DRAIN_LOCAL_SHARE = 0.3; // share of drain capacity acting everywhere (unmapped roadside drains); calibrated so 35 mm/3 h gives only minor ponding
+const LUT_STEP = 1e-4; // m
+const LUT_N = 50001; // covers 0..5 m
+const LUT23 = (() => {
+  const t = new Float64Array(LUT_N);
+  for (let i = 0; i < LUT_N; i++) t[i] = Math.pow(i * LUT_STEP, 2 / 3);
+  return t;
+})();
+
+export class SimCore {
+  readonly w: number;
+  readonly hgt: number;
+  readonly n: number;
+  readonly dx: number;
+  readonly area: number;
+  /** water depth, m */
+  readonly h: Float64Array;
+  readonly z: Float64Array;
+  /** cumulative budget, m3 */
+  budget: Budget = { rain: 0, infiltrated: 0, drained: 0, lake: 0, outflow: 0 };
+  /** model time, s */
+  time = 0;
+  params: SimParams;
+
+  private invN: Float64Array; // 1/n per cell
+  private pervious: Float64Array;
+  private soil: Float64Array; // m infiltrated into soil storage (per unit pervious area)
+  private inletRate: Float64Array; // m/s depth-equivalent removal capacity per cell (before blockage)
+  private lakeComp: Int32Array; // lake component id, -1 if none
+  private lakeRoom: Float64Array; // remaining storage per component, m3
+  private lakeCells: Int32Array;
+  private inside: Uint8Array;
+  private edgeSlopeSqrt: Float64Array; // sqrt(slope) for edge cells, 0 otherwise
+  private fx: Float64Array; // east-face volume of last step (+ = i -> i+1)
+  private fy: Float64Array; // south-face volume (+ = i -> i+w)
+  private out: Float64Array; // outgoing volume per cell
+  private wetRowMin: Int32Array;
+  private wetRowMax: Int32Array;
+  private lastVmax = 0.5;
+  private hoursSinceRain = 1e9;
+  private edgeOut: Float64Array;
+  private lakeRoomInit: Float64Array;
+
+  constructor(g: CoreGrids, params: Partial<SimParams> = {}) {
+    this.params = { ...DEFAULT_PARAMS, ...params };
+    const w = (this.w = g.width);
+    const H = (this.hgt = g.height);
+    const n = (this.n = w * H);
+    this.dx = g.cellSizeM;
+    this.area = g.cellSizeM * g.cellSizeM;
+    this.h = new Float64Array(n);
+    this.z = new Float64Array(n);
+    // elevation; non-finite -> high wall
+    let zmax = -Infinity;
+    for (let i = 0; i < n; i++) if (Number.isFinite(g.elevation[i]) && g.elevation[i] > -1000) zmax = Math.max(zmax, g.elevation[i]);
+    for (let i = 0; i < n; i++) {
+      const e = g.elevation[i];
+      this.z[i] = Number.isFinite(e) && e > -1000 ? e : zmax + 100;
+    }
+    this.invN = new Float64Array(n);
+    this.pervious = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      const imp = g.impervious ? Math.min(1, Math.max(0, g.impervious[i] || 0)) : 0.5;
+      this.pervious[i] = 1 - imp;
+      // sealed surfaces ~0.015, vegetated/rough ~0.06
+      this.invN[i] = 1 / (0.015 * imp + 0.06 * (1 - imp));
+    }
+    this.soil = new Float64Array(n);
+    this.inside = g.boundaryMask ?? new Uint8Array(n).fill(1);
+    this.fx = new Float64Array(n);
+    this.fy = new Float64Array(n);
+    this.out = new Float64Array(n);
+    this.wetRowMin = new Int32Array(H);
+    this.wetRowMax = new Int32Array(H);
+
+    // edge outflow slopes
+    this.edgeSlopeSqrt = new Float64Array(n);
+    const setEdge = (i: number, inner: number) => {
+      const s = Math.max(0.001, (this.z[inner] - this.z[i]) / this.dx);
+      this.edgeSlopeSqrt[i] = Math.max(this.edgeSlopeSqrt[i], Math.sqrt(s));
+    };
+    if (H > 1 && w > 1) {
+      for (let c = 0; c < w; c++) {
+        setEdge(c, c + w);
+        setEdge((H - 1) * w + c, (H - 2) * w + c);
+      }
+      for (let r = 0; r < H; r++) {
+        setEdge(r * w, r * w + 1);
+        setEdge(r * w + w - 1, r * w + w - 2);
+      }
+    }
+
+    // ---- storm-drain inlets ----
+    this.inletRate = new Float64Array(n);
+    const drain = g.drainMask;
+    let anyDrain = false;
+    if (drain) for (let i = 0; i < n; i++) if (drain[i]) { anyDrain = true; break; }
+    if (anyDrain && drain) {
+      const isInlet = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        if (!drain[i]) continue;
+        const r0 = Math.floor(i / w), c0 = i % w;
+        for (let dr = -INLET_RADIUS; dr <= INLET_RADIUS; dr++)
+          for (let dc = -INLET_RADIUS; dc <= INLET_RADIUS; dc++) {
+            const r = r0 + dr, c = c0 + dc;
+            if (r < 0 || c < 0 || r >= H || c >= w) continue;
+            isInlet[r * w + c] = 1;
+          }
+      }
+      // multi-source BFS: assign every cell within SERVE_RADIUS to its nearest inlet
+      const owner = new Int32Array(n).fill(-1);
+      const dist = new Int32Array(n).fill(-1);
+      const q = new Int32Array(n);
+      let qh = 0, qt = 0;
+      for (let i = 0; i < n; i++) if (isInlet[i]) { owner[i] = i; dist[i] = 0; q[qt++] = i; }
+      const maxSteps = Math.ceil(SERVE_RADIUS_M / this.dx);
+      while (qh < qt) {
+        const i = q[qh++];
+        if (dist[i] >= maxSteps) continue;
+        const r = Math.floor(i / w), c = i % w;
+        const nb = [c + 1 < w ? i + 1 : -1, c > 0 ? i - 1 : -1, r + 1 < H ? i + w : -1, r > 0 ? i - w : -1];
+        for (const j of nb) {
+          if (j < 0 || owner[j] >= 0) continue;
+          owner[j] = owner[i];
+          dist[j] = dist[i] + 1;
+          q[qt++] = j;
+        }
+      }
+      const served = new Float64Array(n);
+      for (let i = 0; i < n; i++) if (owner[i] >= 0) served[owner[i]] += 1;
+      // Capacity split: a share acts locally everywhere (unmapped roadside drains / inlets), the rest
+      // is concentrated at mapped drains, sized by the area each inlet serves.
+      for (let i = 0; i < n; i++) this.inletRate[i] = DRAIN_LOCAL_SHARE + (1 - DRAIN_LOCAL_SHARE) * served[i];
+    } else {
+      // no mapped drains: the whole capacity acts as distributed roadside drains
+      this.inletRate.fill(1);
+    }
+
+    // ---- lakes ----
+    this.lakeComp = new Int32Array(n).fill(-1);
+    const lakeCellsArr: number[] = [];
+    const rooms: number[] = [];
+    if (g.lakeMask) {
+      const lm = g.lakeMask;
+      const stack: number[] = [];
+      for (let s = 0; s < n; s++) {
+        if (!lm[s] || this.lakeComp[s] >= 0) continue;
+        const id = rooms.length;
+        let count = 0;
+        stack.push(s);
+        this.lakeComp[s] = id;
+        while (stack.length) {
+          const i = stack.pop()!;
+          count++;
+          lakeCellsArr.push(i);
+          const r = Math.floor(i / w), c = i % w;
+          const nb = [c + 1 < w ? i + 1 : -1, c > 0 ? i - 1 : -1, r + 1 < H ? i + w : -1, r > 0 ? i - w : -1];
+          for (const j of nb) if (j >= 0 && lm[j] && this.lakeComp[j] < 0) { this.lakeComp[j] = id; stack.push(j); }
+        }
+        rooms.push(count * this.area * LAKE_FREEBOARD_M);
+      }
+    }
+    this.lakeCells = Int32Array.from(lakeCellsArr);
+    this.lakeRoom = Float64Array.from(rooms);
+    this.lakeRoomInit = Float64Array.from(rooms);
+    this.edgeOut = new Float64Array(4 * (w + H) + 8);
+  }
+
+  reset(): void {
+    this.h.fill(0);
+    this.soil.fill(0);
+    this.lakeRoom.set(this.lakeRoomInit);
+    this.budget = { rain: 0, infiltrated: 0, drained: 0, lake: 0, outflow: 0 };
+    this.time = 0;
+    this.lastVmax = 0.5;
+    this.hoursSinceRain = 1e9;
+  }
+
+  setParams(p: Partial<SimParams>): void {
+    this.params = { ...this.params, ...p };
+  }
+
+  totalVolume(): number {
+    let s = 0;
+    const h = this.h;
+    for (let i = 0; i < this.n; i++) s += h[i];
+    return s * this.area;
+  }
+
+  /** Advance one hour with `rainMm` falling uniformly during it. */
+  stepHour(rainMm: number, maxDepth?: Float32Array): HourStats {
+    const b0 = { ...this.budget };
+    let t = 0;
+    let steps = 0;
+    const rainRate = Math.max(0, rainMm) / 1000 / 3600; // m/s
+    const dry = rainRate === 0;
+    // quiescent shortcut: no rain and essentially no surface water
+    if (dry && this.totalVolume() < 1e-3) {
+      this.recoverSoil(3600);
+      this.time += 3600;
+      return this.stats(b0, 0);
+    }
+    if (dry) this.hoursSinceRain++;
+    else this.hoursSinceRain = 0;
+    // Time step. The face limiter keeps the scheme stable for any dt, so dt only trades how fast
+    // water can travel (max ~1 cell per step) against cost. Short steps while it rains and in the
+    // first hours of recession, long steps once the surface is just ponds slowly draining.
+    let dtMin: number, dtMax: number;
+    if (!dry) { dtMin = DT_TUNING.minRain; dtMax = 60; }
+    else if (this.hoursSinceRain <= DT_TUNING.recessionHours) { dtMin = DT_TUNING.minDry; dtMax = 300; }
+    else { dtMin = DT_TUNING.quiet; dtMax = 900; }
+    while (t < 3600 - 1e-9) {
+      const dtCfl = (0.7 * this.dx) / Math.max(this.lastVmax, 1e-3);
+      let dt = Math.min(Math.max(dtCfl, dtMin), dtMax);
+      if (t + dt > 3600) dt = 3600 - t;
+      if (3600 - (t + dt) < 1) dt = 3600 - t;
+      this.step(dt, rainRate);
+      if (maxDepth) {
+        const h = this.h;
+        for (let i = 0; i < this.n; i++) if (h[i] > maxDepth[i]) maxDepth[i] = h[i];
+      }
+      t += dt;
+      steps++;
+    }
+    this.time += 3600;
+    return this.stats(b0, steps);
+  }
+
+  private stats(b0: Budget, steps: number): HourStats {
+    const h = this.h;
+    let vol = 0, fl = 0, mx = 0;
+    for (let i = 0; i < this.n; i++) {
+      const d = h[i];
+      vol += d;
+      if (d > 0.1 && this.inside[i]) fl++;
+      if (d > mx) mx = d;
+    }
+    const b = this.budget;
+    return {
+      volumeM3: vol * this.area,
+      floodedAreaM2: fl * this.area,
+      maxDepthM: mx,
+      rainM3: b.rain - b0.rain,
+      infiltratedM3: b.infiltrated - b0.infiltrated,
+      drainedM3: b.drained - b0.drained,
+      lakeM3: b.lake - b0.lake,
+      outflowM3: b.outflow - b0.outflow,
+      steps,
+    };
+  }
+
+  private recoverSoil(dt: number): void {
+    const s = this.soil;
+    const d = SOIL_RECOVERY_M_S * dt;
+    for (let i = 0; i < this.n; i++) if (s[i] > 0) s[i] = Math.max(0, s[i] - d);
+  }
+
+  /** One explicit step of length dt seconds. */
+  step(dt: number, rainRate: number): void {
+    const { w, hgt: H, n, dx, area: A, h, z, invN } = this;
+    const p = this.params;
+
+    // ---- vertical sources / sinks ----
+    const rainDepth = rainRate * dt;
+    const infBase = (p.infiltrationMmHr / 1000 / 3600) * dt;
+    const soil = this.soil, perv = this.pervious;
+    const soilRec = SOIL_RECOVERY_M_S * dt;
+    let infTot = 0;
+    for (let i = 0; i < n; i++) {
+      let d = h[i] + rainDepth;
+      const pv = perv[i];
+      let s = soil[i];
+      if (pv > 0 && infBase > 0) {
+        const pot = infBase * (s < SOIL_CAP_M ? 1 : SOIL_SAT_FACTOR) * pv;
+        if (d > 0 && pot > 0) {
+          const inf = d < pot ? d : pot;
+          d -= inf;
+          infTot += inf;
+          s += inf / pv;
+        }
+      }
+      s -= soilRec;
+      soil[i] = s > 0 ? s : 0;
+      h[i] = d;
+    }
+    this.budget.rain += rainDepth * n * A;
+    this.budget.infiltrated += infTot * A;
+
+    // storm-drain inlets
+    const cap = (Math.max(0, p.drainCapacityMmHr) * (1 - Math.min(1, Math.max(0, p.drainBlockage)))) / 1000 / 3600 * dt;
+    if (cap > 0) {
+      let dr = 0;
+      const rate = this.inletRate;
+      for (let i = 0; i < n; i++) {
+        const d = h[i];
+        if (d <= 0) continue;
+        const m = cap * rate[i];
+        const r = d < m ? d : m;
+        h[i] = d - r;
+        dr += r;
+      }
+      this.budget.drained += dr * A;
+    }
+
+    // lakes absorb into their storage until full
+    if (this.lakeCells.length) {
+      let lk = 0;
+      const lc = this.lakeCells, comp = this.lakeComp, room = this.lakeRoom;
+      for (let k = 0; k < lc.length; k++) {
+        const i = lc[k];
+        const d = h[i];
+        if (d <= 0) continue;
+        const c = comp[i];
+        const rm = room[c];
+        if (rm <= 0) continue;
+        const v = Math.min(d * A, rm);
+        room[c] = rm - v;
+        h[i] = d - v / A;
+        lk += v;
+      }
+      this.budget.lake += lk;
+    }
+
+    // ---- horizontal routing ----
+    const fx = this.fx, fy = this.fy, out = this.out;
+    out.fill(0);
+    const kA = K_LIMIT * A;
+    const invDx = 1 / dx;
+    let vmax = 0;
+    const rowMin = this.wetRowMin, rowMax = this.wetRowMax;
+    // wet extent per row (skip dry regions cheaply)
+    for (let r = 0; r < H; r++) {
+      let lo = w, hi = -1;
+      const base = r * w;
+      for (let c = 0; c < w; c++) if (h[base + c] > H_MIN_FLOW) { if (lo === w) lo = c; hi = c; }
+      rowMin[r] = lo;
+      rowMax[r] = hi;
+    }
+    for (let r = 0; r < H; r++) {
+      const base = r * w;
+      // east faces: need either cell wet
+      let lo = rowMin[r], hi = rowMax[r];
+      if (hi >= 0) {
+        lo = lo > 0 ? lo - 1 : 0;
+        if (hi > w - 2) hi = w - 2;
+        for (let c = lo; c <= hi; c++) {
+          const i = base + c, j = i + 1;
+          const ei = z[i] + h[i], ej = z[j] + h[j];
+          const zf = z[i] > z[j] ? z[i] : z[j];
+          const d = ei - ej;
+          const hf = (d > 0 ? ei : ej) - zf;
+          if (hf <= H_MIN_FLOW || d === 0) { fx[i] = 0; continue; }
+          const ad = d > 0 ? d : -d;
+          const h23 = hf < 5 ? LUT23[(hf / LUT_STEP) | 0] : Math.pow(hf, 2 / 3);
+          const q = hf * h23 * 0.5 * (invN[i] + invN[j]) * Math.sqrt(ad * invDx) * dx; // m3/s
+          const v = q / (hf * dx);
+          if (v > vmax && hf > 0.02) vmax = v;
+          let vol = q * dt;
+          const lim = kA * ad;
+          if (vol > lim) vol = lim;
+          if (d > 0) { fx[i] = vol; out[i] += vol; } else { fx[i] = -vol; out[j] += vol; }
+        }
+        // clear stale faces outside the computed range
+        for (let c = 0; c < lo; c++) fx[base + c] = 0;
+        for (let c = hi + 1; c < w; c++) fx[base + c] = 0;
+      } else {
+        for (let c = 0; c < w; c++) fx[base + c] = 0;
+      }
+      // south faces
+      if (r < H - 1) {
+        const lo2 = Math.min(rowMin[r], rowMin[r + 1]);
+        const hi2 = Math.max(rowMax[r], rowMax[r + 1]);
+        if (hi2 >= 0) {
+          for (let c = 0; c < lo2; c++) fy[base + c] = 0;
+          for (let c = hi2 + 1; c < w; c++) fy[base + c] = 0;
+          for (let c = lo2; c <= hi2; c++) {
+            const i = base + c, j = i + w;
+            const ei = z[i] + h[i], ej = z[j] + h[j];
+            const zf = z[i] > z[j] ? z[i] : z[j];
+            const d = ei - ej;
+            const hf = (d > 0 ? ei : ej) - zf;
+            if (hf <= H_MIN_FLOW || d === 0) { fy[i] = 0; continue; }
+            const ad = d > 0 ? d : -d;
+            const h23 = hf < 5 ? LUT23[(hf / LUT_STEP) | 0] : Math.pow(hf, 2 / 3);
+            const q = hf * h23 * 0.5 * (invN[i] + invN[j]) * Math.sqrt(ad * invDx) * dx;
+            const v = q / (hf * dx);
+            if (v > vmax && hf > 0.02) vmax = v;
+            let vol = q * dt;
+            const lim = kA * ad;
+            if (vol > lim) vol = lim;
+            if (d > 0) { fy[i] = vol; out[i] += vol; } else { fy[i] = -vol; out[j] += vol; }
+          }
+        } else {
+          for (let c = 0; c < w; c++) fy[base + c] = 0;
+        }
+      }
+    }
+    // edge outflow (free boundary)
+    const es = this.edgeSlopeSqrt;
+    const eo = this.edgeOut;
+    let eCount = 0;
+    const edgeVisit = (i: number) => {
+      const d = h[i];
+      if (d <= H_MIN_FLOW) return;
+      const q = d * (d < 5 ? LUT23[(d / LUT_STEP) | 0] : Math.pow(d, 2 / 3)) * invN[i] * es[i] * dx;
+      let vol = q * dt;
+      const lim = kA * d;
+      if (vol > lim) vol = lim;
+      out[i] += vol;
+      eo[eCount * 2] = i;
+      eo[eCount * 2 + 1] = vol;
+      eCount++;
+    };
+    if (rowMax[0] >= 0) for (let c = 0; c < w; c++) edgeVisit(c);
+    if (H > 1 && rowMax[H - 1] >= 0) for (let c = 0; c < w; c++) edgeVisit((H - 1) * w + c);
+    for (let r = 1; r < H - 1; r++) {
+      if (rowMax[r] < 0) continue;
+      edgeVisit(r * w);
+      if (w > 1) edgeVisit(r * w + w - 1);
+    }
+
+    // positivity: scale factor per donor cell, stored in out[] (out -> scale)
+    for (let i = 0; i < n; i++) {
+      const o = out[i];
+      if (o > 0) {
+        const avail = h[i] * A;
+        out[i] = o > avail ? avail / o : 1;
+      }
+    }
+    // apply fluxes
+    const invA = 1 / A;
+    for (let r = 0; r < H; r++) {
+      const base = r * w;
+      const lo = Math.max(0, Math.min(rowMin[r], r > 0 ? rowMin[r - 1] : w, r < H - 1 ? rowMin[r + 1] : w) - 1);
+      const hi = Math.min(w - 1, Math.max(rowMax[r], r > 0 ? rowMax[r - 1] : -1, r < H - 1 ? rowMax[r + 1] : -1) + 1);
+      if (hi < 0) continue;
+      for (let c = lo; c <= hi; c++) {
+        const i = base + c;
+        const a = fx[i];
+        if (a !== 0 && c < w - 1) {
+          const j = i + 1;
+          const v = a > 0 ? a * out[i] : a * out[j];
+          h[i] -= v * invA;
+          h[j] += v * invA;
+        }
+        const b = fy[i];
+        if (b !== 0 && r < H - 1) {
+          const j = i + w;
+          const v = b > 0 ? b * out[i] : b * out[j];
+          h[i] -= v * invA;
+          h[j] += v * invA;
+        }
+      }
+    }
+    let outflow = 0;
+    for (let k = 0; k < eCount; k++) {
+      const i = eo[k * 2];
+      const v = eo[k * 2 + 1] * out[i];
+      h[i] -= v * invA;
+      outflow += v;
+    }
+    this.budget.outflow += outflow;
+    // clamp round-off negatives (tracked into outflow to keep the budget exact)
+    let neg = 0;
+    for (let r = 0; r < H; r++) {
+      const base = r * w;
+      for (let c = 0; c < w; c++) {
+        const i = base + c;
+        if (h[i] < 0) { neg += h[i]; h[i] = 0; }
+      }
+    }
+    this.budget.outflow += neg * A; // tiny negative correction
+    this.lastVmax = vmax;
+  }
+}
