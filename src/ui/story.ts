@@ -103,7 +103,7 @@ export function mountStoryPanel(container: HTMLElement, opts: StoryOptions): Sto
     </details>
     <div class="st-mvr">
       <div class="st-mvr-head"><h2>Model vs reported</h2><span class="st-score" aria-live="polite"></span></div>
-      <p class="st-hint">Places where flooding was reported, compared with the deepest water the model shows nearby (within about 60 m). Click a row to fly there.</p>
+      <p class="st-hint">Places where flooding was reported, compared with the deepest street water the model shows within 300 m — reports name neighbourhoods, not exact streets. Click a row to fly there.</p>
       <ul class="st-rows"></ul>
     </div>
     ${opts.onTour ? `<button class="btn primary st-tour" type="button">${iconSvg('play', 14)}<span>Take the guided tour</span></button>` : ''}`;
