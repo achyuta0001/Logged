@@ -5,7 +5,9 @@ import { SEVERITY_COLOR } from '../map/colors';
 import { iconSvg } from './icons';
 import { load, save } from './store';
 
-export type SectionId = 'place' | 'impact' | 'rain' | 'map' | 'story' | 'drainage' | 'sources';
+export type SectionId = 'city' | 'place' | 'impact' | 'rain' | 'map' | 'story' | 'drainage' | 'sources';
+/** what the sidebar is showing: the Bengaluru Urban overview or one pincode */
+export type Scope = 'city' | 'pin';
 export type Mode = 'phone' | 'tablet' | 'desktop';
 /** phone bottom-sheet detents */
 export type Detent = 'peek' | 'half' | 'full';
@@ -16,16 +18,19 @@ interface SectionDef {
   icon: string;
   /** open on a first visit */
   open: boolean;
+  /** shown only in this scope (default: the pincode view) */
+  scope?: Scope | 'both';
 }
 
 export const SECTIONS: SectionDef[] = [
+  { id: 'city', title: 'Pincodes', icon: 'flood', open: true, scope: 'city' },
   { id: 'place', title: 'Your place', icon: 'pin', open: false },
   { id: 'impact', title: 'Impact', icon: 'alert', open: true },
   { id: 'rain', title: 'Rain', icon: 'rain', open: true },
   { id: 'map', title: 'Map layers', icon: 'layers', open: false },
   { id: 'story', title: 'Why RR Nagar floods', icon: 'book', open: false },
   { id: 'drainage', title: 'Drainage assumptions', icon: 'sliders', open: false },
-  { id: 'sources', title: 'Sources and licences', icon: 'info', open: false },
+  { id: 'sources', title: 'Sources and licences', icon: 'info', open: false, scope: 'both' },
 ];
 
 export interface SidebarHandlers {
@@ -35,6 +40,8 @@ export interface SidebarHandlers {
   onStatus(): void;
   /** the sidebar's footprint on the map changed (rail, mode, phone peek height) */
   onFootprint(): void;
+  /** "Bengaluru Urban" back button in a pincode view */
+  onBack?(): void;
 }
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -68,6 +75,7 @@ export class Sidebar {
     panel.innerHTML = `
       <div class="sb-grip" aria-hidden="true"><i></i></div>
       <header class="sb-head">
+        <button class="sb-back" id="sb-back" type="button" hidden aria-label="Back to the Bengaluru Urban overview">${iconSvg('chevron', 12, 2)}<span>Bengaluru Urban</span></button>
         <div class="sb-top">
           <div class="sb-pin" title="Pincode 560098">560098</div>
           <div class="sb-tools">
@@ -126,6 +134,7 @@ export class Sidebar {
     panel.querySelector('#focus-btn')!.addEventListener('click', () => h.onFocus());
     panel.querySelector('#sb-min')!.addEventListener('click', () => this.toggle());
     panel.querySelector('#sb-status')!.addEventListener('click', () => h.onStatus());
+    panel.querySelector('#sb-back')!.addEventListener('click', () => h.onBack?.());
 
     // "Your place" stays hidden until something is mounted into it
     const mount = panel.querySelector('#place-mount') as HTMLElement;
@@ -133,6 +142,60 @@ export class Sidebar {
 
     this.wireSheet();
     new ResizeObserver(() => this.measurePeek()).observe(this.head);
+  }
+
+  // ---------- region ----------
+  private scope: Scope = 'pin';
+
+  /** Header for the current region: big label (pincode or "Bengaluru"), a name line, and a back button. */
+  setRegion(big: string, name: string, opts: { title?: string; back?: boolean; tour?: boolean } = {}) {
+    const pin = this.panel.querySelector('.sb-pin') as HTMLElement;
+    pin.textContent = big;
+    pin.title = opts.title ?? (/^\d{6}$/.test(big) ? `Pincode ${big}` : big);
+    pin.classList.toggle('word', !/^\d+$/.test(big));
+    (this.panel.querySelector('.sb-name') as HTMLElement).textContent = name;
+    (this.panel.querySelector('#sb-back') as HTMLElement).hidden = !opts.back;
+    (this.panel.querySelector('#tour-btn') as HTMLElement).hidden = opts.tour === false;
+    (this.rail.querySelector('[data-act="tour"]') as HTMLElement).hidden = opts.tour === false;
+  }
+
+  /** Show the sections of one scope (city overview or pincode) and hide the rest. */
+  setScope(scope: Scope) {
+    this.scope = scope;
+    for (const s of SECTIONS) {
+      const on = (s.scope ?? 'pin') === scope || s.scope === 'both';
+      const sec = this.panel.querySelector(`#sec-${s.id}`) as HTMLElement;
+      const rb = this.rail.querySelector(`[data-rail="${s.id}"]`) as HTMLElement;
+      sec.classList.toggle('off-scope', !on);
+      rb.classList.toggle('off-scope', !on);
+    }
+    document.body.classList.toggle('scope-city', scope === 'city');
+    this.measurePeek();
+  }
+
+  get currentScope(): Scope {
+    return this.scope;
+  }
+
+  setTitle(id: SectionId, title: string) {
+    (this.panel.querySelector(`#sec-${id} .sb-title`) as HTMLElement).textContent = title;
+    this.rail.querySelector(`[data-rail="${id}"]`)?.setAttribute('aria-label', title);
+  }
+
+  /** Hide a section in the current scope (e.g. no sourced story for this pincode). */
+  setHidden(id: SectionId, hidden: boolean) {
+    this.panel.querySelector(`#sec-${id}`)?.classList.toggle('empty', hidden);
+    this.rail.querySelector(`[data-rail="${id}"]`)?.classList.toggle('empty', hidden);
+  }
+
+  /** Empty every section body except the Your-place mount (between regions). */
+  clearBodies() {
+    for (const s of SECTIONS) {
+      const b = this.body(s.id);
+      if (s.id === 'place') continue;
+      b.replaceChildren();
+      this.setSummary(s.id, '');
+    }
   }
 
   // ---------- sections ----------
@@ -170,10 +233,10 @@ export class Sidebar {
   }
 
   // ---------- status ----------
-  setStatus(sev: Severity, html: string, context: string, jumpLabel?: string) {
+  setStatus(sev: Severity, html: string, context: string, jumpLabel?: string, color?: string) {
     const st = this.panel.querySelector('#sb-status') as HTMLButtonElement;
     st.dataset.sev = sev;
-    st.style.setProperty('--c', statusColor(sev));
+    st.style.setProperty('--c', color ?? statusColor(sev));
     st.querySelector('.sb-answer')!.innerHTML = html;
     st.disabled = !jumpLabel;
     const plain = st.textContent?.trim() ?? '';
