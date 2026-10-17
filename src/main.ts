@@ -123,20 +123,33 @@ async function main() {
   wireDrawers();
 
   const modelAt = (lng: number, lat: number) => modelNear(app, terrain, [lng, lat]);
+  // the tour ends where it started, so the panels frame the map as before
+  let preTour: { center: [number, number]; zoom: number; pitch: number; bearing: number } | null = null;
   const tour = createTour(map, {
     hotspots: ds.hotspots,
     depressions: ds.depressions,
     getModelDepthAt: modelAt,
-    onEnd: () => void reground(map),
+    onEnd: () => {
+      const cam = preTour;
+      preTour = null;
+      if (!cam) return void reground(map);
+      map.once('moveend', () => void reground(map));
+      map.flyTo({ ...cam, duration: reduceMotion ? 0 : 2400, curve: 1.2, essential: true });
+    },
   });
+  const startTour = () => {
+    if (!tour.isRunning) preTour = { center: map.getCenter().toArray() as [number, number], zoom: map.getZoom(), pitch: map.getPitch(), bearing: map.getBearing() };
+    closeDrawers();
+    tour.start();
+  };
   const story = mountStoryPanel(document.getElementById('story-mount')!, {
     hotspots: ds.hotspots,
     depressions: ds.depressions,
     getModelDepthAt: modelAt,
     onFocus: (coord) => flyTo(coord, 16.2),
-    onTour: () => tour.start(),
+    onTour: startTour,
   });
-  document.getElementById('tour-btn')?.addEventListener('click', () => (tour.isRunning ? tour.stop() : tour.start()));
+  document.getElementById('tour-btn')?.addEventListener('click', () => (tour.isRunning ? tour.stop() : startTour()));
 
   // Live forecast by default. If it is dry for the next 48 h, or the model finds no
   // flooding ahead, open on the Oct 2024 storm so the map shows what flooding looks like.
@@ -298,12 +311,15 @@ async function main() {
   }
 
   function flyTo(c: [number, number], zoom: number) {
+    // narrow screens: get the drawer out of the way so the destination is visible
+    if (window.matchMedia('(max-width: 1180px)').matches) closeDrawers();
     map.flyTo({ center: c, zoom, pitch: 64, bearing: map.getBearing(), speed: 0.9, curve: 1.4, essential: true });
     map.once('moveend', () => void reground(map));
   }
 
   document.addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement) return;
+    if (tour.isRunning) return; // Space pauses the tour instead
     if (e.code === 'Space') {
       e.preventDefault();
       setPlaying(!app.playing);
@@ -432,6 +448,10 @@ function wireHover(app: App, t: Terrain) {
   });
 }
 
+function closeDrawers() {
+  document.querySelectorAll('.panel.open, .drawer-btn.on').forEach((el) => el.classList.remove('open', 'on'));
+}
+
 function wireDrawers() {
   const pairs: [string, string, string][] = [
     ['open-left', 'left', 'layers'],
@@ -443,8 +463,7 @@ function wireDrawers() {
     btn.innerHTML = iconSvg(icon, 18);
     btn.addEventListener('click', () => {
       const open = !panel.classList.contains('open');
-      document.querySelectorAll('.panel.open').forEach((p) => p.classList.remove('open'));
-      document.querySelectorAll('.drawer-btn').forEach((b) => b.classList.remove('on'));
+      closeDrawers();
       panel.classList.toggle('open', open);
       btn.classList.toggle('on', open);
     });
