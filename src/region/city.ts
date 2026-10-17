@@ -172,6 +172,9 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
       <ol class="city-list"></ol>
       <button type="button" class="city-more btn-link">Show all</button>
     </div>`;
+  // listeners go on .city (replaced with the region), never on the persistent section body:
+  // anything bound to `body` would outlive destroy() and keep this map alive
+  const root = body.querySelector('.city') as HTMLElement;
   const input = body.querySelector('input') as HTMLInputElement;
   const results = body.querySelector('.city-results') as HTMLUListElement;
   const list = body.querySelector('.city-list') as HTMLOListElement;
@@ -222,15 +225,15 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
       renderResults();
     }
   });
-  body.addEventListener('click', (e) => {
+  root.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('.city-row');
     if (b) choose(b.dataset.code!, true);
   });
-  body.addEventListener('mouseover', (e) => {
+  root.addEventListener('mouseover', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('.city-row');
     setHover(b ? (idOf.get(b.dataset.code!) ?? -1) : -1);
   });
-  body.addEventListener('mouseleave', () => setHover(-1));
+  root.addEventListener('mouseleave', () => setHover(-1));
 
   /** select a pincode: open it when its pack exists, otherwise frame it and say so */
   function choose(code: string, fly: boolean) {
