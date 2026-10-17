@@ -13,6 +13,8 @@
 //   node scripts/calibrate.mjs --data <dir> --sim <dir>          other data / engine (e.g. a git worktree)
 //   node scripts/calibrate.mjs --perf                            also time a 216-hour forecast-like run
 //   node scripts/calibrate.mjs --scenario cloudburst             add/override scenarios (comma list)
+//   node scripts/calibrate.mjs --pin 560034                      another pincode's pack (public/data/pins/<code>)
+//   node scripts/calibrate.mjs --pin 560034 --impact             also buildings wet / roads closed at the peak
 //
 // Requires Node >= 22.6 (native TypeScript type stripping) — the engine and the scenario series are
 // imported straight from src/sim/index.ts and src/weather.ts.
@@ -28,26 +30,36 @@ const opt = (name, def) => {
 };
 const flag = (name) => args.includes(`--${name}`);
 
-const DATA = path.resolve(ROOT, opt('data', 'public/data'));
+const PIN = opt('pin', '');
+const PACK_DIR = PIN && PIN !== '560098' ? `public/data/pins/${PIN}` : 'public/data';
+const DATA = path.resolve(ROOT, opt('data', PACK_DIR));
 const SIM = path.resolve(ROOT, opt('sim', 'src/sim'));
-const HOTSPOTS = path.resolve(ROOT, opt('hotspots', 'public/data/hotspots.json'));
+const HOTSPOTS = path.resolve(ROOT, opt('hotspots', path.join(path.relative(ROOT, DATA), 'hotspots.json')));
 const SCEN_IDS = opt('scenario', 'rrnagar-2024-10-20,typical-evening').split(',');
 const RADII = [150, 300];
 
 // ---------------------------------------------------------------- load
+const { terrainFromBuffer } = await import(pathToFileURL(path.join(ROOT, 'src/terrain.ts')).href);
 function loadTerrain(dir) {
   const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
   const buf = fs.readFileSync(path.join(dir, 'grids.bin'));
-  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-  const grids = {};
-  for (const [k, l] of Object.entries(meta.layers)) {
-    grids[k] = l.dtype === 'f32' ? new Float32Array(ab.slice(l.offset, l.offset + l.length * 4)) : new Uint8Array(ab, l.offset, l.length);
-  }
-  return { meta, grids };
+  // copies every layer (v1 views over one buffer would share it with the engine's transfers)
+  const t = terrainFromBuffer(meta, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  for (const k of Object.keys(t.grids)) t.grids[k] = t.grids[k].slice();
+  return t;
 }
 
 const terrain = loadTerrain(DATA);
-const hotspots = JSON.parse(fs.readFileSync(HOTSPOTS, 'utf8'));
+// packs without sourced reports have no hotspots.json: the hotspot table is then empty
+const hotspots = fs.existsSync(HOTSPOTS) ? JSON.parse(fs.readFileSync(HOTSPOTS, 'utf8')) : [];
+const IMPACT = flag('impact');
+let osm = null;
+let computeImpact = null;
+if (IMPACT) {
+  osm = JSON.parse(fs.readFileSync(path.join(DATA, 'osm.geojson'), 'utf8'));
+  if ((terrain.meta.format ?? 1) >= 2) (await import(pathToFileURL(path.join(ROOT, 'src/pack/osm.ts')).href)).deriveOsmCells(osm, terrain.meta);
+  ({ computeImpact } = await import(pathToFileURL(path.join(ROOT, 'src/impact.ts')).href));
+}
 const { FloodEngine } = await import(pathToFileURL(path.join(SIM, 'index.ts')).href);
 const { SCENARIOS } = await import(pathToFileURL(path.join(ROOT, 'src/weather.ts')).href);
 
@@ -112,7 +124,14 @@ async function runScenario(series) {
   const core = eng.inlineRunner?.core;
   const lakes = typeof core?.lakeStatus === 'function' ? core.lakeStatus().filter((l) => l.cells >= 2) : null;
   const lakeSpill = lakes ? `${lakes.filter((l) => l.freeM3 <= 1e-6).length}/${lakes.length}` : 'n/a';
+  // daily-life impact at the peak hour (same computeImpact the app uses)
+  let impact = null;
+  if (IMPACT && peak >= 0) {
+    const r = computeImpact(terrain, osm, eng.snapshot(peak));
+    impact = { buildingsWet: r.buildings.groundFloorWet, buildings: r.buildings.total, roadClosedCarKm: r.roads.impassableCarKm, roadClosedTwoWheelerKm: r.roads.impassableTwoWheelerKm, roadKm: r.roads.totalKm, overall: r.overall };
+  }
   return {
+    impact,
     lakeSpill,
     ms: Math.round(ms),
     hours: n,
@@ -132,7 +151,7 @@ async function runScenario(series) {
   };
 }
 
-const results = { data: path.relative(ROOT, DATA) || '.', sim: path.relative(ROOT, SIM) || '.', scenarios: {} };
+const results = { pin: meta.pincode, name: meta.name, cellSizeM: meta.cellSizeM, cells: W * H, data: path.relative(ROOT, DATA) || '.', sim: path.relative(ROOT, SIM) || '.', scenarios: {} };
 for (const id of SCEN_IDS) {
   const sc = SCENARIOS.find((s) => s.id === id);
   if (!sc) throw new Error(`unknown scenario ${id}`);
@@ -185,6 +204,12 @@ function summaryRows(r) {
     ['tanks (>= 2 cells) spilled at end', r.lakeSpill ?? 'n/a'],
     ['budget rain / infil / drain / lake / out (k m3)', [b.rain, b.infiltrated, b.drained, b.lake, b.outflow].map((v) => (v / 1000).toFixed(0)).join(' / ')],
     ['budget closure (rel.)', r.closure.toExponential(1)],
+    ...(r.impact
+      ? [
+          ['buildings with water over plinth @peak', `${r.impact.buildingsWet} of ${r.impact.buildings}`],
+          ['road closed to cars / two-wheelers @peak (km)', `${r.impact.roadClosedCarKm.toFixed(1)} / ${r.impact.roadClosedTwoWheelerKm.toFixed(1)} of ${r.impact.roadKm.toFixed(0)}`],
+        ]
+      : []),
     ['run time (ms)', String(r.ms)],
   ];
 }
