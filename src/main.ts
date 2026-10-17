@@ -10,6 +10,7 @@ import { createMap, setBasemap, setExaggeration, CENTER } from './map/mapView';
 import { WaterFx } from './map/waterFx';
 import { RainFx } from './map/rainFx';
 import { mountStoryPanel } from './ui/story';
+import { mountPlace } from './ui/place';
 import { createTour } from './ui/tour';
 import { AnalysisLayers } from './map/analysisLayers';
 import { FeatureLayers, FACILITY_LABEL } from './map/features';
@@ -211,6 +212,19 @@ async function main() {
     getModelDepthAt: modelAt,
     onFocus: (coord) => flyTo(coord, 16.2),
   });
+  const place = mountPlace(document.getElementById('place-mount')!, {
+    map,
+    terrain,
+    osm,
+    engine,
+    getHour: () => app.hour,
+    getTimes: () => app.series?.times ?? [],
+    depressions: ds.depressions,
+    hotspots: ds.hotspots,
+    onFocus: (coord) => flyTo(coord, 16.4),
+    onChange: (p) => p && sidebar.setOpen('place', true, false),
+  });
+  let placeTimer = 0;
 
   // Live forecast by default. If it is dry for the next 48 h, or the model finds no
   // flooding ahead, open on the Oct 2024 storm so the map shows what flooding looks like.
@@ -308,6 +322,7 @@ async function main() {
     controls.setBusy(false);
     analysis.refreshCompare();
     story.refresh();
+    place.refresh();
     // open at the worst hour still ahead (or the worst overall for a scenario)
     const from = series.source === 'forecast' ? (series.nowIndex ?? 0) : 0;
     let best = from;
@@ -388,6 +403,9 @@ async function main() {
     rain.setIntensity(app.series?.mm[h] ?? 0);
     feats.update(depth);
     timeline.setHour(h);
+    clearTimeout(placeTimer);
+    if (app.playing) placeTimer = window.setTimeout(() => app.hour === h && place.setHour(h), 160);
+    else place.setHour(h);
     const maxA = Math.max(1, ...app.area);
     document.documentElement.style.setProperty('--level', (0.1 + 0.55 * ((app.area[h] ?? 0) / maxA)).toFixed(3));
     const time = app.series?.times[h] ?? Date.now();
