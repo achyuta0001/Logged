@@ -66,12 +66,13 @@ export function depressionRGBA(d: number): RGBA {
   return d < 0.05 ? [0, 0, 0, 0] : rampAt(DEPRESSION_STOPS, d);
 }
 
+/** UI status colours (pills, cards, the header answer): Apple dark system colours. */
 export const SEVERITY_COLOR: Record<string, string> = {
-  none: '#5d6e86',
-  low: '#7fd8ff',
-  moderate: '#ffb02e',
-  high: '#ff7a1a',
-  severe: '#ff3b4f',
+  none: '#8e8e93',
+  low: '#64d2ff',
+  moderate: '#ffd60a',
+  high: '#ff9f0a',
+  severe: '#ff453a',
 };
 
 export const SEVERITY_LABEL: Record<string, string> = {
