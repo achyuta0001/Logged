@@ -1,0 +1,578 @@
+/* Story panel + guided tour. Uses the design tokens from src/style.css (:root). */
+
+/* ================= story panel ================= */
+.st {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.st h2 {
+  margin: 0;
+}
+.st-why summary {
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  color: var(--muted);
+}
+.st-why summary::-webkit-details-marker {
+  display: none;
+}
+.st-why summary .ico {
+  transition: transform 0.2s;
+}
+.st-why[open] summary .ico {
+  transform: rotate(90deg);
+}
+
+.st-gauge {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.st-g-row {
+  --c: var(--water);
+  display: grid;
+  grid-template-columns: 112px 1fr 62px;
+  align-items: center;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.st-g-row.hot {
+  --c: var(--orange);
+}
+.st-g-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(150, 185, 230, 0.1);
+  overflow: hidden;
+}
+.st-g-bar i {
+  display: block;
+  height: 100%;
+  width: var(--w);
+  border-radius: 3px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--c) 35%, transparent), var(--c));
+  box-shadow: 0 0 10px -2px var(--c);
+}
+.st-g-row b {
+  text-align: right;
+  font-size: 17px;
+  font-weight: 650;
+  font-stretch: 70%;
+  font-variant-numeric: tabular-nums;
+  color: var(--c);
+}
+.st-g-row b small {
+  font-size: 0.62em;
+}
+
+.st-facts {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  counter-reset: stf;
+}
+.st-facts li {
+  counter-increment: stf;
+  padding-left: 12px;
+  border-left: 2px solid rgba(30, 200, 255, 0.35);
+}
+.st-facts p {
+  margin: 0 0 3px;
+  color: var(--muted);
+}
+.st-facts p b {
+  color: var(--text);
+  font-weight: 600;
+}
+.st-facts a {
+  font-size: 11.5px;
+}
+
+.st-mvr-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.st-score {
+  color: var(--water-pale);
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.st-score.idle {
+  color: var(--faint);
+  font-weight: 500;
+}
+.st-hint {
+  margin: 4px 0 8px;
+  color: var(--faint);
+  font-size: 11.5px;
+}
+.st-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.st-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'name depth' 'meta pill';
+  column-gap: 10px;
+  row-gap: 3px;
+  align-items: center;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 7px 8px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.st-row:hover {
+  background: rgba(150, 185, 230, 0.07);
+}
+.st-row[data-agree='norep'] {
+  opacity: 0.86;
+}
+.st-name {
+  grid-area: name;
+  font-weight: 550;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-meta {
+  grid-area: meta;
+  color: var(--muted);
+  font-size: 11.5px;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.st-depth {
+  grid-area: depth;
+  justify-self: end;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  font-stretch: 75%;
+  font-size: 15px;
+  color: var(--faint);
+}
+.st-depth.wet {
+  color: var(--water-pale);
+}
+.st-pill {
+  --c: var(--faint);
+  grid-area: pill;
+  justify-self: end;
+  padding: 1px 8px;
+  border-radius: 20px;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--c) 50%, transparent);
+}
+.st-pill[data-agree='match'] {
+  --c: var(--water);
+}
+.st-pill[data-agree='low'] {
+  --c: var(--amber);
+}
+.st-pill[data-agree='norep'] {
+  --c: var(--water-deep);
+}
+.st-tour {
+  margin-top: 2px;
+}
+
+/* ================= guided tour ================= */
+/* While the tour runs the dashboard panels step aside. */
+body.tour-on .panel,
+body.tour-on .drawer-btn,
+body.tour-on .maplibregl-ctrl-top-right {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.5s;
+}
+.panel,
+.drawer-btn {
+  transition: opacity 0.5s;
+}
+
+.tour-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.8s;
+  background:
+    linear-gradient(180deg, rgba(2, 5, 11, 0.7) 0%, transparent 16%),
+    linear-gradient(0deg, rgba(2, 5, 11, 0.82) 0%, rgba(2, 5, 11, 0.35) 26%, transparent 46%),
+    radial-gradient(ellipse 120% 90% at 50% 45%, transparent 55%, rgba(2, 5, 11, 0.55) 100%);
+}
+.tour-vignette.in {
+  opacity: 1;
+}
+
+.tour-card {
+  --p: 0;
+  position: fixed;
+  z-index: 9;
+  left: 32px;
+  bottom: 32px;
+  width: min(470px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 30px 70px -20px rgba(0, 0, 0, 0.9);
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.45s, transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.tour-card.in {
+  opacity: 1;
+  transform: none;
+}
+.tour-timer {
+  position: sticky;
+  top: 0;
+  height: 2px;
+  background: rgba(150, 185, 230, 0.08);
+  z-index: 1;
+}
+.tour-timer i {
+  display: block;
+  height: 100%;
+  width: calc(var(--p) * 100%);
+  background: linear-gradient(90deg, rgba(30, 200, 255, 0.4), var(--water));
+  box-shadow: 0 0 8px var(--water);
+}
+.tour-card.paused .tour-timer i {
+  background: var(--faint);
+  box-shadow: none;
+}
+
+.tour-body {
+  --c: var(--water);
+  padding: 18px 22px 4px;
+}
+.tour-body[data-kind='reported'] {
+  --c: var(--amber);
+}
+.tour-body[data-kind='intro'] {
+  --c: var(--water-pale);
+}
+.tour-body.swap {
+  animation: tour-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes tour-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+.tour-kick {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+.tour-num {
+  flex: none;
+  font-size: 26px;
+  line-height: 0.9;
+  font-weight: 700;
+  font-stretch: 62%;
+  font-variant-numeric: tabular-nums;
+  color: var(--c);
+}
+.tour-num small {
+  font-size: 0.5em;
+  margin-left: 1px;
+}
+.tour-kt {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tour-title {
+  margin: 0 0 8px;
+  font-size: 27px;
+  line-height: 1.05;
+  font-weight: 650;
+  font-stretch: 76%;
+  color: var(--text);
+  letter-spacing: -0.005em;
+  text-wrap: balance;
+}
+.tour-text {
+  margin: 0 0 12px;
+  color: #c4d1e3;
+  font-size: 13.5px;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+.tour-facts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  margin: 0 0 12px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.tour-facts div {
+  background: rgba(6, 12, 22, 0.85);
+  padding: 8px 9px;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.tour-facts dd {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.05;
+  font-weight: 650;
+  font-stretch: 68%;
+  font-variant-numeric: tabular-nums;
+  color: var(--water-pale);
+  white-space: nowrap;
+}
+.tour-facts dt {
+  color: var(--faint);
+  font-size: 10.5px;
+  line-height: 1.25;
+}
+.tour-line {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.tour-line .ico {
+  margin-top: 1px;
+}
+.tour-line b {
+  color: var(--text);
+  font-weight: 650;
+}
+.tour-line.model {
+  background: linear-gradient(90deg, rgba(30, 200, 255, 0.12), transparent 80%);
+  border-left: 2px solid var(--water);
+  color: var(--water-pale);
+}
+.tour-line.model b {
+  color: var(--water-pale);
+  font-variant-numeric: tabular-nums;
+}
+.tour-line.rep {
+  background: linear-gradient(90deg, rgba(255, 176, 46, 0.11), transparent 80%);
+  border-left: 2px solid var(--amber);
+}
+.tour-line.rep .ico {
+  color: var(--amber);
+}
+.tour-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 2px 0 6px;
+  font-size: 11.5px;
+}
+
+.tour-ctrl {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px 12px 22px;
+  border-top: 1px solid var(--line);
+  margin-top: 8px;
+}
+.tour-dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.tour-dots button {
+  border: 0;
+  background: transparent;
+  padding: 8px 2px;
+  cursor: pointer;
+}
+.tour-dots i {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 4px;
+  background: rgba(150, 185, 230, 0.22);
+  position: relative;
+  overflow: hidden;
+  transition: width 0.35s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.2s;
+}
+.tour-dots button:hover i {
+  background: rgba(150, 185, 230, 0.45);
+}
+.tour-dots button.done i {
+  background: rgba(30, 200, 255, 0.5);
+}
+.tour-dots button.on i {
+  width: 30px;
+  background: rgba(150, 185, 230, 0.2);
+}
+.tour-dots button.on i::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: calc(var(--p) * 100%);
+  background: var(--water);
+  border-radius: inherit;
+}
+.tour-btns {
+  display: flex;
+  gap: 4px;
+  flex: none;
+}
+.tour-b {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--line-hi);
+  background: var(--glass-hi);
+  color: var(--text);
+  cursor: pointer;
+}
+.tour-b:hover {
+  border-color: rgba(30, 200, 255, 0.55);
+  background: rgba(30, 200, 255, 0.16);
+}
+.tour-b[data-a='prev'] .ico {
+  transform: rotate(180deg);
+}
+.tour-b[data-a='play'] {
+  border-color: rgba(30, 200, 255, 0.55);
+  background: linear-gradient(180deg, rgba(30, 200, 255, 0.24), rgba(30, 120, 255, 0.16));
+}
+
+/* map pin for the current stop */
+.tour-pin {
+  --c: var(--water);
+  width: 22px;
+  height: 22px;
+  position: relative;
+  pointer-events: none;
+}
+.tour-pin.reported {
+  --c: var(--amber);
+}
+.tour-pin b {
+  position: absolute;
+  inset: 6px;
+  border-radius: 50%;
+  background: var(--c);
+  box-shadow: 0 0 0 2px rgba(4, 8, 15, 0.9), 0 0 16px 2px var(--c);
+}
+.tour-pin i {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--c);
+  animation: tour-ring 2.4s cubic-bezier(0.2, 0.6, 0.3, 1) infinite;
+}
+.tour-pin i + i {
+  animation-delay: 1.2s;
+}
+@keyframes tour-ring {
+  from {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(3.4);
+    opacity: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .tour-card {
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    width: auto;
+    max-height: 58vh;
+  }
+  .tour-body {
+    padding: 14px 16px 2px;
+  }
+  .tour-title {
+    font-size: 22px;
+  }
+  .tour-facts {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .tour-ctrl {
+    padding: 8px 10px 10px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-card,
+  .tour-vignette,
+  .st-why summary .ico,
+  .tour-dots i {
+    transition: none;
+  }
+  .tour-body.swap {
+    animation: none;
+  }
+  .tour-pin i {
+    animation: none;
+    opacity: 0;
+  }
+}
