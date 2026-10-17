@@ -1,0 +1,208 @@
+#!/usr/bin/env node
+// Calibration harness for the flood model (no site-specific tuning happens here — it only measures).
+//
+// Runs FloodEngine inline on public/data for the reference scenarios and prints, per scenario:
+//   - max modelled depth within 150 m (and 60 m) of every reported hotspot (running max over the run)
+//   - flooded area (> 0.1 m, inside the pincode boundary) at the peak hour
+//   - hours after the rain stops until the flooded area is back below 25 % of its peak
+//   - peak / final surface volume and the water budget (closure error should be ~0)
+//
+//   node scripts/calibrate.mjs                                   current data + src/sim
+//   node scripts/calibrate.mjs --save .cache/calib-before.json   also store the results
+//   node scripts/calibrate.mjs --baseline .cache/calib-before.json   print BEFORE vs AFTER
+//   node scripts/calibrate.mjs --data <dir> --sim <dir>          other data / engine (e.g. a git worktree)
+//   node scripts/calibrate.mjs --perf                            also time a 216-hour forecast-like run
+//   node scripts/calibrate.mjs --scenario cloudburst             add/override scenarios (comma list)
+//
+// Requires Node >= 22.6 (native TypeScript type stripping) — the engine and the scenario series are
+// imported straight from src/sim/index.ts and src/weather.ts.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const args = process.argv.slice(2);
+const opt = (name, def) => {
+  const k = args.indexOf(`--${name}`);
+  return k >= 0 && k + 1 < args.length && !args[k + 1].startsWith('--') ? args[k + 1] : def;
+};
+const flag = (name) => args.includes(`--${name}`);
+
+const DATA = path.resolve(ROOT, opt('data', 'public/data'));
+const SIM = path.resolve(ROOT, opt('sim', 'src/sim'));
+const HOTSPOTS = path.resolve(ROOT, opt('hotspots', 'public/data/hotspots.json'));
+const SCEN_IDS = opt('scenario', 'rrnagar-2024-10-20,typical-evening').split(',');
+const RADII = [150, 300];
+
+// ---------------------------------------------------------------- load
+function loadTerrain(dir) {
+  const meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+  const buf = fs.readFileSync(path.join(dir, 'grids.bin'));
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+  const grids = {};
+  for (const [k, l] of Object.entries(meta.layers)) {
+    grids[k] = l.dtype === 'f32' ? new Float32Array(ab.slice(l.offset, l.offset + l.length * 4)) : new Uint8Array(ab, l.offset, l.length);
+  }
+  return { meta, grids };
+}
+
+const terrain = loadTerrain(DATA);
+const hotspots = JSON.parse(fs.readFileSync(HOTSPOTS, 'utf8'));
+const { FloodEngine } = await import(pathToFileURL(path.join(SIM, 'index.ts')).href);
+const { SCENARIOS } = await import(pathToFileURL(path.join(ROOT, 'src/weather.ts')).href);
+
+const { meta } = terrain;
+const { width: W, height: H } = meta;
+const [bw, bs, be, bn] = meta.bbox;
+const cellLonLat = (i) => [bw + ((i % W) + 0.5) / W * (be - bw), bn - (Math.floor(i / W) + 0.5) / H * (bn - bs)];
+
+/** grid cells whose centre lies within r metres of [lon, lat] */
+function cellsWithin(lon, lat, r) {
+  const kx = 111320 * Math.cos((lat * Math.PI) / 180), ky = 110574;
+  const c0 = Math.floor(((lon - bw) / (be - bw)) * W), r0 = Math.floor(((bn - lat) / (bn - bs)) * H);
+  const span = Math.ceil(r / meta.cellSizeM) + 1;
+  const out = [];
+  for (let rr = r0 - span; rr <= r0 + span; rr++)
+    for (let cc = c0 - span; cc <= c0 + span; cc++) {
+      if (rr < 0 || cc < 0 || rr >= H || cc >= W) continue;
+      const i = rr * W + cc;
+      const [x, y] = cellLonLat(i);
+      if (Math.hypot((x - lon) * kx, (y - lat) * ky) <= r) out.push(i);
+    }
+  return out;
+}
+const hotCells = hotspots.map((h) => Object.fromEntries(RADII.map((r) => [r, cellsWithin(h.coord[0], h.coord[1], r)])));
+
+// ---------------------------------------------------------------- run
+async function runScenario(series) {
+  const eng = await FloodEngine.create(terrain, {}, { inline: true });
+  const t0 = performance.now();
+  await eng.run(series);
+  const ms = performance.now() - t0;
+  const st = eng.hourStats;
+  const n = eng.hours;
+  const last = eng.snapshot(n - 1);
+  const mm = series.mm;
+  let rainEnd = -1;
+  mm.forEach((v, i) => { if (v > 0) rainEnd = i; });
+  const peak = eng.peakHour();
+  const peakArea = peak >= 0 ? st[peak].floodedAreaM2 : 0;
+  let recessionH = null;
+  if (peakArea > 0) {
+    for (let k = Math.max(rainEnd, peak); k < n; k++) if (st[k].floodedAreaM2 < 0.25 * peakArea) { recessionH = k - rainEnd; break; }
+  }
+  const sum = (key) => st.reduce((s, x) => s + (x[key] || 0), 0);
+  const budget = { rain: sum('rainM3'), infiltrated: sum('infiltratedM3'), drained: sum('drainedM3'), lake: sum('lakeM3'), outflow: sum('outflowM3') };
+  const endVol = st[n - 1].volumeM3;
+  const closure = (budget.rain - budget.infiltrated - budget.drained - budget.lake - budget.outflow - endVol) / Math.max(1, budget.rain);
+  const hot = hotspots.map((h, k) => {
+    const o = { name: h.name };
+    for (const r of RADII) {
+      const cells = hotCells[k][r];
+      o[`max${r}`] = cells.length ? Math.max(...cells.map((i) => last.maxDepth[i])) : null;
+    }
+    // same, but ignoring water inside mapped drain channels and lakes (not street flooding)
+    for (const r of RADII) {
+      const street = hotCells[k][r].filter((i) => !terrain.grids.drainMask[i] && !terrain.grids.lakeMask[i]);
+      o[`street${r}`] = street.length ? Math.max(...street.map((i) => last.maxDepth[i])) : null;
+    }
+    return o;
+  });
+  // tanks that filled their flood cushion and spilled (engine internals, inline runner only)
+  const core = eng.inlineRunner?.core;
+  const lakes = typeof core?.lakeStatus === 'function' ? core.lakeStatus().filter((l) => l.cells >= 2) : null;
+  const lakeSpill = lakes ? `${lakes.filter((l) => l.freeM3 <= 1e-6).length}/${lakes.length}` : 'n/a';
+  return {
+    lakeSpill,
+    ms: Math.round(ms),
+    hours: n,
+    rainMm: mm.reduce((a, b) => a + b, 0),
+    rainEnd,
+    peakHour: peak,
+    peakAreaM2: peakArea,
+    endAreaM2: st[n - 1].floodedAreaM2,
+    areaAtRainEndPlus: Object.fromEntries([0, 3, 6, 12].map((d) => [d, st[Math.min(n - 1, rainEnd + d)]?.floodedAreaM2 ?? 0])),
+    recessionH,
+    peakVolM3: Math.max(...st.map((s) => s.volumeM3)),
+    endVolM3: endVol,
+    maxDepthM: Math.max(...st.map((s) => s.maxDepthM)),
+    budget,
+    closure,
+    hotspots: hot,
+  };
+}
+
+const results = { data: path.relative(ROOT, DATA) || '.', sim: path.relative(ROOT, SIM) || '.', scenarios: {} };
+for (const id of SCEN_IDS) {
+  const sc = SCENARIOS.find((s) => s.id === id);
+  if (!sc) throw new Error(`unknown scenario ${id}`);
+  results.scenarios[id] = await runScenario(sc.build());
+}
+
+if (flag('perf')) {
+  // forecast-like 216 h series: nine wet monsoon afternoons (40 mm each, 6 h), the rest dry
+  const mm = [];
+  for (let d = 0; d < 9; d++) for (let h = 0; h < 24; h++) mm.push([3, 10, 15, 8, 3, 1][h - 14] ?? 0);
+  const series = { source: 'forecast', label: 'perf', times: mm.map((_, i) => i * 3.6e6), mm };
+  const eng = await FloodEngine.create(terrain, {}, { inline: true });
+  await eng.run({ ...series, mm: mm.slice(0, 6) }); // warm-up (JIT)
+  const t0 = performance.now();
+  await eng.run(series);
+  results.perf = { hours: mm.length, ms: Math.round(performance.now() - t0) };
+}
+
+// ---------------------------------------------------------------- report
+const f2 = (v) => (v == null ? '   -  ' : v.toFixed(2).padStart(6));
+const km2 = (m2) => (m2 / 1e6).toFixed(3);
+const pad = (s, n) => String(s).padEnd(n).slice(0, n);
+const base = opt('baseline') ? JSON.parse(fs.readFileSync(path.resolve(ROOT, opt('baseline')), 'utf8')) : null;
+
+function printHotspots() {
+  // primary metric: max depth within 150 m (running max over the run); diagnostics: the same without
+  // water inside mapped drain channels / lakes ("street"), and within 300 m (hotspot coordinates are
+  // neighbourhood-level geocodes of news reports)
+  for (const id of Object.keys(results.scenarios)) {
+    console.log(`\n${id}: max depth (m) near reported hotspots`);
+    console.log(`${pad('hotspot', 46)} | ${base ? '150m BEFORE  AFTER | street150 BEFORE  AFTER | 300m BEFORE  AFTER | street300 BEFORE  AFTER' : '150m | street150 | 300m | street300'}`);
+    hotspots.forEach((h, k) => {
+      const a = results.scenarios[id].hotspots[k];
+      const b = base?.scenarios?.[id]?.hotspots?.find((x) => x.name === h.name);
+      const pair = (key, w) => (base ? `${' '.repeat(w)}${f2(b?.[key])} ${f2(a[key])}` : f2(a[key]));
+      console.log(`${pad(h.name, 46)} | ${pair('max150', 4)} | ${pair('street150', 9)} | ${pair('max300', 4)} | ${pair('street300', 9)}`);
+    });
+  }
+}
+
+function summaryRows(r) {
+  const b = r.budget;
+  return [
+    ['rain (mm)', r.rainMm.toFixed(1)],
+    ['peak flooded area >0.1 m (km2) @hour', `${km2(r.peakAreaM2)} @${r.peakHour}`],
+    ['flooded area rain-end +0/+3/+6/+12 h (km2)', [0, 3, 6, 12].map((d) => km2(r.areaAtRainEndPlus[d])).join(' / ')],
+    ['hours after rain to < 25% of peak area', r.recessionH == null ? `> ${r.hours - 1 - r.rainEnd}` : String(r.recessionH)],
+    ['peak / final surface volume (m3)', `${Math.round(r.peakVolM3)} / ${Math.round(r.endVolM3)}`],
+    ['max depth anywhere (m)', r.maxDepthM.toFixed(2)],
+    ['tanks (>= 2 cells) spilled at end', r.lakeSpill ?? 'n/a'],
+    ['budget rain / infil / drain / lake / out (k m3)', [b.rain, b.infiltrated, b.drained, b.lake, b.outflow].map((v) => (v / 1000).toFixed(0)).join(' / ')],
+    ['budget closure (rel.)', r.closure.toExponential(1)],
+    ['run time (ms)', String(r.ms)],
+  ];
+}
+
+console.log(`data: ${results.data}   engine: ${results.sim}   grid ${W}x${H} @ ${meta.cellSizeM} m`);
+printHotspots();
+for (const [id, r] of Object.entries(results.scenarios)) {
+  const br = base?.scenarios?.[id];
+  console.log(`\n${id}${br ? '                                     BEFORE  ->  AFTER' : ''}`);
+  const rows = summaryRows(r);
+  const brows = br ? summaryRows(br) : null;
+  rows.forEach(([k, v], i) => console.log(`  ${pad(k, 46)} ${brows ? `${brows[i][1]}  ->  ${v}` : v}`));
+}
+if (results.perf) console.log(`\nperf: ${results.perf.hours}-hour series in ${results.perf.ms} ms${base?.perf ? ` (before ${base.perf.ms} ms)` : ''}`);
+
+const save = opt('save');
+if (save) {
+  fs.mkdirSync(path.dirname(path.resolve(ROOT, save)), { recursive: true });
+  fs.writeFileSync(path.resolve(ROOT, save), JSON.stringify(results, null, 1));
+  console.log(`\nsaved ${save}`);
+}
