@@ -124,6 +124,8 @@ export async function createMap(container: HTMLElement, boundary: GeoJSON.Geomet
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), 'top-right');
 
   await new Promise<void>((res) => map.once('load', () => res()));
+  // calm start: attribution stays one tap away (the "i" button), not a strip across the map
+  container.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
   addBoundary(map, boundary);
   return map;
 }
