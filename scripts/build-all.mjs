@@ -57,7 +57,9 @@ let next = 0;
 async function worker() {
   while (next < todo.length) {
     const code = todo[next++];
-    if (!force && fs.existsSync(path.join(outDir(code), 'pack.json'))) {
+    // the committed 560098 reference pack (public/data, no pack.json) is rebuilt only when asked for by name
+    const legacyKept = code === '560098' && !want.includes(code) && fs.existsSync(path.join(outDir(code), 'meta.json'));
+    if (legacyKept || (!force && fs.existsSync(path.join(outDir(code), 'pack.json')))) {
       results.push({ code, status: 'cached' });
       continue;
     }
