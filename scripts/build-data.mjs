@@ -19,6 +19,7 @@ import osmtogeojson from 'osmtogeojson';
 import * as turf from '@turf/turf';
 import { gzipSync } from 'node:zlib';
 import { regionAvailable, regionOverpassJson } from './lib/osm-local.mjs';
+import { encodeLayer, v2Specs } from '../src/pack/codec.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.cache');
@@ -33,6 +34,8 @@ const PIN = pinEntry(arg('pin', LEGACY.code));
 const PINCODE = PIN.code;
 const RELATION_ID = PIN.relation;
 const APPROX_BBOX = PIN.bbox; // W S E N of the boundary (the grid uses the boundary itself once loaded)
+// pack format: 2 (quantised grids, compact OSM; src/pack/codec.ts) except the 560098 reference pack
+const FORMAT = Number(arg('format', 0)) || (PIN.code === LEGACY.code ? 1 : 2);
 const OUT = arg('out', PINCODE === LEGACY.code ? path.join(ROOT, 'public', 'data') : path.join(ROOT, 'public', 'data', 'pins', PINCODE));
 const PIN_CACHE = path.join(CACHE, 'pins', PINCODE);
 fs.mkdirSync(OUT, { recursive: true });
@@ -608,6 +611,18 @@ function openCover(t) {
 // lower priority = painted first (smaller areas painted later override)
 
 const round6 = (x) => Math.round(x * 1e6) / 1e6;
+function compactFeature(f) {
+  const { cells, cell, ...props } = f.properties;
+  const r5 = (c) => (typeof c[0] === 'number' ? [Math.round(c[0] * 1e5) / 1e5, Math.round(c[1] * 1e5) / 1e5] : c.map(r5));
+  let coordinates = r5(f.geometry.coordinates);
+  // rounding can make neighbouring vertices identical: drop the repeats
+  const dedupe = (c) => (typeof c[0][0] === 'number' ? c.filter((p, i) => i === 0 || p[0] !== c[i - 1][0] || p[1] !== c[i - 1][1]) : c.map(dedupe));
+  if (f.geometry.type !== 'Point') coordinates = dedupe(coordinates);
+  // a tiny polygon that collapses at 1 m precision keeps its original coordinates
+  const rings = f.geometry.type === 'Polygon' ? coordinates : f.geometry.type === 'MultiPolygon' ? coordinates.flat() : [];
+  if (rings.some((r) => r.length < 4) || (f.geometry.type === 'LineString' && coordinates.length < 2)) coordinates = f.geometry.coordinates;
+  return { type: 'Feature', geometry: { type: f.geometry.type, coordinates }, properties: props };
+}
 function roundCoords(c) { return typeof c[0] === 'number' ? [round6(c[0]), round6(c[1])] : c.map(roundCoords); }
 function dedupeRing(c) {
   // drop consecutive duplicate points after rounding
@@ -942,9 +957,18 @@ async function main() {
   const layers = {};
   const chunks = [];
   let off = 0;
+  const specs = FORMAT === 2 ? v2Specs({ elevation, hand }) : null;
   for (const [name, arr, dtype] of layerDefs) {
-    const bytes = Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength);
-    layers[name] = { offset: off, length: arr.length, dtype };
+    if (specs && name === 'filled') { layers.filled = { offset: 0, length: arr.length, dtype: 'f32', derived: true }; continue; }
+    let bytes;
+    if (specs) {
+      const enc = encodeLayer(arr, W, specs[name]);
+      bytes = Buffer.from(enc.bytes.buffer, enc.bytes.byteOffset, enc.bytes.byteLength);
+      layers[name] = { offset: off, ...enc.info };
+    } else {
+      bytes = Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength);
+      layers[name] = { offset: off, length: arr.length, dtype };
+    }
     chunks.push(bytes);
     off += bytes.length;
     const pad = (4 - (off % 4)) % 4;
@@ -958,6 +982,7 @@ async function main() {
     if (boundaryMask[i]) { nB++; impSum += impervious[i]; minB = Math.min(minB, elevation[i]); maxB = Math.max(maxB, elevation[i]); }
   }
   const meta = {
+    ...(FORMAT === 2 ? { format: 2 } : {}),
     pincode: PINCODE,
     name: PIN.name,
     bbox: [G.w, G.s, G.e, G.n].map((v) => Math.round(v * 1e7) / 1e7),
@@ -970,13 +995,15 @@ async function main() {
     sources,
   };
   fs.writeFileSync(path.join(OUT, 'meta.json'), JSON.stringify(meta));
-  fs.writeFileSync(path.join(OUT, 'osm.geojson'), JSON.stringify({ type: 'FeatureCollection', features: outFeatures }));
+  // v2: coordinates to 1e-5 deg (~1 m) and no per-feature cell lists (the app derives them on load)
+  const osmOut = FORMAT === 2 ? outFeatures.map(compactFeature) : outFeatures;
+  fs.writeFileSync(path.join(OUT, 'osm.geojson'), JSON.stringify({ type: 'FeatureCollection', ...(FORMAT === 2 ? { format: 2 } : {}), features: osmOut }));
   fs.writeFileSync(path.join(OUT, 'depressions.json'), JSON.stringify(depressions));
   // pack.json: what the pincode index records about this pack (sizes, date, sources)
   const files = ['meta.json', 'grids.bin', 'osm.geojson', 'depressions.json', 'hotspots.json'].filter((f) => fs.existsSync(path.join(OUT, f)));
   const bytes = files.reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
   const gzipBytes = files.reduce((a, f) => a + gzipSync(fs.readFileSync(path.join(OUT, f)), { level: 9 }).length, 0);
-  const pack = { code: PINCODE, format: 1, bytes, gzipBytes, built: new Date().toISOString().slice(0, 10), files, sources };
+  const pack = { code: PINCODE, format: FORMAT, cellSizeM: CELL_M, bytes, gzipBytes, built: new Date().toISOString().slice(0, 10), files, sources };
   fs.writeFileSync(path.join(OUT, 'pack.json'), JSON.stringify(pack, null, 1));
 
   // ------------------------------------------------ report
