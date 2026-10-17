@@ -13,9 +13,30 @@ export interface TerrainMeta {
   /** GeoJSON Polygon/MultiPolygon geometry of the pincode boundary */
   boundary: GeoJSON.Geometry;
   /** layers inside public/data/grids.bin, all row-major, row 0 = north */
-  layers: Record<GridLayerName, { offset: number; length: number; dtype: 'f32' | 'u8' }>;
+  layers: Record<GridLayerName, LayerInfo>;
+  /** pack format (absent = 1); 2 = quantised grids + compact OSM, see src/pack/codec.ts */
+  format?: PackFormat;
   stats: { minElev: number; maxElev: number };
   sources: string[];
+}
+
+/** One layer in grids.bin. v1: f32 / u8 as-is. v2: quantised, see src/pack/codec.ts. */
+export interface LayerInfo {
+  /** byte offset in grids.bin */
+  offset: number;
+  /** elements */
+  length: number;
+  dtype: 'f32' | 'u8' | 'u16';
+  /** v2: value = base + q * scale (or 2^(q / scale) with log2) */
+  scale?: number;
+  base?: number;
+  log2?: boolean;
+  /** v2: q stored as differences along each row */
+  delta?: boolean;
+  /** v2: u16 bytes stored as a low-byte plane then a high-byte plane */
+  shuffle?: boolean;
+  /** v2: not stored; filled = elevation + depressionDepth */
+  derived?: boolean;
 }
 
 export type GridLayerName =
