@@ -38,7 +38,15 @@ const PIN_CACHE = path.join(CACHE, 'pins', PINCODE);
 fs.mkdirSync(OUT, { recursive: true });
 fs.mkdirSync(PIN_CACHE, { recursive: true });
 const PAD_DEG = 0.006;
-const CELL_M = 15;
+// 15 m like the reference pack, coarser for big pincodes so a pack stays near the reference's
+// ~140k cells (simulation time and pack size scale with cells). --cell <m> overrides.
+const MAX_CELLS = 140000;
+const CELL_M = Number(arg('cell', 0)) || cellSizeFor(APPROX_BBOX);
+function cellSizeFor([w, s, e, n]) {
+  const lat0 = (s + n) / 2;
+  const areaM2 = (e - w + 2 * PAD_DEG) * 111320 * Math.cos((lat0 * Math.PI) / 180) * (n - s + 2 * PAD_DEG) * 110574;
+  return Math.max(15, Math.ceil(Math.sqrt(areaM2 / MAX_CELLS) / 5) * 5);
+}
 const UA = 'logged-flood-explorer/0.2 (open-source research prototype; github.com/achyuta0001/Logged)';
 
 /** pincode -> { code, name, relation, bbox } from the pincode index (npm run data:city) */
