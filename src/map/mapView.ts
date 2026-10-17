@@ -72,15 +72,20 @@ function retheme(style: StyleSpecification) {
   vectorBaseLayers = keep.filter((l) => l.type !== 'symbol' && l.type !== 'background').map((l) => l.id);
 }
 
-export async function createMap(container: HTMLElement, boundary: GeoJSON.Geometry, exaggeration: number, center: [number, number] = CENTER): Promise<MLMap> {
+/**
+ * demMaxZoom: deepest terrain tile zoom (default 14, matching the basemap). The city overview uses a
+ * shallower DEM: at district scale z14 terrain + z15 hillshade tiles alone would be ~7 MB.
+ */
+export async function createMap(container: HTMLElement, boundary: GeoJSON.Geometry, exaggeration: number, center: [number, number] = CENTER, opts: { demMaxZoom?: number } = {}): Promise<MLMap> {
+  const demZ = opts.demMaxZoom ?? 14;
   const style = await loadBaseStyle();
   retheme(style);
 
   style.sources['eox'] = { type: 'raster', tiles: [EOX], tileSize: 256, maxzoom: 15, attribution: ATTR_EOX };
   // terrain maxzoom matches the vector basemap (z14): overscaled basemap tiles above a deeper DEM
   // trigger a MapLibre warning, and z14 terrarium (~9 m) already out-resolves the ~30 m SRTM data
-  style.sources['dem'] = { type: 'raster-dem', tiles: [TERRARIUM], encoding: 'terrarium', tileSize: 256, maxzoom: 14, attribution: ATTR_TERRAIN };
-  style.sources['dem-hs'] = { type: 'raster-dem', tiles: [TERRARIUM], encoding: 'terrarium', tileSize: 256, maxzoom: 15 };
+  style.sources['dem'] = { type: 'raster-dem', tiles: [TERRARIUM], encoding: 'terrarium', tileSize: 256, maxzoom: demZ, attribution: ATTR_TERRAIN };
+  style.sources['dem-hs'] = { type: 'raster-dem', tiles: [TERRARIUM], encoding: 'terrarium', tileSize: 256, maxzoom: opts.demMaxZoom === undefined ? 15 : demZ };
   const bgIdx = style.layers.findIndex((l) => l.type === 'background');
   style.layers.splice(
     bgIdx + 1,
