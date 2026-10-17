@@ -89,6 +89,7 @@ export class Sidebar {
           <i class="sb-dot" aria-hidden="true"></i><span class="sb-answer">Working out the flood outlook</span>
         </button>
         <div class="sb-context" id="sb-context"></div>
+        <p class="sb-caveat" id="sb-caveat" hidden></p>
       </header>
       <div class="sb-scroll" id="sb-scroll">
         ${SECTIONS.map(
@@ -175,6 +176,16 @@ export class Sidebar {
 
   get currentScope(): Scope {
     return this.scope;
+  }
+
+  /** One quiet line under the status (e.g. inflow from outside the modelled area); null hides it. */
+  setCaveat(text: string | null, tip?: string) {
+    const el = this.panel.querySelector('#sb-caveat') as HTMLElement;
+    el.hidden = !text;
+    el.innerHTML = text ? `${iconSvg('info', 12)}<span>${text}</span>` : '';
+    if (tip) el.title = tip;
+    else el.removeAttribute('title');
+    this.measurePeek();
   }
 
   setTitle(id: SectionId, title: string) {
