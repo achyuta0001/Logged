@@ -186,6 +186,12 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
   sidebar.setRegion(pin.code, legacy ? 'Rajarajeshwari Nagar, Bengaluru' : `${placeName ? `${placeName}, ` : ''}Bengaluru`, { back: shell.index.pins.length > 1 });
   sidebar.setTitle('story', legacy ? 'Why RR Nagar floods' : 'Model vs reported');
   sidebar.setStatus('none', 'Working out the flood outlook', '');
+  // M4: catchments cross pincode edges; say so quietly when a lot of land drains in from outside the grid
+  const inflow = pin.pack?.upstreamOutsideKm2 ?? 0;
+  sidebar.setCaveat(
+    inflow >= Math.max(5, pin.areaKm2) ? `About ${Math.round(inflow)} km² upstream drains in from outside this map; the model leaves that inflow out.` : null,
+    'Upstream area from a district-wide 60 m flow-accumulation run (npm run data:city). Streams entering from outside the modelled area are not simulated, so valley-floor depths may be underestimated.',
+  );
   timelineEl.hidden = false;
   document.title = `${pin.code} Flood Outlook`;
   const ds = await loadDataset(base);
@@ -396,6 +402,7 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
       map.remove();
       sidebar.clearBodies();
       sidebar.setHidden('story', false);
+      sidebar.setCaveat(null);
       app.impact.clear();
     },
   };
