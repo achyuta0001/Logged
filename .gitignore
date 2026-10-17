@@ -1,3 +1,5 @@
 node_modules
 dist
 .cache
+# built packs (npm run data:all); a few small samples are committed explicitly
+public/data/pins/*/
