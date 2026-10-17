@@ -30,9 +30,9 @@ export class ImpactView {
       <div class="imp-at"><span>At <b id="imp-time">–</b> <span id="imp-day"></span></span><span class="sev" id="imp-sev">–</span></div>
       <div class="kpis" role="list">
         <div class="kpi water" role="listitem"><span class="kpi-v" id="k-area">–</span><span class="kpi-l">under water</span></div>
-        <div class="kpi" role="listitem" title="Length of road deeper than 15 cm"><span class="kpi-v" id="k-2w">–</span><span class="kpi-l">shut to two‑wheelers</span></div>
+        <div class="kpi" role="listitem" title="Length of road deeper than 15 cm"><span class="kpi-v" id="k-2w">–</span><span class="kpi-l">shut to 2‑wheelers</span></div>
         <div class="kpi" role="listitem" title="Length of road deeper than 30 cm"><span class="kpi-v" id="k-car">–</span><span class="kpi-l">shut to cars</span></div>
-        <div class="kpi" role="listitem" id="k-bld-box"><span class="kpi-v" id="k-bld">–</span><span class="kpi-l">buildings wet inside</span></div>
+        <div class="kpi" role="listitem" id="k-bld-box" title="Buildings with water above plinth height (25 cm)"><span class="kpi-v" id="k-bld">–</span><span class="kpi-l">buildings wet</span></div>
       </div>
       <p class="imp-fac" id="k-fac" hidden></p>
       <div class="life" id="life"></div>
