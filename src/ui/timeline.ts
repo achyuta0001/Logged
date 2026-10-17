@@ -1,99 +1,161 @@
 // Bottom timeline: rain hangs from the top (hyetograph), flooded area rises
-// from the bottom, with a scrubber, play/pause and speed.
+// from the bottom, with a scrubber, play/pause and speed. Minimises to a compact
+// bar (play, time, flooded-area sparkline).
 import type { RainSeries } from '../types';
-import { DEPTH_LEGEND } from '../map/colors';
 import { fmtArea, fmtDay, fmtDayShort, fmtHour, istHour, relHours } from './format';
 import { iconSvg } from './icons';
+import { load, save } from './store';
 
 const NS = 'http://www.w3.org/2000/svg';
 const SPEEDS = [2, 4, 8, 16];
+const SPARK_W = 132;
+const SPARK_H = 26;
 
 export interface TimelineHandlers {
   onHour(h: number): void;
   onPlay(playing: boolean): void;
   onSpeed(hoursPerSec: number): void;
+  /** the timeline switched between full and compact */
+  onCompact?(compact: boolean): void;
 }
 
 export class Timeline {
   private el: HTMLElement;
   private svg: SVGSVGElement;
+  private spark: SVGSVGElement;
   private h: TimelineHandlers;
   private series: RainSeries | null = null;
   private area: number[] = [];
   private hour = 0;
   private playing = false;
   private W = 800;
-  private readonly H = 92;
+  private readonly H = 86;
   private head!: SVGGElement;
+  private sparkHead: SVGGElement | null = null;
   private peak: { x: number; lbl: SVGTextElement } | null = null;
+  private pref: boolean;
+  private forced = false;
 
   constructor(el: HTMLElement, h: TimelineHandlers) {
     this.el = el;
     this.h = h;
+    this.pref = load('tl.compact', false);
     el.innerHTML = `
-      <div class="tl-top">
-        <button class="tl-play" id="tl-play" aria-label="Play">${iconSvg('play', 16)}</button>
-        <div class="tl-time"><b id="tl-clock">--:--</b><span id="tl-rel"></span></div>
-        <div class="tl-read">
-          <span><i class="dot rain"></i><b id="tl-rain">–</b> rain this hour</span>
-          <span><i class="dot area"></i><b id="tl-area">–</b> under water</span>
+      <div class="tl-full">
+        <div class="tl-top">
+          <button type="button" class="tl-play" data-play aria-label="Play">${iconSvg('play', 16)}</button>
+          <div class="tl-time"><b class="tl-clock">--:--</b><span class="tl-rel"></span></div>
+          <div class="tl-read">
+            <span><i class="dot rain"></i><b id="tl-rain">–</b> rain this hour</span>
+            <span><i class="dot area"></i><b id="tl-area">–</b> under water</span>
+          </div>
+          <div class="segmented small" id="tl-speed" role="group" aria-label="Playback speed">
+            ${SPEEDS.map((s, i) => `<button type="button" data-s="${s}" aria-pressed="${i === 1}" title="${s} simulated hours per second">${s}×</button>`).join('')}
+          </div>
+          <button type="button" class="icon-btn tl-min" aria-label="Minimise the timeline" data-tip="Minimise">${iconSvg('chevron', 15, 1.8)}</button>
         </div>
-        <div class="seg small" id="tl-speed" role="group" aria-label="Playback speed">
-          ${SPEEDS.map((s, i) => `<button data-s="${s}" class="${i === 1 ? 'on' : ''}" title="${s} simulated hours per second">${s}×</button>`).join('')}
-        </div>
-        <div class="legend" aria-label="Water depth: ${DEPTH_LEGEND.map((l) => l.label).join(', ')}">
-          <span>2 cm</span><i style="background:linear-gradient(90deg,${DEPTH_LEGEND.map((l) => l.color).join(',')})"></i><span>1 m+</span>
-        </div>
+        <div class="tl-chart" id="tl-chart"><svg id="tl-svg" role="slider" tabindex="0" aria-label="Simulation hour" aria-valuemin="0"></svg></div>
       </div>
-      <div class="tl-chart" id="tl-chart"><svg id="tl-svg" role="slider" tabindex="0" aria-label="Simulation hour"></svg></div>
+      <div class="tl-mini">
+        <button type="button" class="tl-play" data-play aria-label="Play">${iconSvg('play', 14)}</button>
+        <div class="tl-mtime"><b class="tl-clock">--:--</b><span class="tl-mday"></span></div>
+        <svg class="tl-spark" width="${SPARK_W}" height="${SPARK_H}" viewBox="0 0 ${SPARK_W} ${SPARK_H}" role="slider" tabindex="0" aria-label="Simulation hour (flooded area over time)" aria-valuemin="0"></svg>
+        <button type="button" class="icon-btn tl-exp" aria-label="Expand the timeline" data-tip="Expand">${iconSvg('chevron', 15, 1.8)}</button>
+      </div>
     `;
     this.svg = el.querySelector('#tl-svg') as unknown as SVGSVGElement;
-    (el.querySelector('#tl-play') as HTMLButtonElement).addEventListener('click', () => this.setPlaying(!this.playing, true));
+    this.spark = el.querySelector('.tl-spark') as unknown as SVGSVGElement;
+    el.querySelectorAll<HTMLButtonElement>('[data-play]').forEach((b) => b.addEventListener('click', () => this.setPlaying(!this.playing, true)));
     el.querySelectorAll<HTMLButtonElement>('#tl-speed [data-s]').forEach((b) =>
       b.addEventListener('click', () => {
-        el.querySelectorAll('#tl-speed [data-s]').forEach((x) => x.classList.toggle('on', x === b));
+        el.querySelectorAll<HTMLElement>('#tl-speed [data-s]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
         this.h.onSpeed(Number(b.dataset.s));
       }),
     );
+    el.querySelector('.tl-min')!.addEventListener('click', () => this.setCompact(true));
+    el.querySelector('.tl-exp')!.addEventListener('click', () => this.setCompact(false));
+    this.scrubber(this.svg);
+    this.scrubber(this.spark);
+    new ResizeObserver(() => this.draw()).observe(el.querySelector('#tl-chart')!);
+    this.apply();
+  }
+
+  /** pointer + arrow-key scrubbing on an svg that spans the whole series */
+  private scrubber(svg: SVGSVGElement) {
     let drag = false;
     const pick = (e: PointerEvent) => {
       if (!this.series) return;
-      const r = this.svg.getBoundingClientRect();
+      const r = svg.getBoundingClientRect();
       const n = this.series.mm.length;
       const hr = Math.max(0, Math.min(n - 1, Math.floor(((e.clientX - r.left) / r.width) * n)));
       if (hr !== this.hour) this.h.onHour(hr);
     };
-    this.svg.addEventListener('pointerdown', (e) => {
+    svg.addEventListener('pointerdown', (e) => {
       drag = true;
-      this.svg.setPointerCapture(e.pointerId);
+      svg.setPointerCapture(e.pointerId);
       if (this.playing) this.setPlaying(false, true);
       pick(e);
     });
-    this.svg.addEventListener('pointermove', (e) => drag && pick(e));
-    this.svg.addEventListener('pointerup', () => (drag = false));
-    this.svg.addEventListener('keydown', (e) => {
+    svg.addEventListener('pointermove', (e) => drag && pick(e));
+    svg.addEventListener('pointerup', () => (drag = false));
+    svg.addEventListener('keydown', (e) => {
       if (!this.series) return;
       const n = this.series.mm.length;
       if (e.key === 'ArrowRight') this.h.onHour(Math.min(n - 1, this.hour + (e.shiftKey ? 6 : 1)));
       else if (e.key === 'ArrowLeft') this.h.onHour(Math.max(0, this.hour - (e.shiftKey ? 6 : 1)));
+      else if (e.key === 'Home') this.h.onHour(0);
+      else if (e.key === 'End') this.h.onHour(n - 1);
       else return;
       e.preventDefault();
     });
-    new ResizeObserver(() => this.draw()).observe(el.querySelector('#tl-chart')!);
   }
 
+  // ---------- compact ----------
+  get compact(): boolean {
+    return this.forced || this.pref;
+  }
+
+  setCompact(c: boolean) {
+    this.pref = c;
+    save('tl.compact', c);
+    this.apply();
+    const focus = this.el.querySelector<HTMLElement>(c ? '.tl-exp' : '.tl-min');
+    if (this.el.contains(document.activeElement)) focus?.focus({ preventScroll: true });
+  }
+
+  /** Phones always use the compact bar. */
+  setForceCompact(f: boolean) {
+    if (f === this.forced) return;
+    this.forced = f;
+    this.apply();
+  }
+
+  private apply() {
+    const c = this.compact;
+    const changed = this.el.classList.contains('compact') !== c;
+    this.el.classList.toggle('compact', c);
+    this.el.classList.toggle('forced', this.forced);
+    document.body.classList.toggle('tl-compact', c);
+    if (changed) this.h.onCompact?.(c);
+  }
+
+  // ---------- data ----------
   setSeries(s: RainSeries, area: number[]) {
     this.series = s;
     this.area = area;
+    this.svg.setAttribute('aria-valuemax', String(s.mm.length - 1));
+    this.spark.setAttribute('aria-valuemax', String(s.mm.length - 1));
     this.draw();
+    this.drawSpark();
   }
 
   setPlaying(p: boolean, notify = false) {
     this.playing = p;
-    const b = this.el.querySelector('#tl-play') as HTMLButtonElement;
-    b.innerHTML = iconSvg(p ? 'pause' : 'play', 16);
-    b.setAttribute('aria-label', p ? 'Pause' : 'Play');
-    b.classList.toggle('on', p);
+    this.el.querySelectorAll<HTMLButtonElement>('[data-play]').forEach((b) => {
+      b.innerHTML = iconSvg(p ? 'pause' : 'play', b.closest('.tl-mini') ? 14 : 16);
+      b.setAttribute('aria-label', p ? 'Pause' : 'Play');
+      b.classList.toggle('on', p);
+    });
     if (notify) this.h.onPlay(p);
   }
 
@@ -102,19 +164,23 @@ export class Timeline {
     const s = this.series;
     if (!s) return;
     const t = s.times[h];
-    (this.el.querySelector('#tl-clock') as HTMLElement).textContent = fmtHour(t);
-    (this.el.querySelector('#tl-rel') as HTMLElement).textContent = `${fmtDay(t)}${s.source === 'forecast' ? `, ${relHours(h, s.nowIndex)}` : `, hour ${h + 1} of ${s.mm.length}`}`;
+    this.el.querySelectorAll('.tl-clock').forEach((x) => (x.textContent = fmtHour(t)));
+    (this.el.querySelector('.tl-rel') as HTMLElement).textContent = `${fmtDay(t)}${s.source === 'forecast' ? `, ${relHours(h, s.nowIndex)}` : `, hour ${h + 1} of ${s.mm.length}`}`;
+    (this.el.querySelector('.tl-mday') as HTMLElement).textContent = s.source === 'forecast' ? `${fmtDayShort(t)}, ${relHours(h, s.nowIndex)}` : fmtDay(t);
     (this.el.querySelector('#tl-rain') as HTMLElement).textContent = `${(s.mm[h] ?? 0).toFixed(1)} mm`;
     (this.el.querySelector('#tl-area') as HTMLElement).textContent = this.area.length ? fmtArea(this.area[h] ?? 0) : '–';
-    this.svg.setAttribute('aria-valuenow', String(h));
-    this.svg.setAttribute('aria-valuetext', `${fmtDay(t)} ${fmtHour(t)}`);
+    for (const svg of [this.svg, this.spark]) {
+      svg.setAttribute('aria-valuenow', String(h));
+      svg.setAttribute('aria-valuetext', `${fmtDay(t)} ${fmtHour(t)}`);
+    }
+    const n = s.mm.length;
     if (this.head) {
-      const n = s.mm.length;
       const bw = this.W / n;
       this.head.setAttribute('transform', `translate(${(h + 0.5) * bw},0)`);
-      this.svg.querySelectorAll('.bar').forEach((b, i) => b.classList.toggle('past', i <= h));
+      this.svg.querySelectorAll('.bar').forEach((b) => b.classList.toggle('past', Number(b.getAttribute('data-i')) <= h));
       this.placePeak((h + 0.5) * bw);
     }
+    this.sparkHead?.setAttribute('transform', `translate(${((h + 0.5) / n) * SPARK_W},0)`);
   }
 
   /** Put the "peak" label on whichever side of the peak keeps it clear of the playhead. */
@@ -131,10 +197,45 @@ export class Timeline {
     p.lbl.setAttribute('text-anchor', left ? 'end' : 'start');
   }
 
+  private drawSpark() {
+    const s = this.series;
+    const svg = this.spark;
+    svg.innerHTML = '';
+    this.sparkHead = null;
+    if (!s) return;
+    const n = s.mm.length;
+    const W = SPARK_W;
+    const H = SPARK_H;
+    const base = H - 3;
+    const maxA = Math.max(1, ...this.area);
+    const maxMm = Math.max(10, ...s.mm);
+    const x = (i: number) => ((i + 0.5) / n) * W;
+    const y = (i: number) => base - ((this.area[i] ?? 0) / maxA) * (H - 7);
+    const mk = (tag: string, attrs: Record<string, string | number>, parent: Element = svg) => {
+      const e = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+      parent.appendChild(e);
+      return e;
+    };
+    // rain as faint ticks from the top, flooded area as a filled line
+    for (let i = 0; i < n; i++) if (s.mm[i] > 0.05) mk('rect', { x: (i / n) * W, y: 0, width: Math.max(0.8, W / n - 0.4), height: Math.max(1, Math.sqrt(s.mm[i] / maxMm) * 7), class: 'sp-rain' });
+    let d = `M0 ${base}`;
+    for (let i = 0; i < n; i++) d += ` L${x(i).toFixed(1)} ${y(i).toFixed(1)}`;
+    mk('path', { d: `${d} L${W} ${base} Z`, class: 'sp-area' });
+    let l = '';
+    for (let i = 0; i < n; i++) l += `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(i).toFixed(1)} `;
+    mk('path', { d: l, class: 'sp-line' });
+    if (s.nowIndex !== undefined) mk('line', { x1: x(s.nowIndex), x2: x(s.nowIndex), y1: 0, y2: H, class: 'sp-now' });
+    this.sparkHead = mk('g', { class: 'sp-head' }) as SVGGElement;
+    mk('line', { x1: 0, x2: 0, y1: 0, y2: H, class: 'sp-head-line' }, this.sparkHead);
+    this.setHour(Math.min(this.hour, n - 1));
+  }
+
   private draw() {
     const s = this.series;
     const svg = this.svg;
     const box = (this.el.querySelector('#tl-chart') as HTMLElement).getBoundingClientRect();
+    if (box.width < 1 && this.head) return; // hidden while compact: keep the last drawing
     this.W = Math.max(200, box.width);
     const W = this.W;
     const H = this.H;
