@@ -53,6 +53,9 @@ export interface PlaceHandle {
 /** "water at my door": max depth within this radius of the pin (smoothed ~30 m DEM) */
 const NEAR_M = 30;
 const STORE_KEY = 'rrnagar-flood:place:v1';
+/** one saved place per pincode (560098 keeps the original key); set by mountPlace */
+let storeKey = STORE_KEY;
+let pinLabel = '560098';
 const TZ = 'Asia/Kolkata';
 const BIKE = THRESHOLDS.twoWheeler;
 const CAR = THRESHOLDS.car;
@@ -208,7 +211,7 @@ interface Saved {
 }
 function load(): Saved {
   try {
-    const s = JSON.parse(localStorage.getItem(STORE_KEY) ?? 'null');
+    const s = JSON.parse(localStorage.getItem(storeKey) ?? 'null');
     return s && typeof s === 'object' ? (s as Saved) : {};
   } catch {
     return {};
@@ -216,7 +219,7 @@ function load(): Saved {
 }
 function store(s: Saved) {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(s));
+    localStorage.setItem(storeKey, JSON.stringify(s));
   } catch {
     /* private mode / blocked storage: the panel works without it */
   }
@@ -233,6 +236,8 @@ const DEST_NOUN: Record<NearestTarget, string> = { metro: 'metro station', hospi
 
 // ------------------------------------------------------------------ mount
 export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHandle {
+  pinLabel = opts.terrain.meta.pincode;
+  storeKey = pinLabel === '560098' ? STORE_KEY : `${STORE_KEY}:${pinLabel}`;
   const { map, terrain, osm, engine } = opts;
   const meta = terrain.meta;
   const uid = `pl${++uidSeq}`;
@@ -387,7 +392,7 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
     clearBtn.hidden = true;
     results = [];
     if (r.kind === 'coord' && !inBBox(meta, r.coord)) {
-      flash(`That point is outside the modelled area around 560098.`);
+      flash(`That point is outside the modelled area around ${pinLabel}.`);
       return;
     }
     pinAt(r.coord, { label: r.label, sub: r.sublabel, kind: r.kind });
@@ -585,7 +590,7 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
 
   function pinAt(p: LngLat, info?: { label: string; sub: string; kind: string }) {
     if (!inBBox(meta, p)) {
-      flash('That spot is outside the modelled area around 560098.');
+      flash(`That spot is outside the modelled area around ${pinLabel}.`);
       return;
     }
     const d = info ?? describePoint(p);
@@ -705,7 +710,7 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
     const cap0 = $('.pl-spark figcaption span:first-child');
     const cap1 = $('.pl-spark figcaption span:last-child');
     if (place.cell < 0) {
-      setVerdict('idle', 'Outside the modelled area.', 'The flood model covers pincode 560098 and a margin around it.');
+      setVerdict('idle', 'Outside the modelled area.', `The flood model covers pincode ${pinLabel} and a margin around it.`);
       ['now', 'peak', 'above'].forEach((k) => setStat(k, '–'));
       sparkBox.innerHTML = '';
       return;
