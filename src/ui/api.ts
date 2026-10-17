@@ -1,6 +1,7 @@
 // Thin adapter over the real data / sim modules (CONTRACT.md).
 import type { Depression, Hotspot, OsmProps, Terrain } from '../types';
 import { loadTerrain } from '../terrain';
+import { deriveOsmCells } from '../pack/osm';
 
 export type OsmFC = GeoJSON.FeatureCollection<GeoJSON.Geometry, OsmProps>;
 
@@ -32,5 +33,7 @@ export async function loadDataset(base = '/data'): Promise<Dataset> {
     fetchJson<Depression[]>(`${base}/depressions.json`, false),
     fetchJson<Hotspot[]>(`${base}/hotspots.json`, false),
   ]);
+  // v2 packs leave the grid cells out of osm.geojson; rebuild them against this grid
+  if ((terrain.meta.format ?? 1) >= 2) deriveOsmCells(osm!, terrain.meta);
   return { terrain, osm: osm!, depressions: depressions ?? [], hotspots: hotspots ?? [] };
 }
