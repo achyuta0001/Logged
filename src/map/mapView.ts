@@ -163,7 +163,7 @@ function addBoundary(map: MLMap, boundary: GeoJSON.Geometry) {
   const holes = rings(boundary).map((r) => [...r].reverse());
   map.addSource('mask', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [world, ...holes] } } });
   // our own OSM-derived overlays carry the credit too, in case the basemap (which also credits OSM) fails to load
-  map.addSource('boundary', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: boundary }, attribution: 'Boundaries, roads, buildings &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL)' });
+  map.addSource('boundary', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: boundary }, attribution: 'Boundaries, roads, buildings &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL); flood model elevation: Copernicus DEM GLO-30 &copy; DLR e.V., &copy; Airbus Defence and Space GmbH, provided under COPERNICUS by the EU and ESA' });
   map.addLayer({ id: 'mask', type: 'fill', source: 'mask', paint: { 'fill-color': '#02050b', 'fill-opacity': 0.58 } }, OVERLAY_ANCHOR);
   map.addLayer({ id: 'boundary-glow-wide', type: 'line', source: 'boundary', paint: { 'line-color': '#3fd4ff', 'line-width': 14, 'line-blur': 12, 'line-opacity': 0.28 } });
   map.addLayer({ id: 'boundary-glow', type: 'line', source: 'boundary', paint: { 'line-color': '#5fe0ff', 'line-width': 4, 'line-blur': 3, 'line-opacity': 0.6 } });
