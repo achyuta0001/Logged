@@ -26,6 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { spawn, execFileSync } from 'node:child_process';
+import { gzipSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import * as turf from '@turf/turf';
 import { REGION_PBF, hasOsmium } from './lib/osm-local.mjs';
@@ -260,8 +261,12 @@ function writeIndex(catalog) {
       const k = JSON.parse(fs.readFileSync(pj, 'utf8'));
       e.pack = { path: legacy ? '.' : p.code, format: k.format, bytes: k.bytes, gzipBytes: k.gzipBytes, built: k.built, sources: k.sources, ...(p.hydro?.upstreamOutsideKm2 !== undefined ? { upstreamOutsideKm2: p.hydro.upstreamOutsideKm2 } : {}) };
     } else if (p.code === '560098') {
-      // the committed reference pack predates pack.json
-      e.pack = { path: '.', format: 1, bytes: 0, gzipBytes: 0, built: '2026-10-17', sources: ['see public/data/meta.json'], ...(p.hydro?.upstreamOutsideKm2 !== undefined ? { upstreamOutsideKm2: p.hydro.upstreamOutsideKm2 } : {}) };
+      // the committed reference pack predates pack.json: measure its files
+      const files = ['meta.json', 'grids.bin', 'osm.geojson', 'depressions.json', 'hotspots.json'].map((f) => path.join(ROOT, 'public', 'data', f)).filter((f) => fs.existsSync(f));
+      const bytes = files.reduce((a, f) => a + fs.statSync(f).size, 0);
+      const gzipBytes = files.reduce((a, f) => a + gzipSync(fs.readFileSync(f), { level: 9 }).length, 0);
+      const sources = JSON.parse(fs.readFileSync(path.join(ROOT, 'public', 'data', 'meta.json'), 'utf8')).sources ?? [];
+      e.pack = { path: '.', format: 1, bytes, gzipBytes, built: '2026-10-17', sources, ...(p.hydro?.upstreamOutsideKm2 !== undefined ? { upstreamOutsideKm2: p.hydro.upstreamOutsideKm2 } : {}) };
     }
     return e;
   });
