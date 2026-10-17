@@ -20,8 +20,8 @@ export const FACILITY_LABEL: Record<string, string> = {
   market: 'Market',
 };
 
-/** facility kinds hidden in the overview (below z15) unless flooded */
-const MINOR_FACILITIES: OsmKind[] = ['bus_stop', 'school', 'market'];
+/** unaffected places show from this zoom (street level) unless "All places" is on */
+const ALL_PLACES_MINZOOM = 15.5;
 
 const ROAD_WIDTH: Record<string, number> = { motorway: 4, trunk: 3.6, primary: 3.2, secondary: 2.6, tertiary: 2.1, residential: 1.2, unclassified: 1.2, service: 0.8 };
 
@@ -114,26 +114,41 @@ export class FeatureLayers {
         properties: { ...f.properties, d: 0, hit: false },
       }));
     map.addSource('facilities', { type: 'geojson', data: { type: 'FeatureCollection', features: this.facilities } });
+    // Calm by default: only places the water reaches are drawn (red). Everyday, unaffected
+    // places appear from street level (z15.5+) or when "All places" is switched on.
+    // (Separate layers, because zoom in a filter is only evaluated at integer zooms.)
+    map.addLayer({
+      id: 'facilities-all',
+      type: 'symbol',
+      source: 'facilities',
+      minzoom: ALL_PLACES_MINZOOM,
+      filter: ['!', ['get', 'hit']],
+      layout: {
+        'icon-image': ['concat', 'fac-', ['get', 'kind']],
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.24, 16, 0.44],
+        'icon-allow-overlap': ['step', ['zoom'], false, 15.5, true],
+        'symbol-sort-key': ['case', ['==', ['get', 'kind'], 'bus_stop'], 2, 1],
+        'icon-pitch-alignment': 'viewport',
+      },
+      paint: { 'icon-opacity': 0.85 },
+    });
     map.addLayer({
       id: 'facilities-pulse',
       type: 'circle',
       source: 'facilities',
       filter: ['==', ['get', 'hit'], true],
-      paint: { 'circle-color': 'rgba(255,59,79,0)', 'circle-stroke-color': '#ff3b4f', 'circle-stroke-width': 2, 'circle-radius': 12, 'circle-stroke-opacity': 0.8, 'circle-pitch-alignment': 'viewport' },
+      paint: { 'circle-color': 'rgba(255,59,79,0)', 'circle-stroke-color': '#ff3b4f', 'circle-stroke-width': 1.5, 'circle-radius': 10, 'circle-stroke-opacity': 0.5, 'circle-pitch-alignment': 'viewport' },
     });
     map.addLayer({
       id: 'facilities',
       type: 'symbol',
       source: 'facilities',
-      // overview stays readable: everyday places (bus stops, schools, markets) only
-      // appear once zoomed in, unless the water reaches them
-      filter: ['any', ['get', 'hit'], ['>=', ['zoom'], 15], ['!', ['in', ['get', 'kind'], ['literal', MINOR_FACILITIES]]]],
+      filter: ['==', ['get', 'hit'], true],
       layout: {
-        'icon-image': ['concat', 'fac-', ['get', 'kind'], ['case', ['get', 'hit'], '-hit', '']],
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 12, ['case', ['get', 'hit'], 0.38, 0.28], 16, ['case', ['get', 'hit'], 0.56, 0.46]],
+        'icon-image': ['concat', 'fac-', ['get', 'kind'], '-hit'],
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.34, 16, 0.54],
         'icon-allow-overlap': ['step', ['zoom'], false, 14.5, true],
         'icon-ignore-placement': false,
-        'symbol-sort-key': ['case', ['get', 'hit'], 0, ['==', ['get', 'kind'], 'bus_stop'], 2, 1],
         'icon-pitch-alignment': 'viewport',
       },
     });
@@ -154,12 +169,12 @@ export class FeatureLayers {
   private pulse(t: number) {
     this.pulseRaf = requestAnimationFrame(this.pulse);
     if (!this.visible.facilities || !this.facilities.some((f) => f.properties.hit)) return;
-    if (t - this.lastPulse < 40) return; // ~25 fps is plenty for a pulse
+    if (t - this.lastPulse < 50) return; // ~20 fps is plenty for a slow pulse
     this.lastPulse = t;
-    const p = (t % 1600) / 1600;
+    const p = (t % 2400) / 2400;
     if (this.map.getLayer('facilities-pulse')) {
-      this.map.setPaintProperty('facilities-pulse', 'circle-radius', 10 + p * 18);
-      this.map.setPaintProperty('facilities-pulse', 'circle-stroke-opacity', 0.9 * (1 - p));
+      this.map.setPaintProperty('facilities-pulse', 'circle-radius', 9 + p * 12);
+      this.map.setPaintProperty('facilities-pulse', 'circle-stroke-opacity', 0.55 * (1 - p));
     }
   }
 
@@ -196,6 +211,11 @@ export class FeatureLayers {
       }
     }
     if (changed) (map.getSource('facilities') as GeoJSONSource).setData({ type: 'FeatureCollection', features: this.facilities });
+  }
+
+  /** Show every school, hospital and stop at all zooms (otherwise only from street level). */
+  setAllPlaces(on: boolean) {
+    if (this.map.getLayer('facilities-all')) this.map.setLayerZoomRange('facilities-all', on ? 0 : ALL_PLACES_MINZOOM, 24);
   }
 
   setVisible(group: 'buildings' | 'roads' | 'facilities', v: boolean) {
