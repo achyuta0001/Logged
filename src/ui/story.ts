@@ -61,13 +61,14 @@ const FACTS: { lead: string; text: string; href: string; by: string }[] = [
   },
 ];
 
-type Agree = 'match' | 'low' | 'norep' | 'na';
-const PILL: Record<Agree, string> = { match: 'Match', low: 'Model low', norep: 'No report', na: 'Not run' };
+type Agree = 'match' | 'low' | 'norep' | 'na' | 'out';
+const PILL: Record<Agree, string> = { match: 'Match', low: 'Model low', norep: 'No report', na: 'Not run', out: 'Outside model' };
 const PILL_TIP: Record<Agree, string> = {
   match: `Reported flooding, and the model floods this spot to ${MATCH_DEPTH_M} m or more`,
   low: `Reported flooding, but the model keeps this spot below ${MATCH_DEPTH_M} m. The model may be missing something here`,
   norep: 'The model floods this spot, but we found no news report of flooding here',
   na: 'Run a forecast or scenario to compare',
+  out: 'This spot lies outside the area the flood model covers',
 };
 
 interface Row {
@@ -118,10 +119,13 @@ export function mountStoryPanel(container: HTMLElement, opts: StoryOptions): Sto
 
   function rows(): Row[] {
     const out: Row[] = [];
-    for (const h of opts.hotspots) {
+    const depths = opts.hotspots.map((h) => probeDepth(depthFn, h.coord));
+    // once any spot has a model value the run exists; a missing value then means off-grid
+    const ran = depths.some((d) => d !== undefined);
+    opts.hotspots.forEach((h, i) => {
       const e = latestEvent(h);
-      const depth = probeDepth(depthFn, h.coord);
-      const agree: Agree = !e ? 'norep' : depth === undefined ? 'na' : depth >= MATCH_DEPTH_M ? 'match' : 'low';
+      const depth = depths[i];
+      const agree: Agree = !e ? 'norep' : depth === undefined ? (ran ? 'out' : 'na') : depth >= MATCH_DEPTH_M ? 'match' : 'low';
       const n = h.events.length;
       out.push({
         name: h.name,
@@ -132,7 +136,7 @@ export function mountStoryPanel(container: HTMLElement, opts: StoryOptions): Sto
         agree,
         href: e?.source,
       });
-    }
+    });
     // modelled ponding with no report nearby (only when a model run is available)
     if (opts.depressions && depthFn) {
       let added = 0;
