@@ -21,30 +21,36 @@ comments and the draft PR, then continue from **Next step**.
 | M0 Your place mounted, place tests, layout polish | done |
 | M1 Multi-region foundation | done |
 | M2 Pack size and speed | done (format 2) |
-| M3 City overview | done (UI + data:city); polish pending |
-| M4 Cross-pincode catchments | todo |
-| M5 Build and verify 12+ packs | todo |
-| M6 Polish and hand-over | todo |
+| M3 City overview | done (optional district-wide storm raster not done) |
+| M4 Cross-pincode catchments | minimum done (upstreamOutsideKm2 + UI caveat); upstream padding not done |
+| M5 Build and verify 12+ packs | done: 117 packs built, 14 reported in README / PR |
+| M6 Polish and hand-over | done |
 
 ## Done
 
-- M0: `mountPlace` wired into `src/main.ts` (refresh after each run, `setHour` debounced while playing); `src/place/__tests__/route.test.ts` (detour, full blockage, real-data smoke); `npm test` runs `src/**/__tests__/*.test.ts`; attribution starts collapsed; KPI labels shortened; speed control can't clip.
+- M0: `mountPlace` is wired into `src/main.ts`. Place tests are added, and `npm test` runs every `src/**/__tests__` suite. Attribution starts collapsed, KPI labels fit, and the speed control no longer clips.
+- M1: `src/region/packs.ts`; `?pin=` routing in a persistent shell with region `destroy()` (no leaks over five round trips in headless Chromium); `npm run data -- --pin`; `public/data/pins/index.json`.
+- M2: pack format 2 (`src/pack/`), documented in CONTRACT.md. All 117 packs are ≤ 3.2 MB gzipped. Cell size adapts for big pincodes.
+- M3: `npm run data:city` and `src/region/city.ts`. The overview transfers 1.8 MB without basemap tiles.
+- M4: `upstreamOutsideKm2` per pack (district-wide 60 m flow accumulation), shown as a quiet caveat line.
+- M5: `scripts/report.mjs`. The results table is in the README. Sourced flood spots are in `scripts/data/hotspots-blr.json`.
+- Committed sample packs: 560034 and 560071 (and 560098). Every other pack is git-ignored; `npm run data:all` builds them.
 
-- M1: `src/region/packs.ts` (index loader, schema checks, search), `?pin=` routing with a persistent shell and region `destroy()` (`src/main.ts`), `npm run data -- --pin <code>` writes `public/data/pins/<code>/`, and `public/data/pins/index.json` is committed (117 pincodes). Tests: `src/region/__tests__/packs.test.ts`.
-- M2: pack format 2 (`src/pack/codec.ts`, `src/pack/osm.ts`, documented in CONTRACT.md). 560034 went from 2.23 to 1.16 MB gzipped, and v1 and v2 simulate the same (calibrate). Large pincodes use a coarser cell (`cellSizeFor` in build-data) so packs stay near 140k cells.
-- M3: `npm run data:city` (`scripts/build-city.mjs`, 40 s) writes `public/data/city/city.geojson` (171 kB) and the index. The city view is in `src/region/city.ts`.
+## Next step (suggested follow-ups, none blocking)
 
-## In progress
+1. Host the packs. Run the manual workflow `.github/workflows/packs.yml` (not triggered by this run), publish `public/data/pins`, and point the app at it with `?packs=` or `VITE_PACKS_URL`.
+2. M4 "better": pad each pack's bbox upstream along its catchment (with a cap), so inflow is simulated.
+3. Model drains surcharging at bottlenecks. Flyover hotspots need a "road under deck" handling.
+4. Add more sourced flood reports to `scripts/data/hotspots-blr.json`, then run `npm run data:all -- --force --pins <codes>`.
+5. Optional: a coarse district-wide run of the 20 Oct 2024 storm as an overview raster.
 
-- `npm run data:all -- --jobs 2` (all 117 packs, git-ignored; log in `.cache/all.log`).
-
-## Next step
-
-- M4: show a quiet caveat in the UI when `pack.upstreamOutsideKm2` is large (the data is already in the index).
-- M5: `node scripts/calibrate.mjs --pin <code> --impact` for the 12+ sample pincodes, then a table in the PR.
-- Leak check: switch regions repeatedly in headless Chromium and watch heap and worker counts.
-- Pick 2–3 small sample packs to commit: un-ignore them in `.gitignore`, then run `node scripts/build-city.mjs --index-only --only-committed`.
+Verify: `npx tsc --noEmit && npm test && npx vite build`. For a pack: `node scripts/calibrate.mjs --pin <code> --impact`.
 
 ## Decisions
 
-- Synthetic packs are test fixtures only (under `src/**/__tests__/`), never shown as real places.
+- Branch: the session's designated branch, `claude/dreamy-ritchie-rr1iam`, not `blr-urban`.
+- OSM comes from the planet on AWS `osm-pds` via osmium, because Overpass and Geofabrik are blocked here. The Daylight distribution was tried first and dropped: it has no boundary relations.
+- Pincode rule: OSM `boundary=postal_code`, code from `postal_code` or else a 6-digit number in `ref`/`name`, ≥ 50 % of area inside relation 2020589. This keeps 117 of 139.
+- 560098 stays format 1 in `public/data/`. `data:all` rebuilds it only when asked by name.
+- Synthetic packs are test fixtures only.
+- The scenarios are city-wide reuses of the RR Nagar 2024 rainfall. This is stated in the README.
