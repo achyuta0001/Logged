@@ -1,0 +1,97 @@
+[
+  {
+    "name": "BEML Layout, RR Nagar",
+    "coord": [77.5202, 12.9197],
+    "events": [
+      { "date": "2020-10-23", "summary": "Heavy rain flooded about 300 houses across Gurudatta Layout, areas near Bheemanakatte lake in Hosakerehalli and BEML Layout, with gushing water sweeping away vehicles.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/300-houses-flooded-as-heavy-rain-pounds-bengaluru-906259.html" },
+      { "date": "2024-10-20", "summary": "Rainwater entered at least 100 homes in BEML Layout after heavy overnight rain, with residents blaming slow stormwater drain construction; RR Nagar logged 177.6 mm (Weather Union).", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/homes-flooded-roads-choked-yet-again-after-another-rain-spell-3240856" }
+    ]
+  },
+  {
+    "name": "Gurudatta Layout / Dattatreya Nagar (Hosakerehalli)",
+    "coord": [77.5405, 12.9240],
+    "events": [
+      { "date": "2020-10-23", "summary": "A stormwater drain breach sent sewage water into over 300 houses in Gurudatta Layout and Dattatreya Nagar, with officials expecting the toll to cross 500 including BEML and Pramod Layouts.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/in-flooded-hosakerehalli-muck-washes-away-festive-celebrations-906645.html" }
+    ]
+  },
+  {
+    "name": "Hosakerehalli Lake",
+    "coord": [77.5342, 12.9269],
+    "events": [
+      { "date": "2020-10-23", "summary": "Heavy rain sparked fears of a breach in Hosakerehalli Lake, causing panic among thousands of residents in south Bengaluru.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/300-houses-flooded-as-heavy-rain-pounds-bengaluru-906259.html" },
+      { "date": "2023-05-08", "summary": "Hosakerehalli lake overflowed in an evening downpour, sending sewage-mixed water into streets with knee-deep water for about two hours.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-rains-disrupt-bengaluru-traffic-leaves-several-areas-flooded-1217035.html" }
+    ]
+  },
+  {
+    "name": "Pramod Layout (near Nayandahalli)",
+    "coord": [77.5279, 12.9362],
+    "events": [
+      { "date": "2020-09-10", "summary": "The retention wall of a stormwater drain at Pramod Layout breached, and residents pumped five to seven feet of water out of basements.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/massive-flooding-destruction-after-heavy-rain-in-bengaluru-885699.html" },
+      { "date": "2020-10-23", "summary": "Pramod Layout was among the RR Nagar areas worst hit when overflowing stormwater drains flooded homes.", "source": "https://thenewsminute.com/article/heavy-rains-overflowing-stormwater-drains-lead-flooding-south-bengaluru-areas-136036" },
+      { "date": "2021-10-04", "summary": "Overflowing stormwater drains from Hosakerehalli flooded Pramod Layout, worsened by a collapsing BBMP-built sidewall.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-floods-apartments-shops-in-parts-of-bengaluru-1037414.html" }
+    ]
+  },
+  {
+    "name": "Ideal Homes Township",
+    "coord": [77.5183, 12.9273],
+    "events": [
+      { "date": "2019-10-22", "summary": "The basement of an apartment in RR Nagar's Ideal Homes layout was flooded up to one foot after overnight rain.", "source": "https://www.deccanherald.com/city/south-west-bengaluru-worst-hit-by-tuesday-night-s-rain-770668.html" },
+      { "date": "2021-10-04", "summary": "Heavy rain flooded several private layouts including Ideal Homes Layout, Nagarbhavi and Nayandahalli.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-floods-apartments-shops-in-parts-of-bengaluru-1037414.html" }
+    ]
+  },
+  {
+    "name": "Kenchenahalli, RR Nagar",
+    "coord": [77.5133, 12.9268],
+    "events": [
+      { "date": "2025-05", "summary": "Ten cars were damaged after water entered an apartment complex at Kenchenahalli, as RR Nagar and Jnanabharathi got about 106 mm in one night.", "source": "https://gulfnews.com/world/asia/india/bengaluru-faces-heaviest-rainfall-of-the-year-1.500132345" }
+    ]
+  },
+  {
+    "name": "Rajarajeshwari Nagar (central)",
+    "coord": [77.5155, 12.9274],
+    "events": [
+      { "date": "2017-10-13", "summary": "Rajarajeshwari Nagar was among the worst-affected areas of an evening downpour, with water levels rising up to four feet.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-evening-rain-wrecks-citys-2029125" },
+      { "date": "2020-10-23", "summary": "A stormwater drain breached around 4 pm in Rajarajeshwari Nagar, sending water gushing into houses after KSNDMC recorded over 100 mm of rain.", "source": "https://thenewsminute.com/article/heavy-rains-overflowing-stormwater-drains-lead-flooding-south-bengaluru-areas-136036" },
+      { "date": "2022-05-17", "summary": "After overnight flooding, the Chief Minister said in RR Nagar that stormwater drain works were incomplete and there were about 20 drain bottlenecks in RR Nagar.", "source": "https://www.thenewsminute.com/article/bengaluru-residents-upset-choked-stormwater-drains-lead-flooding-164116" }
+    ]
+  },
+  {
+    "name": "RR Nagar Arch junction, Mysuru Road",
+    "coord": [77.5185, 12.9363],
+    "events": [
+      { "date": "2021-11-15", "summary": "The BBMP control room received complaints of waterlogging near the RR Nagar arch during heavy rain.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/rains-lash-bengaluru-houses-roads-flooded-1051183.html" }
+    ]
+  },
+  {
+    "name": "Mysuru Road at Nayandahalli (Vrishabhavathi valley)",
+    "coord": [77.5255, 12.9416],
+    "events": [
+      { "date": "2017-10-05", "summary": "Sewage mixing with rainwater in the Vrishabhavathi valley flooded Mysuru Road in Nayandahalli, submerging the road to the metro station.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/passersby-take-commuters-stranded-bus-2027654" },
+      { "date": "2017-10-13", "summary": "Floodwater rose to dangerous levels and almost submerged buses near Nayandahalli.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-evening-rain-wrecks-citys-2029125" },
+      { "date": "2020-10-20", "summary": "BBMP's control room reported waterlogging at Nayandahalli and Kengeri among other areas.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/havoc-in-south-west-bengaluru-more-rain-forecast-until-friday-904860.html" },
+      { "date": "2024-10-05", "summary": "The stormwater drain at Jnanabharathi overflowed onto Mysuru Road, clogging the Nayandahalli junction and blocking the road.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/sudden-deluge-of-rains-trigger-traffic-jams-water-logging-in-bengaluru-3221194" }
+    ]
+  },
+  {
+    "name": "Global Village Tech Park (behind RV College)",
+    "coord": [77.5002, 12.9195],
+    "events": [
+      { "date": "2017-10-13", "summary": "The Global Village Tech Park in Rajarajeshwari Nagar behind RV College of Engineering was submerged in an evening downpour.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-evening-rain-wrecks-citys-2029125" }
+    ]
+  },
+  {
+    "name": "Mysuru Road at Dubasipalya / RV College",
+    "coord": [77.4995, 12.9240],
+    "events": [
+      { "date": "2020-10", "summary": "The Dubasipalya drain overflowed because the pipe under Mysuru Road was too small, inundating the highway and disrupting traffic for over an hour.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/drain-overflows-floods-mysuru-road-906648.html" },
+      { "date": "2025-05", "summary": "Waterlogging slowed traffic at Kengeri, RV College and Jayaramdas junction on Mysuru Road.", "source": "https://gulfnews.com/world/asia/india/bengaluru-faces-heaviest-rainfall-of-the-year-1.500132345" }
+    ]
+  },
+  {
+    "name": "Vrishabhavathi retaining wall, Mylasandra",
+    "coord": [77.4975, 12.9160],
+    "events": [
+      { "date": "2020-06-25", "summary": "Heavy inflow into the Vrishabhavathi washed away a major portion of its retaining wall near Mylasandra on Mysuru Road, affecting traffic.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-washes-away-retaining-wall-along-vrishabhavathi-853812.html" }
+    ]
+  }
+]
