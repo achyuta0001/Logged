@@ -13,8 +13,11 @@ Inspired by the Claude wildfire analysis prototype. Everything here runs on free
 - **Scenarios**: a typical monsoon evening, the **20 Oct 2024 RR Nagar storm (177.6 mm)**, a hypothetical cloudburst, and a multi-day soak.
 - **Flood simulation**: a 2D diffusive-wave model in a Web Worker. It accounts for infiltration, storm-drain capacity and blockage, and lake storage, and is mass-conserving (tested). A 9-day forecast runs in about 2 s.
 - **Impact**: road passability for two-wheelers (>0.15 m), cars (>0.30 m) and buses (>0.50 m); wet ground floors (>0.25 m); affected schools, hospitals, metro stations, bus stops and substations; plus daily-life cards.
-- **Model vs reported**: 12 historically reported flood spots (each with a news source) compared against modelled depth.
-- **Visuals**: 3D terrain, animated shaded water, rain overlay, extruded buildings coloured by flood depth, and a guided cinematic tour.
+- **Model vs reported**: 12 historically reported flood spots (each with a news source) compared against modelled depth, plus a sourced "Why RR Nagar floods" explainer.
+- **Visuals**: 3D terrain, animated shaded water, rain overlay, extruded buildings coloured by flood depth, and an 8-stop guided tour (Tour button; arrow keys, Space to pause, Esc to exit).
+- **Map**: dark vector basemap or Sentinel-2 satellite, adjustable terrain height, and optional analysis layers (low spots, flow paths, land near streams, drains, lakes, reported floods). Hover or tap anywhere for depth, ground level and drainage at that spot.
+- **Phones and tablets**: the side panels become drawers; the timeline stays on screen.
+- **Shareable views**: `?scenario=<id>` (`typical-evening`, `rrnagar-2024-10-20`, `cloudburst`, `multi-day-soak`), `&basemap=satellite`, `&view=lng,lat,zoom[,pitch,bearing]`.
 
 ## Run it
 
