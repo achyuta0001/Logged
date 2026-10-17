@@ -70,7 +70,9 @@ export async function createMap(container: HTMLElement, boundary: GeoJSON.Geomet
   retheme(style);
 
   style.sources['eox'] = { type: 'raster', tiles: [EOX], tileSize: 256, maxzoom: 15, attribution: ATTR_EOX };
-  style.sources['dem'] = { type: 'raster-dem', tiles: [TERRARIUM], encoding: 'terrarium', tileSize: 256, maxzoom: 15, attribution: ATTR_TERRAIN };
+  // terrain maxzoom matches the vector basemap (z14): overscaled basemap tiles above a deeper DEM
+  // trigger a MapLibre warning, and z14 terrarium (~9 m) already out-resolves the ~30 m SRTM data
+  style.sources['dem'] = { type: 'raster-dem', tiles: [TERRARIUM], encoding: 'terrarium', tileSize: 256, maxzoom: 14, attribution: ATTR_TERRAIN };
   style.sources['dem-hs'] = { type: 'raster-dem', tiles: [TERRARIUM], encoding: 'terrarium', tileSize: 256, maxzoom: 15 };
   const bgIdx = style.layers.findIndex((l) => l.type === 'background');
   style.layers.splice(
