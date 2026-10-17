@@ -6,6 +6,7 @@
 //                      /osm.geojson  depressions.json  hotspots.json (optional)
 // The 560098 reference pack stays in public/data (pack.path "."), so old links keep working.
 import type { PinEntry, PinIndex, TerrainMeta } from '../types.ts';
+import { layerBytes } from '../pack/codec.ts';
 
 export const LEGACY_PIN = '560098';
 
@@ -115,6 +116,7 @@ export function validateMeta(meta: TerrainMeta, binBytes?: number): string[] {
   const errs: string[] = [];
   if (!meta || typeof meta !== 'object') return ['not an object'];
   if (!/^\d{6}$/.test(String(meta.pincode))) errs.push('pincode must be 6 digits');
+  if (meta.format !== undefined && meta.format !== 1 && meta.format !== 2) errs.push(`unknown format ${String(meta.format)}`);
   if (!isBBox(meta.bbox)) errs.push('bad bbox');
   if (!(Number.isInteger(meta.width) && meta.width > 0 && Number.isInteger(meta.height) && meta.height > 0)) errs.push('bad width/height');
   if (!isNum(meta.cellSizeM) || meta.cellSizeM <= 0) errs.push('bad cellSizeM');
@@ -128,7 +130,9 @@ export function validateMeta(meta: TerrainMeta, binBytes?: number): string[] {
       continue;
     }
     if (l.length !== n) errs.push(`layer ${k}: length ${l.length} != ${n}`);
-    if (binBytes !== undefined && l.offset + l.length * (l.dtype === 'f32' ? 4 : 1) > binBytes) errs.push(`layer ${k}: past the end of grids.bin`);
+    if (l.derived && k !== 'filled') errs.push(`layer ${k}: only filled can be derived`);
+    if (!['f32', 'u8', 'u16'].includes(l.dtype)) errs.push(`layer ${k}: unknown dtype ${String(l.dtype)}`);
+    if (binBytes !== undefined && l.offset + layerBytes(l) > binBytes) errs.push(`layer ${k}: past the end of grids.bin`);
   }
   return errs;
 }
