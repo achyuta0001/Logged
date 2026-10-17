@@ -142,9 +142,13 @@ export class AnalysisLayers {
 
   private addHotspot(h: Hotspot) {
     const el = document.createElement('div');
+    // subtle by default: a small ring (still a generous click target), details on click
     el.className = 'hotspot';
-    el.innerHTML = '<span class="hotspot-ring"></span><span class="hotspot-core"></span><span class="hotspot-badge"></span>';
+    el.innerHTML = '<span class="hotspot-core"></span><span class="hotspot-badge"></span>';
     const badge = el.querySelector('.hotspot-badge') as HTMLElement;
+    el.setAttribute('role', 'button');
+    el.tabIndex = 0;
+    el.title = `Reported flooding: ${h.name}`;
     el.setAttribute('aria-label', `Reported flooding: ${h.name}`);
     const events = [...h.events].sort((a, b) => b.date.localeCompare(a.date));
     const html = () => {
@@ -152,7 +156,7 @@ export class AnalysisLayers {
       const model =
         md === undefined
           ? ''
-          : `<div class="pop-model ${md >= 0.15 ? 'agree' : 'miss'}"><span>Model peak within 100 m</span><b>${md < 0.02 ? 'dry' : md < 1 ? Math.round(md * 100) + ' cm' : md.toFixed(2) + ' m'}</b><em>${md >= 0.15 ? 'Model also floods here' : 'Model stays below 15 cm here'}</em></div>`;
+          : `<div class="pop-model ${md >= 0.15 ? 'agree' : 'miss'}"><span>Deepest street water within 300 m</span><b>${md < 0.02 ? 'dry' : md < 1 ? Math.round(md * 100) + ' cm' : md.toFixed(2) + ' m'}</b><em>${md >= 0.15 ? 'Model also floods here' : 'Model stays below 15 cm here'}</em></div>`;
       return `<div class="pop">
       <div class="pop-title">${esc(h.name)}</div>
       <div class="pop-sub">${events.length} reported flood${events.length === 1 ? '' : 's'}</div>${model}
@@ -165,6 +169,11 @@ export class AnalysisLayers {
     const popup = new maplibregl.Popup({ offset: 14, maxWidth: '320px', className: 'glass-popup' }).setHTML(html());
     popup.on('open', () => popup.setHTML(html()));
     const m = new maplibregl.Marker({ element: el }).setLngLat(h.coord).setPopup(popup).addTo(this.map);
+    el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      m.togglePopup();
+    });
     this.hotspotMarkers.push({ m, h, badge });
   }
 
