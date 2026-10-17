@@ -318,6 +318,94 @@ function gaussian(src, W, H, sigma) {
   return out;
 }
 
+// ---------------------------------------------------------------- bare-earth approximation
+// GLO-30 is a radar SURFACE model: at 30 m a built block or a tree canopy reads several metres above
+// the street, so open plots, wide roads and courtyards between "building blobs" become artificial
+// pits. Ground is approximated with a robust rank-order opening (low-percentile erosion followed by
+// the symmetric high-percentile dilation): it removes bumps narrower than the window, keeps valleys
+// and reproduces planar slopes exactly, and tolerates a few noisy low pixels. The opened surface
+// replaces the DSM in proportion to how unreliable each cell is (mapped buildings, trees, built-up
+// land use) and is kept where the ground is visible to the sensor (water, open land, wide roads).
+
+/** windowed percentile (q in 0..1) over a (2*rad+1)^2 square, clipped at the grid edges */
+function rankFilter(src, W, H, rad, q) {
+  const out = new Float64Array(W * H);
+  const buf = new Float64Array((2 * rad + 1) ** 2);
+  for (let r = 0; r < H; r++) {
+    const r0 = Math.max(0, r - rad), r1 = Math.min(H - 1, r + rad);
+    for (let c = 0; c < W; c++) {
+      const c0 = Math.max(0, c - rad), c1 = Math.min(W - 1, c + rad);
+      let n = 0;
+      for (let rr = r0; rr <= r1; rr++) for (let cc = c0; cc <= c1; cc++) buf[n++] = src[rr * W + cc];
+      const v = buf.subarray(0, n).sort();
+      out[r * W + c] = v[Math.round(q * (n - 1))];
+    }
+  }
+  return out;
+}
+
+/** mean over a (2*rad+1)^2 square (clipped at the edges) */
+function boxMean(src, W, H, rad) {
+  const tmp = new Float64Array(W * H), out = new Float64Array(W * H);
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    let s = 0, n = 0;
+    for (let k = Math.max(0, c - rad); k <= Math.min(W - 1, c + rad); k++) { s += src[r * W + k]; n++; }
+    tmp[r * W + c] = s / n;
+  }
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
+    let s = 0, n = 0;
+    for (let k = Math.max(0, r - rad); k <= Math.min(H - 1, r + rad); k++) { s += tmp[k * W + c]; n++; }
+    out[r * W + c] = s / n;
+  }
+  return out;
+}
+
+const BARE = {
+  rad: 3, // opening window radius in cells (7 x 7 = 105 m at 15 m; a 30 m DSM pixel blob is ~45-90 m)
+  qLow: 0.1, // erosion percentile (robust minimum)
+  bldFull: 0.3, // mapped building cover (45 m window) at which the DSM counts as fully unreliable
+  baseRel: 0.25, // reliability of cells with no evidence either way (urban area, OSM buildings incomplete)
+  openRel: 0.9, // reliability of water / open land / wide roads
+};
+
+/**
+ * Approximate a terrain model from the DSM.
+ *  dsm: Float64 (raw, resampled), bldFrac/treeFrac/openFrac: 0..1 per cell.
+ * 1. base = min(dsm, rank-opening(dsm)): bumps narrower than ~100 m removed, valleys kept.
+ * 2. reliability r per cell: high where the radar sees the ground (water, open land, wide roads),
+ *    low under mapped buildings / trees, a low default elsewhere (OSM buildings are incomplete).
+ * 3. unreliable cells take a reliability-weighted multi-scale (Gaussian sigma 30/60/120 m) average of
+ *    their neighbours' base — this also removes the opposite artefact, building-sized holes (radar
+ *    shadow, excavations at acquisition time) under footprints, which an opening cannot fix.
+ *    dtm = r * base + (1 - r) * interp.
+ * Returns { dtm, rel, lowered } — lowered = dsm - dtm (negative where a hole was raised).
+ */
+function bareEarth(dsm, W, H, bldFrac, treeFrac, openFrac) {
+  const { rad, qLow, bldFull, baseRel, openRel } = BARE;
+  const eroded = rankFilter(dsm, W, H, rad, qLow);
+  const opened = rankFilter(eroded, W, H, rad, 1 - qLow);
+  const b45 = boxMean(bldFrac, W, H, 1), t45 = boxMean(treeFrac, W, H, 1);
+  const N = W * H, base = new Float64Array(N), rel = new Float64Array(N), wb = new Float64Array(N);
+  for (let i = 0; i < N; i++) {
+    base[i] = Math.min(dsm[i], opened[i]);
+    const visible = Math.max(baseRel, openRel * openFrac[i]);
+    rel[i] = visible * (1 - Math.min(1, b45[i] / bldFull)) * (1 - Math.min(1, t45[i]));
+    wb[i] = rel[i] * base[i];
+  }
+  const num = new Float64Array(N), den = new Float64Array(N);
+  for (const [sigma, k] of [[2, 1], [4, 0.25], [8, 0.0625]]) {
+    const gn = gaussian(wb, W, H, sigma), gd = gaussian(rel, W, H, sigma);
+    for (let i = 0; i < N; i++) { num[i] += k * gn[i]; den[i] += k * gd[i]; }
+  }
+  const dtm = new Float64Array(N), lowered = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const interp = den[i] > 1e-9 ? num[i] / den[i] : base[i];
+    dtm[i] = rel[i] * base[i] + (1 - rel[i]) * interp;
+    lowered[i] = dsm[i] - dtm[i];
+  }
+  return { dtm, rel: Float32Array.from(rel), lowered };
+}
+
 // ---------------------------------------------------------------- hydrology
 const DR = [0, 1, 1, 1, 0, -1, -1, -1];
 const DC = [1, 1, 0, -1, -1, -1, 0, 1];
@@ -433,6 +521,24 @@ function landuseImperv(t) {
   if (['park', 'garden', 'playground', 'pitch', 'nature_reserve', 'recreation_ground'].includes(t.leisure) || ['grass', 'forest', 'meadow', 'farmland', 'orchard', 'village_green', 'recreation_ground', 'cemetery', 'greenfield', 'plant_nursery', 'farmyard'].includes(t.landuse) || ['wood', 'scrub', 'grassland', 'wetland'].includes(t.natural)) return t.landuse === 'cemetery' ? 0.3 : 0.2;
   return null;
 }
+/** share of a cell's DSM signal that is tree canopy (0..1) */
+function treeCover(t) {
+  if (!t) return 0;
+  if (t.natural === 'wood' || t.landuse === 'forest') return 1;
+  if (t.landuse === 'orchard') return 0.7;
+  if (['park', 'garden', 'nature_reserve'].includes(t.leisure)) return 0.5; // Bengaluru parks are heavily treed
+  if (t.natural === 'scrub') return 0.4;
+  if (t.landuse === 'cemetery') return 0.3;
+  return 0;
+}
+/** land where the radar sees the ground: water, grass, fields, bare plots (0..1) */
+function openCover(t) {
+  if (!t) return 0;
+  if (t.natural === 'water' || t.water || ['reservoir', 'basin'].includes(t.landuse)) return 1;
+  if (['grass', 'meadow', 'farmland', 'greenfield', 'brownfield', 'construction', 'village_green', 'landfill', 'farmyard'].includes(t.landuse)) return 1;
+  if (['pitch', 'playground', 'recreation_ground'].includes(t.leisure) || ['grassland', 'wetland', 'heath', 'bare_rock', 'sand'].includes(t.natural)) return 1;
+  return 0;
+}
 // lower priority = painted first (smaller areas painted later override)
 
 const round6 = (x) => Math.round(x * 1e6) / 1e6;
@@ -475,7 +581,11 @@ async function main() {
     sources.push('DEM: AWS Open Data Terrain Tiles (Mapzen terrarium z15; SRTM courtesy of NASA/USGS, public domain; attribution per github.com/tilezen/joerd), bilinear-resampled to 15 m');
   }
   const SIGMA = 1.5;
-  dem = gaussian(dem, W, H, SIGMA);
+  const dsm = dem; // raw resampled surface model; bare-earth correction + smoothing happen after OSM rasterisation
+  sources.push(
+    `Bare-earth approximation: rank-order opening of the DSM (${2 * BARE.rad + 1}x${2 * BARE.rad + 1} cells, ` +
+      `${BARE.qLow * 100}th/${100 - BARE.qLow * 100}th percentile) blended in where OSM buildings, trees or built-up land make the surface model unreliable`,
+  );
   sources.push(`DEM smoothed with Gaussian sigma=${SIGMA} cells; OSM drains burned (-1..2.5 m) and lakes lowered 0.5 m`);
   sources.push('© OpenStreetMap contributors, ODbL 1.0 (openstreetmap.org/copyright), fetched once via Overpass API and cached');
 
@@ -487,6 +597,7 @@ async function main() {
   const subBuilding = new Uint8Array(SW * SH), subRoad = new Uint8Array(SW * SH);
   const baseImp = new Float64Array(N).fill(0.6);
   const baseArea = new Float64Array(N).fill(Infinity); // smallest landuse polygon wins
+  const treeFrac = new Float64Array(N), openFrac = new Float64Array(N);
   const lakeName = new Map(); // cell -> name
 
   fillGeom(G, boundary, 1, (i) => (boundaryMask[i] = 1));
@@ -509,6 +620,11 @@ async function main() {
     if (li !== null && /Polygon/.test(geom.type)) {
       const area = turf.area(geom);
       fillGeom(G, geom, 1, (i) => { if (area < baseArea[i]) { baseArea[i] = area; baseImp[i] = li; } });
+    }
+    if (/Polygon/.test(geom.type)) {
+      const tc = treeCover(t), oc = openCover(t);
+      if (tc > 0) fillGeom(G, geom, 1, (i) => (treeFrac[i] = Math.max(treeFrac[i], tc)));
+      if (oc > 0) fillGeom(G, geom, 1, (i) => (openFrac[i] = Math.max(openFrac[i], oc)));
     }
 
     const kind = classify(t);
@@ -590,12 +706,9 @@ async function main() {
     outFeatures.push({ type: 'Feature', geometry: { type: outGeom.type, coordinates: dedupeRing(roundCoords(outGeom.coordinates)) }, properties: props });
   }
 
-  // ------------------------------------------------ conditioned DEM
-  const elevation = new Float64Array(N);
-  for (let i = 0; i < N; i++) elevation[i] = dem[i] - burn[i];
-
-  // ------------------------------------------------ impervious
+  // ------------------------------------------------ impervious (+ building / road cover per cell)
   const impervious = new Float32Array(N);
+  const bldFrac = new Float64Array(N), roadFrac = new Float64Array(N);
   for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) {
     let nb = 0, nr = 0;
     for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
@@ -603,8 +716,27 @@ async function main() {
       if (subBuilding[si]) nb++; else if (subRoad[si]) nr++;
     }
     const i = r * W + c, fb = nb / (S * S), fr = nr / (S * S);
+    bldFrac[i] = fb;
+    roadFrac[i] = fr;
     impervious[i] = lakeMask[i] ? 0 : Math.min(1, fb * 0.95 + fr * 0.9 + (1 - fb - fr) * baseImp[i]);
   }
+
+  // ------------------------------------------------ bare earth + conditioned DEM
+  // ground is visible on water, open land and on cells mostly covered by road surface (wide roads, junctions)
+  for (let i = 0; i < N; i++) {
+    if (lakeMask[i]) openFrac[i] = 1;
+    else if (roadFrac[i] >= 0.5) openFrac[i] = Math.max(openFrac[i], roadFrac[i]);
+  }
+  const bare = bareEarth(dsm, W, H, bldFrac, treeFrac, openFrac);
+  if (process.env.DEBUG_BARE) {
+    // f32 layers dsm, dtm, rel, bldFrac, treeFrac, openFrac for inspection (not shipped)
+    const dbg = [dsm, bare.dtm, bare.rel, bldFrac, treeFrac, openFrac].map((a) => Buffer.from(Float32Array.from(a).buffer));
+    fs.writeFileSync(path.join(CACHE, 'bare-debug.bin'), Buffer.concat(dbg));
+    log(`wrote .cache/bare-debug.bin (${W}x${H} x 6 f32: dsm, dtm, rel, bld, tree, open)`);
+  }
+  dem = gaussian(bare.dtm, W, H, SIGMA);
+  const elevation = new Float64Array(N);
+  for (let i = 0; i < N; i++) elevation[i] = dem[i] - burn[i];
 
   // ------------------------------------------------ hydrology
   const filled = priorityFlood(elevation, W, H, 1e-3);
@@ -781,6 +913,13 @@ async function main() {
   log(`DEM source: ${demName}`);
   log(`grid ${W}x${H} (${N} cells), cell ${CELL_M} m, boundary cells ${nB} (${((nB * G.cellArea) / 1e6).toFixed(2)} km2)`);
   log(`elevation whole grid ${minE.toFixed(1)}..${maxE.toFixed(1)} m; inside boundary ${minB.toFixed(1)}..${maxB.toFixed(1)} m`);
+  {
+    const low = [], rel = [];
+    for (let i = 0; i < N; i++) if (boundaryMask[i]) { low.push(bare.lowered[i]); rel.push(bare.rel[i]); }
+    low.sort((a, b) => a - b);
+    const q = (p) => low[Math.floor(p * (low.length - 1))].toFixed(2);
+    log(`bare-earth: DSM lowered inside boundary mean ${(low.reduce((a, b) => a + b, 0) / low.length).toFixed(2)} m, p50 ${q(0.5)}, p90 ${q(0.9)}, max ${q(1)}; mean reliability ${(rel.reduce((a, b) => a + b, 0) / rel.length).toFixed(2)}`);
+  }
   log('feature counts', JSON.stringify(counts));
   log(`drain cells ${drainMask.reduce((a, b) => a + b, 0)}, lake cells ${lakeMask.reduce((a, b) => a + b, 0)}`);
   log(`impervious mean inside boundary: ${((impSum / nB) * 100).toFixed(1)}%`);
