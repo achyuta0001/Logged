@@ -35,7 +35,7 @@ The index is the weighted mean of the four percentile ranks, from 0 to 1. The le
 - **Terrain analysis**: priority-flood depression filling, D8 flow accumulation, height-above-nearest-drainage (HAND), and 103 detected basins with volume and catchment.
 - **Live weather**: hourly Open-Meteo forecast for the past 2 days plus the next 7. Shows a best estimate and a worst case (the hourly max across 4 models).
 - **Scenarios**: a typical monsoon evening, the **20 Oct 2024 RR Nagar storm (177.6 mm)**, a hypothetical cloudburst, and a multi-day soak.
-- **Flood simulation**: a 2D diffusive-wave model in a Web Worker. It accounts for infiltration, storm-drain capacity and blockage, and lake storage, and is mass-conserving (tested). A 9-day forecast runs in about 2 s.
+- **Flood simulation**: a 2D diffusive-wave model in a Web Worker. It accounts for infiltration, storm-drain capacity and blockage, and lake storage, and is mass-conserving (tested). Storm drains are a network: inlets feed the mapped drains, which carry the water downstream through tanks to the grid edge and overflow onto the street where a reach is full (`src/sim/network.ts`). A 9-day forecast runs in about 2 s.
 - **Impact**: road passability for two-wheelers (>0.15 m), cars (>0.30 m) and buses (>0.50 m); wet ground floors (>0.25 m); affected schools, hospitals, metro stations, bus stops and substations; plus daily-life cards.
 - **Model vs reported**: 12 historically reported flood spots (each with a news source) compared against modelled depth, plus a sourced "Why RR Nagar floods" explainer.
 - **Visuals**: 3D terrain, animated shaded water, rain overlay, extruded buildings coloured by flood depth, and an 8-stop guided tour (Tour button; arrow keys, Space to pause, Esc to exit).
@@ -154,6 +154,20 @@ scripts/build-all.mjs    every pack, resumable (data:all)
 | Drain blockage | 40% | silt and encroachment (adjustable) |
 | Infiltration | 10 mm/hr | on pervious ground, with soil storage saturation |
 
+#### Drain network (`NET_TUNING` in `src/sim/network.ts`)
+
+Captured water enters the nearest mapped drain (OSM `waterway` lines) instead of leaving the model. It flows downstream along the drain lines and through tanks, and leaves at the grid edge. Inlets only take what their drain has room for. A reach that receives more than it can carry overflows onto the street at that cell.
+
+| Setting | Value | Basis |
+|---|---|---|
+| Reach capacity | drain capacity × (1 − blockage) × area served upstream × (15 min / t<sub>c</sub>)<sup>0.5</sup> | Rational method: each reach is sized for the design intensity at its time of concentration (t<sub>c</sub> = 15 min + longest channel above it at 1 m/s), so trunk drains carry less per hectare than local ones. Short bursts pass; long heavy storms overload the trunks first. |
+| Flow speed | 1 m/s | Typical full-flow velocity in open storm drains. Sets the routing delay and the channel volume. |
+| Gaps and line ends | culvert at half capacity | A mapped line that stops within 3 cells of a lower drain is joined to it as a culvert: road crossings are where OSM drain lines usually break. Any other line end is assumed to continue unmapped through a culvert-sized link, and what that cannot pass overflows at the end. Lines that stop at the grid edge leave there. |
+| Tanks | cushion, then pass on; 1 m rise | A tank first fills its flood cushion (the existing freeboard rule), then passes water through the drain that leaves it. While that drain is full, the tank rises up to 1 m (bund freeboard above the waste weir). After that, the drains feeding the tank back up and overflow near it. |
+| Upstream inflow | sized for the whole catchment | Reaches below an upstream-inflow point (`meta.inflow`) are sized for the land outside the grid too. |
+
+`hourStats` reports `networkM3` (water in the drains), `surchargeM3` (overflow onto streets) and `networkOutM3` (discharged at the edge or into tank cushions). `drainedM3` is now the net transfer from the surface into the drains.
+
 ## Limitations
 
 - **Multi-region:**
@@ -161,7 +175,13 @@ scripts/build-all.mjs    every pack, resumable (data:all)
   - Some areas inside the district have no pincode relation in OSM; they show as dark gaps on the overview.
 - **Catchments cross pincode edges:** each pack simulates only its padded bbox. `data:city` records how much upstream area drains in from outside each pack (`upstreamOutsideKm2`), and the app shows a quiet caveat when that is large. That inflow is not simulated, so valley-floor depths there are likely too low.
 - **Scenarios:** the "20 Oct 2024" scenario replays the rainfall recorded at RR Nagar for every pincode; other parts of the city had different totals that day.
-- **Drains:** storm drains are modelled as capacity sinks, so the model does not show drains surcharging at bottlenecks. News reports blame much of Bengaluru's flooding on exactly that.
+- **Drains:**
+  - The drain network is a storage-routing approximation. It has no water levels, so backwater only reaches one tank or one reach upstream, and overflow appears at the node just above a full reach rather than spreading along the bank.
+  - Drain sizes are estimated from the area each reach serves (the rational method), not surveyed. OSM tags almost every Bengaluru drain `waterway=drain`, so the tags cannot tell a trunk from a side drain.
+  - Culverts are inferred only where a mapped line breaks. The elevation grid has no roads, so a culvert under a road is not detected when the drain line runs unbroken across it.
+  - Encroachment and construction debris are not mapped. They act only through the blockage setting.
+  - The flyover misses (Marathahalli Bridge, Electronic City) are elevation-model problems, so the drain network cannot fix them.
+  - Post-storm pond drainage and inlets more than 500 m from a mapped drain still remove water from the model, as before.
 - The elevation model is Copernicus GLO-30, a ~30 m **surface** model that includes some building and tree height. Small dips, underpasses and plinth levels are not resolved, and some pits are artefacts.
 - The drain network comes from OSM and is incomplete. Real drain capacity varies block by block.
 - There is no live sensor feed for flood depth. Validation relies on news reports of past events.
