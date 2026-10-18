@@ -3,7 +3,17 @@ import type { Map as MLMap, PaddingOptions } from 'maplibre-gl';
 import type { ImpactReport, RainSeries, Severity, SimParams, Terrain } from './types';
 import { loadDataset, type Dataset } from './ui/api';
 import { cellToLngLat, lngLatToCell } from './terrain';
-import { fetchForecastVariants, SCENARIOS, WEATHER_ATTRIBUTION, WEATHER_ATTRIBUTION_URL, type ForecastVariants } from './weather';
+import {
+  ARCHIVE_ATTRIBUTION,
+  ARCHIVE_ATTRIBUTION_URL,
+  fetchForecastVariants,
+  fetchHistoricalEvent,
+  HISTORICAL_EVENTS,
+  SCENARIOS,
+  WEATHER_ATTRIBUTION,
+  WEATHER_ATTRIBUTION_URL,
+  type ForecastVariants,
+} from './weather';
 import { FloodEngine, DEFAULT_PARAMS } from './sim/index';
 import { computeImpact } from './impact';
 import { createMap, setBasemap, setExaggeration } from './map/mapView';
@@ -224,7 +234,7 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
   });
   const controls = new Controls(
     { rain: sidebar.body('rain'), map: sidebar.body('map'), drainage: sidebar.body('drainage'), sources: sidebar.body('sources') },
-    SCENARIOS,
+    [...SCENARIOS, ...HISTORICAL_EVENTS],
     DEFAULT_PARAMS,
     exaggeration,
     {
@@ -442,6 +452,20 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
         }
       }
       await runSim(app.variant === 'worst' ? app.forecast.worst : app.forecast.best);
+    } else if (HISTORICAL_EVENTS.some((e) => e.id === id)) {
+      // real storm: archive rain at the pin centroid (the series ends in a 24 h dry recession)
+      const ev = HISTORICAL_EVENTS.find((e) => e.id === id)!;
+      const [lon, lat] = pin.centroid ?? center;
+      controls.setBusy(true);
+      let series: RainSeries;
+      try {
+        series = await fetchHistoricalEvent(lat, lon, ev);
+      } catch {
+        controls.setBusy(false);
+        controls.setRain(app.series ?? demo.build(), 'The rainfall archive could not be loaded. Check your connection, or pick another scenario.');
+        return;
+      }
+      if (!disposed) await runSim(series);
     } else {
       const sc = SCENARIOS.find((s) => s.id === id);
       if (sc) await runSim(sc.build());
@@ -668,6 +692,7 @@ function sourcesHtml(sources: string[]) {
     <ul class="src-list">
       ${sources.map((x) => row(/openstreetmap/i.test(x) ? 'Map data' : /dem|copernicus/i.test(x) ? 'Elevation' : 'Data', esc(x))).join('')}
       ${row('Weather', `<a href="${WEATHER_ATTRIBUTION_URL}" target="_blank" rel="noopener">${esc(WEATHER_ATTRIBUTION)}</a>`)}
+      ${row('Past rain', `<a href="${ARCHIVE_ATTRIBUTION_URL}" target="_blank" rel="noopener">${esc(ARCHIVE_ATTRIBUTION)}</a>; the real storms' dates and gauge totals link to news reports`)}
       ${row('Basemap', '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a>, © <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a>, © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>')}
       ${row('Satellite', '<a href="https://s2maps.eu" target="_blank" rel="noopener">Sentinel-2 cloudless by EOX</a> (CC BY 4.0, modified Copernicus Sentinel data 2020)')}
       ${row('3D terrain', '<a href="https://github.com/tilezen/joerd/blob/master/docs/attribution.md" target="_blank" rel="noopener">Mapzen/Tilezen terrain tiles</a> (SRTM and others)')}
