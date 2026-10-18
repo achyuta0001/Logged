@@ -117,7 +117,7 @@ export class Controls {
     const scen = scenarios.find((x) => x.id === 'rrnagar-2024-10-20') ?? scenarios[0];
     m.rain.innerHTML = `
       <div class="rain-pick">
-        <div class="segmented" role="group" aria-label="Rain to simulate">
+        <div class="segmented" role="group" aria-label="Rain to predict from">
           <button type="button" data-mode="forecast" aria-pressed="true">Live forecast</button>
           <button type="button" data-mode="scenario" aria-pressed="false">Scenario</button>
         </div>
@@ -162,7 +162,7 @@ export class Controls {
       ${this.slider('drainCapacityMmHr', 'Drain capacity', 0, 80, 1)}
       ${this.slider('drainBlockage', 'Drains blocked by silt and garbage', 0, 1, 0.05)}
       ${this.slider('infiltrationMmHr', 'Soaks into open ground', 0, 40, 1)}
-      <button type="button" class="btn primary" id="rerun" disabled>${iconSvg('refresh', 15)}<span>Re-run simulation</span></button>`;
+      <button type="button" class="btn primary" id="rerun" disabled>${iconSvg('refresh', 15)}<span>Re-run prediction</span></button>`;
 
     this.wire();
     this.syncSource();
@@ -327,7 +327,7 @@ export class Controls {
       q('max').innerHTML = unit(mx, 'mm');
       l('max').textContent = 'peak hour';
       q('prob').innerHTML = `${s.mm.length}<small>h</small>`;
-      l('prob').textContent = 'simulated';
+      l('prob').textContent = 'predicted';
     }
     (this.m.rain.querySelector('#rain-note') as HTMLElement).innerHTML = note ?? '';
   }
