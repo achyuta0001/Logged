@@ -22,7 +22,12 @@ export interface TerrainMeta {
   upstreamOutsideKm2?: number;
   /** M4: the part of that land whose runoff the sim routes in (src/sim/inflow.ts) */
   inflow?: InflowPoint[];
+  /** M4: edge stretches where outside land drains in; closed to outflow while inflow runs */
+  inflowEdge?: InflowEdgeRun[];
 }
+
+/** [side, from, to]: side 0 north, 1 south, 2 west, 3 east; from..to inclusive, grid cells along that side */
+export type InflowEdgeRun = [number, number, number];
 
 /**
  * One flow path entering the grid from outside it, with its outside catchment summarised for the
