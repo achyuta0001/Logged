@@ -46,6 +46,16 @@ jobs:
       - run: npx vite build --base /Logged/
       - name: Site size
         run: du -sh dist dist/data/pins dist/data/city && find dist -type f | wc -l
+      # Pages rejects a site over 1 GB. Packs store osm.geojson / depressions.json gzipped
+      # (scripts/lib/pack-files.mjs): about 210 MB for all 117 (estimated); the plain-JSON layout was 968 MB.
+      - name: Site size guard (950 MB)
+        run: |
+          bytes=$(du -sb dist | cut -f1)
+          echo "dist: $((bytes / 1000000)) MB of the 950 MB guard"
+          if [ "$bytes" -gt 950000000 ]; then
+            echo "::error title=Site too large::dist is $((bytes / 1000000)) MB, over the 950 MB guard (GitHub Pages rejects sites over 1 GB). Packs should store osm.geojson.gz and depressions.json.gz, not the plain JSON (scripts/lib/pack-files.mjs); largest packs: $(du -s dist/data/pins/*/ | sort -rn | head -3 | awk '{printf "%s %d MB; ", $2, $1/1024}')"
+            exit 1
+          fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
