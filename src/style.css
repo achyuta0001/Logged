@@ -795,7 +795,8 @@ body.sb-rail .sidebar {
   font-size: 11px;
   line-height: 1.22;
   text-wrap: balance;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  hyphens: manual;
 }
 .imp-fac {
   display: flex;
