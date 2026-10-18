@@ -60,6 +60,8 @@ export class Runner {
       this.inflow = new Inflow(init.inflow, init.width, init.width * init.height, this.coarse.f, this.coarse.grids.width);
       // the edge stretches valleys enter through are inflow boundaries, not outfalls
       this.core.closeEdges(this.inflow.edgeCells(this.coarse.grids.height, this.coarse.grids.cellSizeM));
+      // drains below an inflow point were built for its whole catchment (src/sim/network.ts)
+      this.core.net?.addUpstream(this.inflow.cells, this.inflow.points.map((p) => p.areaKm2 * 1e6), this.inflow.points.map((p) => p.timeArea.length * 3600));
     }
   }
 
