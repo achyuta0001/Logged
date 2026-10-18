@@ -18,7 +18,9 @@
 //   node scripts/calibrate.mjs --pin 560034 --no-inflow          ignore the pack's upstream inflow points (M4)
 //   node scripts/calibrate.mjs --pin 560034 --event all          also the real storms (HISTORICAL_EVENTS in src/weather.ts,
 //                                                                comma list of ids or "all"): hourly rain fetched from the
-//                                                                Open-Meteo archive (free, keyless, CC BY 4.0) at the pin centroid
+//                                                                Open-Meteo archive (free, keyless, CC BY 4.0) at the pin centroid.
+//                                                                Each storm also has a scaled twin, <id>-gauge (e.g. real-2022-09-05-gauge):
+//                                                                the same archive hours scaled to the reported gauge total ("all" runs both)
 //
 // Requires Node >= 22.6 (native TypeScript type stripping) — the engine and the scenario series are
 // imported straight from src/sim/index.ts and src/weather.ts.
@@ -140,6 +142,7 @@ async function runScenario(series) {
     impact = { buildingsWet: r.buildings.groundFloorWet, buildings: r.buildings.total, roadClosedCarKm: r.roads.impassableCarKm, roadClosedTwoWheelerKm: r.roads.impassableTwoWheelerKm, roadKm: r.roads.totalKm, overall: r.overall };
   }
   return {
+    label: series.label,
     impact,
     lakeSpill,
     ms: Math.round(ms),
@@ -178,7 +181,7 @@ if (EVENT_IDS.length) {
   results.archivePoint = [lon, lat];
   for (const id of EVENT_IDS) {
     const ev = HISTORICAL_EVENTS.find((e) => e.id === id);
-    if (!ev) throw new Error(`unknown event ${id} (known: ${HISTORICAL_EVENTS.map((e) => e.id).join(', ')}, all)`);
+    if (!ev) throw new Error(`unknown event ${id} (known: ${HISTORICAL_EVENTS.map((e) => e.id).join(', ')}, all)`); // raw and -gauge ids
     results.scenarios[id] = await runScenario(await fetchHistoricalEvent(lat, lon, ev));
   }
 }
@@ -220,6 +223,7 @@ function printHotspots() {
 function summaryRows(r) {
   const b = r.budget;
   return [
+    ['rain series', r.label ?? '-'],
     ['rain (mm)', r.rainMm.toFixed(1)],
     ['wettest hour (mm)', r.peakMmHr == null ? '-' : r.peakMmHr.toFixed(1)],
     ['peak flooded area >0.1 m (km2) @hour', `${km2(r.peakAreaM2)} @${r.peakHour}`],
