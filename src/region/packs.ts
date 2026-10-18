@@ -134,7 +134,45 @@ export function validateMeta(meta: TerrainMeta, binBytes?: number): string[] {
     if (!['f32', 'u8', 'u16'].includes(l.dtype)) errs.push(`layer ${k}: unknown dtype ${String(l.dtype)}`);
     if (binBytes !== undefined && l.offset + layerBytes(l) > binBytes) errs.push(`layer ${k}: past the end of grids.bin`);
   }
+  // M4 upstream inflow points (optional)
+  if (meta.inflow !== undefined) {
+    if (!Array.isArray(meta.inflow)) errs.push('inflow must be an array');
+    else
+      meta.inflow.forEach((p, i) => {
+        if (!(Number.isInteger(p?.cell) && p.cell >= 0 && p.cell < n)) errs.push(`inflow[${i}]: cell outside the grid`);
+        if (!(isNum(p?.areaKm2) && p.areaKm2 > 0)) errs.push(`inflow[${i}]: bad areaKm2`);
+        if (!(isNum(p?.impervious) && p.impervious >= 0 && p.impervious <= 1)) errs.push(`inflow[${i}]: impervious outside 0..1`);
+        if (!(Array.isArray(p?.timeArea) && p.timeArea.length > 0 && p.timeArea.every((v) => isNum(v) && v >= 0))) errs.push(`inflow[${i}]: bad timeArea`);
+      });
+  }
   return errs;
+}
+
+/**
+ * M4 caveat for a pincode: how much land drains into its map from outside, and how much of that the
+ * sim routes in (meta.inflow, src/sim/inflow.ts). Null when there is nothing worth a line.
+ */
+export function inflowCaveat(pin: PinEntry): { text: string; tip: string } | null {
+  const total = pin.pack?.upstreamOutsideKm2 ?? 0;
+  const sim = Math.min(pin.pack?.inflowKm2 ?? 0, total > 0 ? total : Infinity);
+  const rest = Math.max(0, total - sim);
+  const large = (km2: number) => km2 >= Math.max(5, pin.areaKm2);
+  const km2 = (v: number) => (v >= 10 ? String(Math.round(v)) : v.toFixed(1));
+  if (sim >= 1) {
+    return {
+      text: large(rest)
+        ? `Water from ${km2(sim)} km² upstream is routed in from outside this map; about ${km2(rest)} km² more is left out.`
+        : `Water from about ${km2(sim)} km² upstream is routed in from outside this map.`,
+      tip:
+        'Upstream land from a district-wide 60 m flow routing (npm run data:city). Its runoff, after the same drain, soil and tank losses, ' +
+        'enters at the map edge through a lumped Clark unit hydrograph rather than a full 2D simulation, so valley timing and depths are approximate.',
+    };
+  }
+  if (!large(total)) return null;
+  return {
+    text: `About ${Math.round(total)} km² upstream drains in from outside this map; the model leaves that inflow out.`,
+    tip: 'Upstream area from a district-wide 60 m flow-accumulation run (npm run data:city). Streams entering from outside the modelled area are not simulated, so valley-floor depths may be underestimated.',
+  };
 }
 
 const norm = (s: string) =>
