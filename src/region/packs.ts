@@ -145,6 +145,16 @@ export function validateMeta(meta: TerrainMeta, binBytes?: number): string[] {
         if (!(Array.isArray(p?.timeArea) && p.timeArea.length > 0 && p.timeArea.every((v) => isNum(v) && v >= 0))) errs.push(`inflow[${i}]: bad timeArea`);
       });
   }
+  // M4 inflow edge runs [side, from, to] (optional)
+  if (meta.inflowEdge !== undefined) {
+    if (!Array.isArray(meta.inflowEdge)) errs.push('inflowEdge must be an array');
+    else
+      meta.inflowEdge.forEach((r, i) => {
+        const len = r?.[0] < 2 ? meta.width : meta.height;
+        if (!(Array.isArray(r) && r.length === 3 && [0, 1, 2, 3].includes(r[0]) && Number.isInteger(r[1]) && Number.isInteger(r[2]) && r[1] >= 0 && r[1] <= r[2] && r[2] < len))
+          errs.push(`inflowEdge[${i}]: not a [side 0-3, from, to] run along the grid edge`);
+      });
+  }
   return errs;
 }
 
