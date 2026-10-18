@@ -26,6 +26,8 @@ export class Timeline {
   private h: TimelineHandlers;
   private series: RainSeries | null = null;
   private area: number[] = [];
+  /** lowest and highest flooded area (m²) across the weather models, hour by hour */
+  private band: { lo: number[]; hi: number[] } | null = null;
   private hour = 0;
   private playing = false;
   private W = 800;
@@ -143,8 +145,17 @@ export class Timeline {
   setSeries(s: RainSeries, area: number[]) {
     this.series = s;
     this.area = area;
+    this.band = null; // a new series drops the last model range until its own arrives
     this.svg.setAttribute('aria-valuemax', String(s.mm.length - 1));
     this.spark.setAttribute('aria-valuemax', String(s.mm.length - 1));
+    this.draw();
+    this.drawSpark();
+  }
+
+  /** A faint band behind the flooded-area curve: its lowest to highest value across the weather models. null removes it. */
+  setBand(band: { lo: number[]; hi: number[] } | null) {
+    if (band === this.band) return;
+    this.band = band;
     this.draw();
     this.drawSpark();
   }
@@ -207,10 +218,11 @@ export class Timeline {
     const W = SPARK_W;
     const H = SPARK_H;
     const base = H - 3;
-    const maxA = Math.max(1, ...this.area);
+    const maxA = Math.max(1, ...this.area, ...(this.band?.hi ?? []));
     const maxMm = Math.max(10, ...s.mm);
     const x = (i: number) => ((i + 0.5) / n) * W;
-    const y = (i: number) => base - ((this.area[i] ?? 0) / maxA) * (H - 7);
+    const yOf = (v: number) => base - (v / maxA) * (H - 7);
+    const y = (i: number) => yOf(this.area[i] ?? 0);
     const mk = (tag: string, attrs: Record<string, string | number>, parent: Element = svg) => {
       const e = document.createElementNS(NS, tag);
       for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
@@ -219,6 +231,7 @@ export class Timeline {
     };
     // rain as faint ticks from the top, flooded area as a filled line
     for (let i = 0; i < n; i++) if (s.mm[i] > 0.05) mk('rect', { x: (i / n) * W, y: 0, width: Math.max(0.8, W / n - 0.4), height: Math.max(1, Math.sqrt(s.mm[i] / maxMm) * 7), class: 'sp-rain' });
+    if (this.band) mk('path', { d: bandPath(this.band, n, x, yOf), class: 'sp-band' });
     let d = `M0 ${base}`;
     for (let i = 0; i < n; i++) d += ` L${x(i).toFixed(1)} ${y(i).toFixed(1)}`;
     mk('path', { d: `${d} L${W} ${base} Z`, class: 'sp-area' });
@@ -277,17 +290,21 @@ export class Timeline {
     if (this.area.length) {
       const maxA = Math.max(1, ...this.area);
       const topSpace = baseY - rainH * 0.35;
+      // one scale for the curve and the model band, so the band always fits
+      const top = Math.max(maxA, ...(this.band?.hi ?? []));
+      const yA = (v: number) => baseY - (v / top) * topSpace * 0.95;
+      if (this.band) el('path', { d: bandPath(this.band, n, (i) => (i + 0.5) * bw, yA), class: 'tl-band' });
       let d = `M0 ${baseY}`;
-      for (let i = 0; i < n; i++) d += ` L${(i + 0.5) * bw} ${baseY - ((this.area[i] ?? 0) / maxA) * topSpace * 0.95}`;
+      for (let i = 0; i < n; i++) d += ` L${(i + 0.5) * bw} ${yA(this.area[i] ?? 0)}`;
       d += ` L${W} ${baseY} Z`;
       el('path', { d, fill: 'url(#gArea)', class: 'tl-area' });
       let l = '';
-      for (let i = 0; i < n; i++) l += `${i ? 'L' : 'M'}${(i + 0.5) * bw} ${baseY - ((this.area[i] ?? 0) / maxA) * topSpace * 0.95} `;
+      for (let i = 0; i < n; i++) l += `${i ? 'L' : 'M'}${(i + 0.5) * bw} ${yA(this.area[i] ?? 0)} `;
       el('path', { d: l, class: 'tl-area-line' });
       const peak = this.area.indexOf(maxA);
       if (maxA > 1) {
         const px = (peak + 0.5) * bw;
-        const py = baseY - topSpace * 0.95;
+        const py = yA(maxA);
         el('circle', { cx: px, cy: py, r: 2.5, class: 'tl-peak' });
         // below the deepest rain bar, beside (never under) the playhead: see placePeak()
         const lbl = el('text', { x: px + 6, y: Math.min(baseY - 6, rainH + 12), class: 'tl-lbl peak' }) as SVGTextElement;
@@ -322,4 +339,12 @@ export class Timeline {
     el('circle', { cx: 0, cy: baseY, r: 4.5, class: 'tl-head-knob' }, this.head);
     this.setHour(Math.min(this.hour, n - 1));
   }
+}
+
+/** Closed path along the band's top edge, then back along its bottom edge. */
+function bandPath(b: { lo: number[]; hi: number[] }, n: number, x: (i: number) => number, y: (v: number) => number): string {
+  let d = '';
+  for (let i = 0; i < n; i++) d += `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(b.hi[i] ?? 0).toFixed(1)} `;
+  for (let i = n - 1; i >= 0; i--) d += `L${x(i).toFixed(1)} ${y(b.lo[i] ?? 0).toFixed(1)} `;
+  return `${d}Z`;
 }
