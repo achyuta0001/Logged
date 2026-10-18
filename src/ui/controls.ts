@@ -4,8 +4,11 @@ import type { RainSeries, SimParams } from '../types';
 import { esc, fmtHour, fmtNum } from './format';
 import { iconSvg } from './icons';
 
-/** `source` marks a real storm (archive rain); its description cites the report as "(https://...)" */
-type Scenario = { id: string; label: string; description: string; source?: string };
+/**
+ * `source` marks a real storm (archive rain); its description cites the report as "(https://...)".
+ * `scaled` marks a real storm's twin whose archive timing is scaled to the reported gauge total.
+ */
+type Scenario = { id: string; label: string; description: string; source?: string; scaled?: boolean };
 
 export interface LayerDef {
   id: string;
@@ -40,12 +43,28 @@ const SHORT: Record<string, string> = {
   'multi-day-soak': '3-day soak',
 };
 
-/** Made-up scenarios first, then the real storms (archive rain) in their own group. */
+/**
+ * Picker text. A real storm drops its "Real storm: " prefix (its group says so) and names its rain,
+ * so the closed picker still tells raw archive rain from the gauge-scaled twin.
+ */
+function optText(x: Scenario) {
+  if (SHORT[x.id]) return SHORT[x.id];
+  if (!x.source) return x.label;
+  const when = x.label.replace(/^Real storm: /, '');
+  return x.scaled ? when : `${when} · archive rain`;
+}
+
+/** Made-up scenarios first, then the real storms on archive rain, then the same storms scaled to the gauge totals. */
 function optgroups(scenarios: Scenario[], selected?: string) {
-  const opt = (x: Scenario) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${esc(SHORT[x.id] ?? x.label)}</option>`;
+  const opt = (x: Scenario) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${esc(optText(x))}</option>`;
+  const group = (label: string, xs: Scenario[]) => (xs.length ? `<optgroup label="${esc(label)}">${xs.map(opt).join('')}</optgroup>` : '');
   const real = scenarios.filter((x) => x.source);
   if (!real.length) return scenarios.map(opt).join('');
-  return `<optgroup label="Scenarios">${scenarios.filter((x) => !x.source).map(opt).join('')}</optgroup><optgroup label="Real storms, archive rain">${real.map(opt).join('')}</optgroup>`;
+  return (
+    group('Scenarios', scenarios.filter((x) => !x.source)) +
+    group('Real storms, archive rain', real.filter((x) => !x.scaled)) +
+    group('Real storms, archive timing scaled to the gauge total', real.filter((x) => x.scaled))
+  );
 }
 
 /** Escape a description and show each cited "(https://host/...)" as a short link to the report. */
