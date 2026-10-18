@@ -18,6 +18,35 @@ export interface TerrainMeta {
   format?: PackFormat;
   stats: { minElev: number; maxElev: number };
   sources: string[];
+  /** M4: land outside the grid that drains into it, km² (district 60 m routing, outside cells only) */
+  upstreamOutsideKm2?: number;
+  /** M4: the part of that land whose runoff the sim routes in (src/sim/inflow.ts) */
+  inflow?: InflowPoint[];
+}
+
+/**
+ * One flow path entering the grid from outside it, with its outside catchment summarised for the
+ * lumped runoff model in src/sim/inflow.ts (written by scripts/build-data.mjs, see scripts/lib/catchment.mjs).
+ */
+export interface InflowPoint {
+  /** grid cell (row * width + col) where the inflow enters: on the pack's flow path, a few cells inside the edge */
+  cell: number;
+  /** [lon, lat] where the path crosses into the grid */
+  at: [number, number];
+  /** contributing area outside the grid, km² */
+  areaKm2: number;
+  /** mean sealed share of that area, 0..1 */
+  impervious: number;
+  /** share of the area within ~500 m of a mapped drain, 0..1 (absent = 1) */
+  drainShare?: number;
+  /** share of the area whose runoff passes a mapped tank on the way, 0..1 */
+  tankShare?: number;
+  /** flood cushion of those tanks, m³ (filled before they pass water on) */
+  tankM3?: number;
+  /** share of the area per hour of travel time to the grid edge (time-area histogram, sums to 1) */
+  timeArea: number[];
+  /** Clark storage coefficient, hours (linear-reservoir attenuation; 0 = translation only) */
+  storageH?: number;
 }
 
 /** One layer in grids.bin. v1: f32 / u8 as-is. v2: quantised, see src/pack/codec.ts. */
@@ -198,6 +227,8 @@ export interface PackInfo {
   sources: string[];
   /** upstream area draining in from outside the padded bbox, km² (M4) */
   upstreamOutsideKm2?: number;
+  /** part of upstreamOutsideKm2 whose runoff the pack's sim routes in (meta.inflow), km² (M4) */
+  inflowKm2?: number;
 }
 
 export interface PinIndex {
