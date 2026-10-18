@@ -16,6 +16,24 @@ interface OpenMeteoHourly {
   [key: string]: (number | null)[] | number[];
 }
 
+/** Display names of the forecast models (Open-Meteo ids). */
+export const MODEL_NAME: Record<string, string> = {
+  best_match: 'Open-Meteo best match',
+  ecmwf_ifs025: 'ECMWF IFS',
+  gfs_seamless: 'NOAA GFS',
+  icon_seamless: 'DWD ICON',
+};
+
+/** One weather model's own hourly rain: the ensemble the prediction range is worked out from. */
+export interface ForecastMember {
+  /** Open-Meteo model id, e.g. 'gfs_seamless' */
+  model: string;
+  /** display name, e.g. 'NOAA GFS' */
+  name: string;
+  /** that model's rain; an hour it has no value for takes the best estimate's */
+  series: RainSeries;
+}
+
 export interface ForecastVariants {
   /** Open-Meteo best_match (default blend for the location) */
   best: RainSeries;
@@ -23,6 +41,8 @@ export interface ForecastVariants {
   worst: RainSeries;
   /** models that actually returned precipitation */
   models: string[];
+  /** one series per model in `models` (best_match first when present) */
+  members: ForecastMember[];
   fetchedAt: number;
 }
 
@@ -67,8 +87,7 @@ async function fetchHourly(lat: number, lon: number): Promise<{ hourly: OpenMete
   return out;
 }
 
-function nowIndexOf(times: number[]): number {
-  const now = Date.now();
+function nowIndexOf(times: number[], now = Date.now()): number {
   let idx = 0;
   for (let i = 0; i < times.length; i++) if (times[i] <= now) idx = i;
   return idx;
@@ -77,6 +96,11 @@ function nowIndexOf(times: number[]): number {
 /** Fetch best-match and worst-case (max across models) hourly series in ONE request (cached 30 min). */
 export async function fetchForecastVariants(lat: number, lon: number): Promise<ForecastVariants> {
   const { hourly, fetchedAt } = await fetchHourly(lat, lon);
+  return variantsFromHourly(hourly, fetchedAt);
+}
+
+/** An Open-Meteo multi-model hourly block -> best, worst and per-model series (pure; `now` sets nowIndex). */
+export function variantsFromHourly(hourly: OpenMeteoHourly, fetchedAt: number, now = Date.now()): ForecastVariants {
   const times = hourly.time.map((s) => s * 1000);
   const n = times.length;
   const precipKeys = Object.keys(hourly).filter((k) => k.startsWith('precipitation') && !k.startsWith('precipitation_probability'));
@@ -103,14 +127,45 @@ export async function fetchForecastVariants(lat: number, lon: number): Promise<F
     best[i] = b != null ? b : mx; // fill gaps in the default model with the envelope
   }
   const probability = probKey ? (hourly[probKey] as (number | null)[]).map((v) => v ?? 0) : undefined;
-  const nowIndex = nowIndexOf(times);
-  const models = Object.keys(series).map((k) => k.replace(/^precipitation_?/, '') || 'best_match');
+  const nowIndex = nowIndexOf(times, now);
+  const keys = Object.keys(series).sort((a, b) => Number(b === bestKey) - Number(a === bestKey));
+  const models = keys.map((k) => k.replace(/^precipitation_?/, '') || 'best_match');
+  const members: ForecastMember[] = keys.map((k, j) => {
+    const model = models[j];
+    const name = MODEL_NAME[model] ?? model;
+    const mm = series[k].map((v, i) => (v != null ? v : best[i]));
+    return { model, name, series: { source: 'forecast', label: `Open-Meteo forecast (${name})`, times, mm, nowIndex } };
+  });
   return {
     best: { source: 'forecast', label: 'Open-Meteo forecast (best match)', times, mm: best, probability, nowIndex },
     worst: { source: 'forecast', label: `Worst case: hourly max of ${models.length} models`, times, mm: worst, probability, nowIndex },
     models,
+    members,
     fetchedAt,
   };
+}
+
+/**
+ * Development only (`?fakeforecast=1` in `npm run dev`): a made-up wet forecast in the Open-Meteo
+ * multi-model shape, so the model-range UI can be checked on a dry day. The four models agree on
+ * the timing (a storm about 14 h from now) and disagree on the amount.
+ */
+export function fakeForecastVariants(now = Date.now()): ForecastVariants {
+  const t0 = Math.floor(istMidnight(-2) / 1000);
+  const time = Array.from({ length: 9 * 24 }, (_, i) => t0 + i * 3600);
+  const i0 = nowIndexOf(time.map((s) => s * 1000), now);
+  const storm = (scale: number) => time.map((_, i) => Math.round(scale * ([0, 4, 12, 26, 18, 8, 3][i - i0 - 13] ?? 0) * 10) / 10);
+  const hourly: OpenMeteoHourly = {
+    time,
+    precipitation_best_match: storm(1),
+    precipitation_ecmwf_ifs025: storm(0.6),
+    precipitation_gfs_seamless: storm(1.9),
+    precipitation_icon_seamless: storm(0.15),
+    precipitation_probability_best_match: time.map((_, i) => (i - i0 >= 12 && i - i0 <= 20 ? 80 : 10)),
+  };
+  const v = variantsFromHourly(hourly, now, now);
+  v.best.label = 'Made-up test forecast (?fakeforecast=1, development only)';
+  return v;
 }
 
 /**
