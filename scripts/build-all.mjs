@@ -10,10 +10,13 @@
 // extract (no Overpass calls when it exists); Copernicus windows are cached in .cache/; a failed
 // pack is retried with exponential backoff (capped at 15 min) before moving on.
 // Packs other than 560098 land in public/data/pins/<code>/ (git-ignored except committed samples).
+// Their osm.geojson and depressions.json are stored gzipped (<name>.gz, scripts/lib/pack-files.mjs);
+// a pack built before that layout is compressed in place instead of being skipped as is.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { compressPack, storedFiles } from './lib/pack-files.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (n, d) => {
@@ -60,6 +63,8 @@ async function worker() {
     // the committed 560098 reference pack (public/data, no pack.json) is rebuilt only when asked for by name
     const legacyKept = code === '560098' && !want.includes(code) && fs.existsSync(path.join(outDir(code), 'meta.json'));
     if (legacyKept || (!force && fs.existsSync(path.join(outDir(code), 'pack.json')))) {
+      const c = legacyKept ? null : compressPack(outDir(code));
+      if (c) log(`${code} compressed in place: ${(c.before / 1e6).toFixed(2)} -> ${(c.after / 1e6).toFixed(2)} MB on disk`);
       results.push({ code, status: 'cached' });
       continue;
     }
@@ -81,5 +86,7 @@ await Promise.all(Array.from({ length: jobs }, worker));
 // refresh the index with the packs that now exist
 await new Promise((resolve) => spawn(process.execPath, [path.join(ROOT, 'scripts', 'build-city.mjs'), '--index-only'], { cwd: ROOT, stdio: 'inherit' }).on('close', resolve));
 const failed = results.filter((r) => r.status === 'FAILED');
+const onDisk = results.reduce((a, { code }) => a + storedFiles(outDir(code)).reduce((b, f) => b + fs.statSync(path.join(outDir(code), f)).size, 0), 0);
+log(`packs on disk: ${(onDisk / 1e6).toFixed(1)} MB (${results.length} packs)`);
 log(`${results.filter((r) => r.status === 'built').length} built, ${results.filter((r) => r.status === 'cached').length} already built, ${failed.length} failed${failed.length ? `: ${failed.map((r) => r.code).join(', ')}` : ''}`);
 process.exit(failed.length ? 1 : 0);
