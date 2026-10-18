@@ -96,3 +96,50 @@ test('inflow edges: closed while the inflow runs high, reopened (as free outfall
   assert.equal(states[0], true, 'closed while the inflow peaks');
   assert.equal(states[states.length - 1], false, 'reopened in the tail');
 });
+
+test('inflow edges extend across a tank the grid edge cuts (its cut and low banks), and the tank then holds the inflow', async () => {
+  const { closeAcrossWater } = await import('../inflow.ts');
+  // 30 x 30 at 40 m: ground rising east from 902 m; a flat tank at 900 m on rows 8-20, cols 0-5, cut by the
+  // west edge; its banks along the edge at 900.5 / 901.5 m (rows 21-22), then 903 m
+  const W = 30, H = 30, z = new Float32Array(W * H);
+  for (let r = 0; r < H; r++) for (let c = 0; c < W; c++) z[r * W + c] = 902 + 0.05 * c;
+  for (let r = 8; r <= 20; r++) for (let c = 0; c <= 5; c++) z[r * W + c] = 900;
+  z[21 * W] = 900.5;
+  z[22 * W] = 901.5;
+  for (let r = 23; r < H; r++) z[r * W] = 903;
+  const west = (a, b) => Int32Array.from({ length: b - a + 1 }, (_, k) => (a + k) * W);
+  const rows = (cells) => [...cells].filter((i) => i % W === 0).map((i) => i / W).sort((a, b) => a - b);
+  // the closed run (rows 0-8) reaches the tank: the cut (8-20) and its banks (21-22) close, the 903 m ground does not
+  const ext = closeAcrossWater(west(0, 8), W, H, 40, z);
+  assert.deepEqual(rows(ext), Array.from({ length: 23 }, (_, k) => k));
+  // a run ending next to the cut (row 7) still reaches it; one ending two cells short does not
+  assert.equal(rows(closeAcrossWater(west(0, 7), W, H, 40, z)).length, 23);
+  assert.deepEqual(rows(closeAcrossWater(west(0, 6), W, H, 40, z)), [0, 1, 2, 3, 4, 5, 6]);
+  // a flat smaller than 1 ha is not a tank
+  const small = Float32Array.from(z);
+  for (let r = 8; r <= 20; r++) for (let c = 0; c <= 5; c++) small[r * W + c] = 902 + 0.05 * c + 0.001 * r * c;
+  small[8 * W] = small[9 * W] = 900;
+  assert.deepEqual(rows(closeAcrossWater(west(0, 8), W, H, 40, small)), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  // a mapped tank (lakeMask) on the south edge, touched by a closed south run, closes along its cut
+  const lake = new Uint8Array(W * H);
+  const zl = Float32Array.from(z);
+  for (let r = 25; r < H; r++) for (let c = 10; c <= 14; c++) { lake[r * W + c] = 1; zl[r * W + c] = 898.5 + 0.1 * c; }
+  const south = closeAcrossWater(Int32Array.from([29 * W + 8, 29 * W + 9]), W, H, 40, zl, lake);
+  assert.deepEqual([...south].map((i) => i % W).sort((a, b) => a - b), [8, 9, 10, 11, 12, 13, 14]);
+  assert.equal(closeAcrossWater([], W, H, 40, z).length, 0);
+
+  // the tank holds the inflow while the edges are closed: little leaves across its cut, mass balance closes
+  const g = { width: W, height: H, cellSizeM: 40, elevation: z, impervious: new Float32Array(W * H).fill(1) };
+  const run = (cells) => {
+    const s = new SimCore(g, P);
+    s.closeEdges(cells);
+    s.sources = { cells: Int32Array.of(14 * W + 3), m3s: Float64Array.of(5) };
+    for (let k = 0; k < 3; k++) s.stepHour(0);
+    const b = s.budget;
+    assert.ok(Math.abs(b.inflow - b.outflow - s.totalVolume()) < 1e-12 * b.inflow, 'mass balance');
+    return b.outflow / b.inflow;
+  };
+  const before = run(west(0, 8)), after = run(ext);
+  assert.ok(before > 0.3, `open cut drains the inflow (${before.toFixed(2)})`);
+  assert.ok(after < 0.05, `closed cut holds it (${after.toFixed(3)})`);
+});
