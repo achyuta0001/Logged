@@ -25,6 +25,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readPackJson } from './lib/pack-files.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -63,7 +64,8 @@ const IMPACT = flag('impact');
 let osm = null;
 let computeImpact = null;
 if (IMPACT) {
-  osm = JSON.parse(fs.readFileSync(path.join(DATA, 'osm.geojson'), 'utf8'));
+  osm = readPackJson(DATA, 'osm.geojson'); // osm.geojson.gz in format-2 packs
+  if (!osm) throw new Error(`no osm.geojson(.gz) in ${DATA}`);
   if ((terrain.meta.format ?? 1) >= 2) (await import(pathToFileURL(path.join(ROOT, 'src/pack/osm.ts')).href)).deriveOsmCells(osm, terrain.meta);
   ({ computeImpact } = await import(pathToFileURL(path.join(ROOT, 'src/impact.ts')).href));
 }
