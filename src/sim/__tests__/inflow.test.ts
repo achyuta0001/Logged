@@ -74,6 +74,23 @@ test('Inflow maps fine cells onto the coarse grid; FloodEngine routes meta.inflo
   fl.prepare([40, 0], P);
   assert.equal(fl.sourcesAt(1), null);
   assert.ok(Math.abs(fl.sourcesAt(0).m3s[0] - 10000 / 3600) < 1e-9);
+  // the point sits at coarse (2, 3), near the north-west corner: 1 km² -> +-150 m = +-5 cells at 30 m on
+  // both nearby edges (north row 0, cols 0..8; west col 0, rows 0..7)
+  const closed = new Set(fl.edgeCells(55, 30));
+  for (let c = 0; c <= 8; c++) assert.ok(closed.has(c), `north edge col ${c}`);
+  for (let r = 0; r <= 7; r++) assert.ok(closed.has(r * 45), `west edge row ${r}`);
+  assert.equal(closed.size, 9 + 7);
+  assert.ok(!closed.has(9) && !closed.has(8 * 45) && !closed.has(54 * 45), 'south edge and the rest stay open');
+  // a closed edge keeps water that would otherwise drain out of it
+  const tilt = { width: 20, height: 20, cellSizeM: 30, elevation: Float32Array.from({ length: 400 }, (_, i) => 900 + Math.floor(i / 20) * 0.3), impervious: new Float32Array(400).fill(1) };
+  const outflow = (close) => {
+    const s = new SimCore(tilt, { drainCapacityMmHr: 0, infiltrationMmHr: 0, drainBlockage: 0 });
+    if (close) s.closeEdges(Int32Array.from({ length: 20 }, (_, c) => c)); // north edge (the low side)
+    s.sources = { cells: Int32Array.of(2 * 20 + 10), m3s: Float64Array.of(2) };
+    s.stepHour(0);
+    return s.budget.outflow;
+  };
+  assert.ok(outflow(true) < 0.5 * outflow(false), `closed ${outflow(true)} vs open ${outflow(false)}`);
 
   const { FloodEngine } = await import('../index.ts');
   const g = noisyTerrain(90, 110);
