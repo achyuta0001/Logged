@@ -50,8 +50,8 @@ export const NET_TUNING = {
   gapRiseM: 0.5,
   /** conveyance of a joined gap (culvert) relative to the reach's design flow */
   culvertFactor: 0.5,
-  /** water a tank holds above its waste weir while its outflow drain is full, m */
-  lakeRiseM: 0.3,
+  /** rise of a tank above its waste weir before it spills over its bund (bund freeboard), m */
+  lakeRiseM: 1.0,
 };
 
 const INTERIOR = 0, EDGE = 1, DEAD = 2; // DEAD = mapped line ends: continues unmapped (culvert-sized)
@@ -178,6 +178,7 @@ export class DrainNetwork {
   private feedStart: Int32Array; // cells feeding node k are feedCells[feedStart[k] .. feedStart[k + 1])
   private feedCells: Int32Array;
   private intensity = -1; // m/s the capacity arrays were built for
+  private lUp: Float64Array; // longest channel above each node, m
   private dtSub: number;
 
   constructor(g: NetworkGrids) {
@@ -334,7 +335,7 @@ export class DrainNetwork {
     // ---- design: area served upstream and the longest channel above each node (upstream-first sweep)
     const A = this.A;
     const areaUp = (this.areaUp = new Float64Array(N));
-    const lUp = new Float64Array(N);
+    const lUp = (this.lUp = new Float64Array(N));
     for (let i = 0; i < n; i++) if (cellNode[i] >= 0) areaUp[cellNode[i]] += A;
     for (let k = N - 1; k >= 0; k--) {
       const d = this.down[k];
@@ -361,6 +362,31 @@ export class DrainNetwork {
     let lmin = Infinity;
     for (let k = 0; k < N; k++) if (this.len[k] < lmin) lmin = this.len[k];
     this.dtSub = (Number.isFinite(lmin) ? lmin : dx) / v;
+  }
+
+  /**
+   * Land outside the grid that drains in at `cells` (m2 each, with its travel time to the edge, s):
+   * the reaches below each point were built for that whole catchment, not just the part inside the
+   * grid, so they are sized for it too (rational method with the longer time of concentration).
+   */
+  addUpstream(cells: ArrayLike<number>, areasM2: ArrayLike<number>, travelS: ArrayLike<number>): void {
+    const t0 = NET_TUNING.inletTimeS, v = NET_TUNING.velocity;
+    for (let p = 0; p < cells.length; p++) {
+      const c = cells[p];
+      let k = c >= 0 && c < this.cellNode.length ? this.cellNode[c] : -1;
+      const area = Math.max(0, areasM2[p] || 0);
+      if (k < 0 || !area) continue;
+      let l = Math.max(0, travelS[p] || 0) * v;
+      for (let guard = 0; k >= 0 && guard <= this.size; guard++) {
+        this.areaUp[k] += area;
+        if (l > this.lUp[k]) this.lUp[k] = l;
+        const tc = t0 + this.lUp[k] / v;
+        this.designArea[k] = this.areaUp[k] * Math.pow(t0 / tc, NET_TUNING.idfExp) * (this.culvert[k] ? NET_TUNING.culvertFactor : 1);
+        l += this.len[k];
+        k = this.kind[k] === INTERIOR ? this.down[k] : -1;
+      }
+    }
+    this.intensity = -1; // resize on the next exchange
   }
 
   /** counts per node kind (diagnostics) */
