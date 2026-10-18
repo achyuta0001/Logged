@@ -76,6 +76,7 @@ Reported flood spots outside 560098 live in `scripts/data/hotspots-blr.json`. Ea
   - grids are quantised to u16/u8, and smooth surfaces are row-delta coded and byte-shuffled
   - `filled` is derived on load
   - `osm.geojson` coordinates are rounded to 1e-5° (≈1 m)
+  - `osm.geojson` and `depressions.json` are stored gzipped, as `osm.geojson.gz` and `depressions.json.gz` only. GitHub Pages serves files as they are, so the app inflates them with the browser's `DecompressionStream`, and still loads a plain file where no `.gz` exists. A pack takes about a fifth of the disk space (560034: 8.6 → 1.95 MB); all 117 come to roughly 210 MB instead of 968 MB, under Pages' 1 GB limit. The Pages workflow fails when `dist` passes 950 MB.
   - per-feature grid cells are rebuilt on load (`src/pack/osm.ts`)
 - **Grid cell size:** 15 m like 560098. Large pincodes use a coarser cell, so a pack stays near 140k cells (Yelahanka 560064: 50 m).
 - **Format 1:** the 560098 reference pack keeps format 1 and stays in `public/data/` (`pack.path: "."`), so old links and the calibration baseline are unchanged.
