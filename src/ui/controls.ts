@@ -4,7 +4,8 @@ import type { RainSeries, SimParams } from '../types';
 import { esc, fmtHour, fmtNum } from './format';
 import { iconSvg } from './icons';
 
-type Scenario = { id: string; label: string; description: string };
+/** `source` marks a real storm (archive rain); its description cites the report as "(https://...)" */
+type Scenario = { id: string; label: string; description: string; source?: string };
 
 export interface LayerDef {
   id: string;
@@ -38,6 +39,19 @@ const SHORT: Record<string, string> = {
   cloudburst: 'Cloudburst',
   'multi-day-soak': '3-day soak',
 };
+
+/** Made-up scenarios first, then the real storms (archive rain) in their own group. */
+function optgroups(scenarios: Scenario[], selected?: string) {
+  const opt = (x: Scenario) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${esc(SHORT[x.id] ?? x.label)}</option>`;
+  const real = scenarios.filter((x) => x.source);
+  if (!real.length) return scenarios.map(opt).join('');
+  return `<optgroup label="Scenarios">${scenarios.filter((x) => !x.source).map(opt).join('')}</optgroup><optgroup label="Real storms, archive rain">${real.map(opt).join('')}</optgroup>`;
+}
+
+/** Escape a description and show each cited "(https://host/...)" as a short link to the report. */
+function linkCitations(text: string) {
+  return esc(text).replace(/\((https:\/\/([^/\s)]+)[^\s)]*)\)/g, (_m, url: string, host: string) => `(<a href="${url}" target="_blank" rel="noopener">${host.replace(/^www\./, '')}</a>)`);
+}
 
 export interface ControlHandlers {
   onSource(id: string): void;
@@ -92,9 +106,7 @@ export class Controls {
           <button type="button" data-v="worst" aria-pressed="false" title="Hourly maximum of four weather models">Worst of 4 models</button>
         </div>
         <label class="popup-btn scen-pick hidden">
-          <select id="scen" aria-label="Scenario">${scenarios
-            .map((x) => `<option value="${esc(x.id)}"${x.id === scen?.id ? ' selected' : ''}>${esc(SHORT[x.id] ?? x.label)}</option>`)
-            .join('')}</select>${iconSvg('updown', 14, 2)}
+          <select id="scen" aria-label="Scenario">${optgroups(scenarios, scen?.id)}</select>${iconSvg('updown', 14, 2)}
         </label>
       </div>
       <p class="src-desc" id="src-desc"></p>
@@ -235,7 +247,8 @@ export class Controls {
     this.m.rain.querySelectorAll<HTMLElement>('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === this.mode)));
     this.m.rain.querySelector('.variant')!.classList.toggle('hidden', !fc);
     this.m.rain.querySelector('.scen-pick')!.classList.toggle('hidden', fc);
-    (this.m.rain.querySelector('#src-desc') as HTMLElement).textContent = fc ? this.fcNote : (this.scenarios.find((s) => s.id === id)?.description ?? '');
+    const desc = fc ? this.fcNote : (this.scenarios.find((s) => s.id === id)?.description ?? '');
+    (this.m.rain.querySelector('#src-desc') as HTMLElement).innerHTML = linkCitations(desc);
     this.h.onSummary();
   }
 
