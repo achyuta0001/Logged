@@ -285,5 +285,56 @@ export function packInflow(flow, grid, flowDir, flowAccum, { minKm2 = 0.25, maxP
     timeArea: m.timeArea.map(r3),
     storageH: Math.round(Math.min(6, Math.max(0.25, 0.5 * m.tcH)) * 100) / 100,
   }));
-  return { points, simulatedKm2: kept.reduce((s, m) => s + m.areaKm2, 0), totalKm2 };
+  return { points, simulatedKm2: kept.reduce((s, m) => s + m.areaKm2, 0), totalKm2, edge: inflowEdge(flow, grid) };
+}
+
+/**
+ * Pack-grid edge stretches where the district routing has land outside the grid draining in, as runs
+ * [side, from, to] (side 0 north, 1 south, 2 west, 3 east; from..to inclusive, pack cells along that side).
+ * They are inflow boundaries, not outfalls: where a valley or a lake is cut off by the grid edge, the pack's
+ * own DEM slopes outwards and a free outfall would drain the inflow straight back out. The 60 m routing
+ * places a crossing a cell or two off the pack's finer DEM, and a valley entering at a slant crosses in
+ * patches, so open gaps up to `gapM` between closed cells are closed and each stretch is widened by
+ * `marginM` at both ends (along its own side only: a stream clipping a corner still leaves by the other).
+ */
+export function inflowEdge(flow, grid, { gapM = 300, marginM = 150 } = {}) {
+  const { G, dir } = flow;
+  const W = G.width, H = G.height;
+  const { w, s, e, n } = grid;
+  const inside = (i) => {
+    const lon = G.lon(i % W), lat = G.lat((i / W) | 0);
+    return lon >= w && lon <= e && lat >= s && lat <= n;
+  };
+  const drainsIn = (k) => {
+    if (k < 0 || dir[k] === 255 || inside(k)) return false;
+    const r = ((k / W) | 0) + DR[dir[k]], c = (k % W) + DC[dir[k]];
+    return r >= 0 && c >= 0 && r < H && c < W && inside(r * W + c);
+  };
+  const gap = Math.max(0, Math.round(gapM / grid.cellM)), margin = Math.max(0, Math.round(marginM / grid.cellM));
+  const runs = [];
+  for (let side = 0; side < 4; side++) {
+    const len = side < 2 ? grid.width : grid.height;
+    const closed = new Uint8Array(len);
+    for (let t = 0; t < len; t++) {
+      // the district cell half a district cell beyond this edge cell: always the first ring outside
+      const lon = side < 2 ? grid.lon(t) : side === 2 ? w - 0.5 * G.dLon : e + 0.5 * G.dLon;
+      const lat = side >= 2 ? grid.lat(t) : side === 0 ? n + 0.5 * G.dLat : s - 0.5 * G.dLat;
+      closed[t] = drainsIn(G.cellOf(lon, lat)) ? 1 : 0;
+    }
+    for (let t = 0, last = -1; t < len; t++) {
+      if (!closed[t]) continue;
+      if (last >= 0 && t - last - 1 <= gap) closed.fill(1, last + 1, t);
+      last = t;
+    }
+    const core = Uint8Array.from(closed);
+    for (let t = 0; t < len; t++) if (core[t]) closed.fill(1, Math.max(0, t - margin), Math.min(len, t + margin + 1));
+    for (let t = 0; t < len; t++) {
+      if (!closed[t]) continue;
+      let u = t;
+      while (u + 1 < len && closed[u + 1]) u++;
+      runs.push([side, t, u]);
+      t = u;
+    }
+  }
+  return runs;
 }
