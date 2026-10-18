@@ -8,8 +8,8 @@
  "files": [
   "meta.json",
   "grids.bin",
-  "osm.geojson",
-  "depressions.json"
+  "osm.geojson.gz",
+  "depressions.json.gz"
  ],
  "sources": [
   "DEM: Copernicus DEM GLO-30 (DSM) © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA; all rights reserved; free licence. Accessed via public AWS bucket copernicus-dem-30m (no login), bilinear-resampled to 15 m",
