@@ -313,6 +313,11 @@ export class SimCore {
     return Array.from(this.lakeRoomInit, (cap, k) => ({ cells: cells[k], capacityM3: cap, freeM3: this.lakeRoom[k] }));
   }
 
+  /** Close grid-edge cells to outflow: inflow boundaries, where the land beyond the edge is upstream (src/sim/inflow.ts). */
+  closeEdges(cells: ArrayLike<number>): void {
+    for (let k = 0; k < cells.length; k++) if (cells[k] >= 0 && cells[k] < this.n) this.edgeSlopeSqrt[cells[k]] = 0;
+  }
+
   reset(): void {
     this.h.fill(0);
     this.soil.fill(0);
