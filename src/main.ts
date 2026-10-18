@@ -505,11 +505,11 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
     app.series = series;
     setPlaying(false);
     controls.setBusy(true);
-    if (!first) ld.show('Simulating water flow');
+    if (!first) ld.show('Predicting where water flows');
     engine.setParams(app.params);
     const t0 = performance.now();
     try {
-      await engine.run(series, (h, n) => ld.set(base + (span * h) / Math.max(1, n), `Simulating hour ${h} of ${n}`));
+      await engine.run(series, (h, n) => ld.set(base + (span * h) / Math.max(1, n), `Predicting hour ${h} of ${n}`));
     } catch (e) {
       console.error(e);
       ld.error('The flood model stopped with an error. Reload the page to try again.');
