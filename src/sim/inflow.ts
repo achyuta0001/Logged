@@ -107,9 +107,11 @@ export class Inflow {
   readonly points: InflowPoint[];
   readonly cells: Int32Array;
   private vols: Float64Array[] = [];
+  private coarseWidth: number;
 
   /** `fineWidth`/`fineCells`: the pack grid; `f`, `coarseWidth`: the hydraulic grid (src/sim/grid.ts coarsen) */
   constructor(points: InflowPoint[], fineWidth: number, fineCells: number, f: number, coarseWidth: number) {
+    this.coarseWidth = coarseWidth;
     this.points = points.filter((p) => validInflowPoint(p, fineCells));
     this.cells = Int32Array.from(this.points, (p) => {
       const r = Math.floor(p.cell / fineWidth), c = p.cell % fineWidth;
@@ -119,6 +121,36 @@ export class Inflow {
 
   get size(): number {
     return this.points.length;
+  }
+
+  /**
+   * Hydraulic-grid edge cells to close to outflow (SimCore.closeEdges): the stretch of edge each valley
+   * enters through, half-width 120 m x sqrt(area in km²) clamped to 150..1200 m (valley floors widen
+   * downstream), on every edge within that reach of the point's cell (so corners are covered). The land
+   * beyond is upstream, so a free outfall there would just drain the inflow straight back out.
+   */
+  edgeCells(coarseHeight: number, dx: number): Int32Array {
+    const W = this.coarseWidth, H = coarseHeight;
+    const out = new Set<number>();
+    this.points.forEach((p, k) => {
+      const i = this.cells[k], r = Math.floor(i / W), c = i % W;
+      const half = Math.max(1, Math.round(Math.min(1200, Math.max(150, 120 * Math.sqrt(p.areaKm2))) / dx));
+      const d = [r, H - 1 - r, c, W - 1 - c];
+      const near = Math.min(...d);
+      d.forEach((de, side) => {
+        if (de > Math.max(near, half)) return;
+        for (let o = -half; o <= half; o++) {
+          if (side < 2) {
+            const cc = c + o;
+            if (cc >= 0 && cc < W) out.add((side === 0 ? 0 : H - 1) * W + cc);
+          } else {
+            const rr = r + o;
+            if (rr >= 0 && rr < H) out.add(rr * W + (side === 2 ? 0 : W - 1));
+          }
+        }
+      });
+    });
+    return Int32Array.from(out);
   }
 
   /** compute every point's hourly volumes for this run */
