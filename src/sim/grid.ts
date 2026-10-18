@@ -110,3 +110,66 @@ export function downscaleMm(c: Coarse, hC: Float64Array, zFine: Float32Array, ou
       }
     }
 }
+
+/**
+ * Cap the depth of closed street depressions at `maxM` below their spill level (in place).
+ * A depression here is ground that cannot drain by gravity to the grid edge, a tank or a mapped drain
+ * (`outlets`, 1 = tank or drain cell): a 4-neighbour priority flood from the edge and the outlets gives
+ * each cell the level it spills at, and any other cell more than `maxM` below that is raised to it.
+ * Why: the pack DEM is a bare-earth approximation of a 30 m radar surface model, which leaves holes
+ * several metres deep where building blobs ring a plot, a courtyard or a basement dig; the street gaps
+ * that drain them are narrower than a cell. Filled to the brim they read as 5-7 m street floods.
+ * Tank bowls and drain channels are untouched (they are outlets), as is ponding up to `maxM`
+ * (underpasses, road dips). Non-finite cells are walls and stay as they are. Returns cells raised.
+ */
+export function limitPits(z: Float32Array, w: number, h: number, maxM: number, outlets?: Uint8Array): number {
+  const n = w * h;
+  if (!(maxM >= 0) || n === 0) return 0;
+  const lvl = new Float64Array(n).fill(Infinity);
+  // binary min-heap of cells keyed by spill level
+  const hk = new Float64Array(n), hv = new Int32Array(n);
+  let size = 0;
+  const push = (key: number, v: number) => {
+    let i = size++;
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (hk[p] <= key) break;
+      hk[i] = hk[p]; hv[i] = hv[p]; i = p;
+    }
+    hk[i] = key; hv[i] = v;
+  };
+  const pop = (): number => {
+    const top = hv[0];
+    const key = hk[--size], v = hv[size];
+    let i = 0;
+    for (;;) {
+      let c = 2 * i + 1;
+      if (c >= size) break;
+      if (c + 1 < size && hk[c + 1] < hk[c]) c++;
+      if (hk[c] >= key) break;
+      hk[i] = hk[c]; hv[i] = hv[c]; i = c;
+    }
+    hk[i] = key; hv[i] = v;
+    return top;
+  };
+  for (let i = 0; i < n; i++) {
+    if (!Number.isFinite(z[i])) continue;
+    const r = (i / w) | 0, c = i - r * w;
+    if (r === 0 || c === 0 || r === h - 1 || c === w - 1 || (outlets && outlets[i])) { lvl[i] = z[i]; push(z[i], i); }
+  }
+  let raised = 0;
+  while (size) {
+    const i = pop();
+    const r = (i / w) | 0, c = i - r * w, L = lvl[i];
+    for (let k = 0; k < 4; k++) {
+      const j = k === 0 ? (c + 1 < w ? i + 1 : -1) : k === 1 ? (c > 0 ? i - 1 : -1) : k === 2 ? (r + 1 < h ? i + w : -1) : r > 0 ? i - w : -1;
+      if (j < 0 || lvl[j] !== Infinity || !Number.isFinite(z[j])) continue;
+      const zj = z[j];
+      const lj = zj > L ? zj : L;
+      lvl[j] = lj;
+      if (lj - zj > maxM) { z[j] = lj - maxM; raised++; }
+      push(lj, j);
+    }
+  }
+  return raised;
+}
