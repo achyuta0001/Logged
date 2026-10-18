@@ -29,7 +29,92 @@ const MAX_BINS = 48;
 /** radius the inflow of one point is spread over on the hydraulic grid, m (at least one cell) */
 const SPREAD_M = 60;
 
+/** cells within this of one level form a DEM water surface (the 30 m surface model flattens water bodies), m */
+const FLAT_EPS_M = 0.01;
+/** smallest flat taken for a water body, m² */
+const FLAT_MIN_M2 = 1e4;
+/** a cut tank's banks along the grid edge, up to this above its level, are closed with it, m */
+const TANK_BANK_M = 2;
+
 const clamp01 = (v: number | undefined, d = 0) => (Number.isFinite(v) ? Math.min(1, Math.max(0, v as number)) : d);
+
+/**
+ * Inflow edges across tanks cut by the grid edge. Where a closed inflow-edge cell lies on, or next to (along
+ * the edge), a water body that the grid edge cuts, that body's whole cut is closed too. A water body is a
+ * mapped tank (4-connected lakeMask component) or a DEM water surface: a 4-connected flat of at least
+ * FLAT_MIN_M2 within FLAT_EPS_M of one level, a quarter of it interior cells (the surface model flattens
+ * water, mapped or not; a strip of one level along a uniform slope is not a flat). Why: the
+ * tank's level is the same on both sides of the cut and the land beyond drains in, so water reaching the
+ * tank leaves by its outlet, not back across the cut; the district routing marks only the stretch where its
+ * flow lines cross straight in (on a tank they run along the cut to the crossing). 560102: the west entry
+ * ran into such a tank and 223k+ m³ of the inflow left across its open cut, just past the closed stretch.
+ * So are the cut's banks, the edge cells beside it up to TANK_BANK_M above the tank's level, which the tank
+ * covers when it runs high. The added cells are closed and reopened with the rest (SimCore.closeEdges /
+ * setEdgesClosed).
+ */
+export function closeAcrossWater(closed: ArrayLike<number>, W: number, H: number, dx: number, z: ArrayLike<number>, lakeMask?: ArrayLike<number>): Int32Array {
+  const n = W * H;
+  const out = new Set<number>();
+  for (let k = 0; k < closed.length; k++) if (closed[k] >= 0 && closed[k] < n) out.add(closed[k]);
+  if (!out.size || W < 3 || H < 3) return Int32Array.from(out);
+  const onEdge = (i: number) => { const r = (i / W) | 0, c = i - r * W; return r === 0 || c === 0 || r === H - 1 || c === W - 1; };
+  const ok = (i: number) => Number.isFinite(z[i]) && z[i] > -1000;
+  const seen = new Uint8Array(n), bank = new Uint8Array(n), stamp = new Int32Array(n);
+  let id = 0;
+  const minCells = Math.max(2, Math.ceil(FLAT_MIN_M2 / (dx * dx)));
+  const body: number[] = [];
+  for (const c of [...out]) {
+    const r0 = (c / W) | 0, c0 = c - r0 * W;
+    for (let dr = -1; dr <= 1; dr++)
+      for (let dc = -1; dc <= 1; dc++) {
+        const r = r0 + dr, cc = c0 + dc;
+        if (r < 0 || cc < 0 || r >= H || cc >= W) continue;
+        const q = r * W + cc;
+        if (seen[q] || !onEdge(q) || !ok(q)) continue;
+        // grow the water body from q: its lake component, else the flat at q's level
+        const lake = !!lakeMask?.[q], level = z[q];
+        const inBody = (j: number) => (lake ? !!lakeMask![j] : !lakeMask?.[j] && ok(j) && Math.abs(z[j] - level) <= FLAT_EPS_M);
+        body.length = 0;
+        body.push(q);
+        seen[q] = 1;
+        for (let k = 0; k < body.length; k++) {
+          const i = body[k], ri = (i / W) | 0, ci = i - ri * W;
+          for (const j of [ci + 1 < W ? i + 1 : -1, ci > 0 ? i - 1 : -1, ri + 1 < H ? i + W : -1, ri > 0 ? i - W : -1])
+            if (j >= 0 && !seen[j] && inBody(j)) { seen[j] = 1; body.push(j); }
+        }
+        if (!lake) {
+          // a water surface is flat in both directions: a strip of one level along a slope is not one
+          id++;
+          for (const i of body) stamp[i] = id;
+          let interior = 0;
+          for (const i of body) {
+            const ri = (i / W) | 0, ci = i - ri * W;
+            if (ri > 0 && ci > 0 && ri < H - 1 && ci < W - 1 && stamp[i + 1] === id && stamp[i - 1] === id && stamp[i + W] === id && stamp[i - W] === id) interior++;
+          }
+          if (body.length < minCells || interior * 4 < minCells) continue;
+        }
+        // the cut, then its banks: edge cells next to it (along the edge) up to TANK_BANK_M above the
+        // tank's level; lower ground is an outlet channel, not a bank, and stays open
+        let lvl = Infinity;
+        const cut: number[] = [];
+        for (const i of body) if (onEdge(i)) { cut.push(i); if (z[i] < lvl) lvl = z[i]; }
+        for (const i of cut) bank[i] = 1;
+        while (cut.length) {
+          const i = cut.pop()!, ri = (i / W) | 0, ci = i - ri * W;
+          out.add(i);
+          for (let er = -1; er <= 1; er++)
+            for (let ec = -1; ec <= 1; ec++) {
+              const r2 = ri + er, c2 = ci + ec, j = r2 * W + c2;
+              if (r2 < 0 || c2 < 0 || r2 >= H || c2 >= W || bank[j] || !onEdge(j) || !ok(j)) continue;
+              if (z[j] < lvl - FLAT_EPS_M || z[j] > lvl + TANK_BANK_M) continue;
+              bank[j] = 1;
+              cut.push(j);
+            }
+        }
+      }
+  }
+  return Int32Array.from(out);
+}
 
 /** A point is usable when it names a cell on the grid and a positive area. */
 export function validInflowPoint(p: InflowPoint, cells: number): boolean {

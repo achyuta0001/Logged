@@ -16,12 +16,18 @@
 //   node scripts/calibrate.mjs --pin 560034                      another pincode's pack (public/data/pins/<code>)
 //   node scripts/calibrate.mjs --pin 560034 --impact             also buildings wet / roads closed at the peak
 //   node scripts/calibrate.mjs --pin 560034 --no-inflow          ignore the pack's upstream inflow points (M4)
+//   node scripts/calibrate.mjs --pin 560034 --event all          also the real storms (HISTORICAL_EVENTS in src/weather.ts,
+//                                                                comma list of ids or "all"): hourly rain fetched from the
+//                                                                Open-Meteo archive (free, keyless, CC BY 4.0) at the pin centroid.
+//                                                                Each storm also has a scaled twin, <id>-gauge (e.g. real-2022-09-05-gauge):
+//                                                                the same archive hours scaled to the reported gauge total ("all" runs both)
 //
 // Requires Node >= 22.6 (native TypeScript type stripping) — the engine and the scenario series are
 // imported straight from src/sim/index.ts and src/weather.ts.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readPackJson } from './lib/pack-files.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
@@ -60,12 +66,13 @@ const IMPACT = flag('impact');
 let osm = null;
 let computeImpact = null;
 if (IMPACT) {
-  osm = JSON.parse(fs.readFileSync(path.join(DATA, 'osm.geojson'), 'utf8'));
+  osm = readPackJson(DATA, 'osm.geojson'); // osm.geojson.gz in format-2 packs
+  if (!osm) throw new Error(`no osm.geojson(.gz) in ${DATA}`);
   if ((terrain.meta.format ?? 1) >= 2) (await import(pathToFileURL(path.join(ROOT, 'src/pack/osm.ts')).href)).deriveOsmCells(osm, terrain.meta);
   ({ computeImpact } = await import(pathToFileURL(path.join(ROOT, 'src/impact.ts')).href));
 }
 const { FloodEngine } = await import(pathToFileURL(path.join(SIM, 'index.ts')).href);
-const { SCENARIOS } = await import(pathToFileURL(path.join(ROOT, 'src/weather.ts')).href);
+const { SCENARIOS, HISTORICAL_EVENTS, fetchHistoricalEvent } = await import(pathToFileURL(path.join(ROOT, 'src/weather.ts')).href);
 
 const { meta } = terrain;
 const { width: W, height: H } = meta;
@@ -135,11 +142,13 @@ async function runScenario(series) {
     impact = { buildingsWet: r.buildings.groundFloorWet, buildings: r.buildings.total, roadClosedCarKm: r.roads.impassableCarKm, roadClosedTwoWheelerKm: r.roads.impassableTwoWheelerKm, roadKm: r.roads.totalKm, overall: r.overall };
   }
   return {
+    label: series.label,
     impact,
     lakeSpill,
     ms: Math.round(ms),
     hours: n,
     rainMm: mm.reduce((a, b) => a + b, 0),
+    peakMmHr: Math.max(0, ...mm),
     rainEnd,
     peakHour: peak,
     peakAreaM2: peakArea,
@@ -160,6 +169,21 @@ for (const id of SCEN_IDS) {
   const sc = SCENARIOS.find((s) => s.id === id);
   if (!sc) throw new Error(`unknown scenario ${id}`);
   results.scenarios[id] = await runScenario(sc.build());
+}
+
+// real storms: archive rain at the pin centroid (the point the app asks for), else the bbox centre
+const EVENT_ARG = opt('event', '');
+const EVENT_IDS = EVENT_ARG === 'all' ? HISTORICAL_EVENTS.map((e) => e.id) : EVENT_ARG ? EVENT_ARG.split(',') : [];
+if (EVENT_IDS.length) {
+  const idxFile = path.join(ROOT, 'public/data/pins/index.json');
+  const entry = fs.existsSync(idxFile) ? JSON.parse(fs.readFileSync(idxFile, 'utf8')).pins?.find((p) => p.code === String(meta.pincode)) : null;
+  const [lon, lat] = entry?.centroid ?? [(bw + be) / 2, (bs + bn) / 2];
+  results.archivePoint = [lon, lat];
+  for (const id of EVENT_IDS) {
+    const ev = HISTORICAL_EVENTS.find((e) => e.id === id);
+    if (!ev) throw new Error(`unknown event ${id} (known: ${HISTORICAL_EVENTS.map((e) => e.id).join(', ')}, all)`); // raw and -gauge ids
+    results.scenarios[id] = await runScenario(await fetchHistoricalEvent(lat, lon, ev));
+  }
 }
 
 if (flag('perf')) {
@@ -199,7 +223,9 @@ function printHotspots() {
 function summaryRows(r) {
   const b = r.budget;
   return [
+    ['rain series', r.label ?? '-'],
     ['rain (mm)', r.rainMm.toFixed(1)],
+    ['wettest hour (mm)', r.peakMmHr == null ? '-' : r.peakMmHr.toFixed(1)],
     ['peak flooded area >0.1 m (km2) @hour', `${km2(r.peakAreaM2)} @${r.peakHour}`],
     ['flooded area rain-end +0/+3/+6/+12 h (km2)', [0, 3, 6, 12].map((d) => km2(r.areaAtRainEndPlus[d])).join(' / ')],
     ['hours after rain to < 25% of peak area', r.recessionH == null ? `> ${r.hours - 1 - r.rainEnd}` : String(r.recessionH)],
@@ -220,6 +246,7 @@ function summaryRows(r) {
 
 console.log(`data: ${results.data}   engine: ${results.sim}   grid ${W}x${H} @ ${meta.cellSizeM} m`);
 console.log(`upstream inflow: ${meta.inflow?.length ? `${meta.inflow.length} points, ${meta.inflow.reduce((s, p) => s + p.areaKm2, 0).toFixed(1)} of ${meta.upstreamOutsideKm2 ?? '?'} km² simulated` : INFLOW_PTS ? `off (--no-inflow; the pack has ${INFLOW_PTS} points)` : 'none in this pack'}`);
+if (results.archivePoint) console.log(`real storms: Open-Meteo archive (reanalysis, CC BY 4.0) at ${results.archivePoint.map((v) => v.toFixed(4)).join(', ')}`);
 printHotspots();
 for (const [id, r] of Object.entries(results.scenarios)) {
   const br = base?.scenarios?.[id];

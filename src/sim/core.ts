@@ -119,6 +119,9 @@ export class SimCore {
   params: SimParams;
 
   private invN: Float64Array; // 1/n per cell
+  /** mean 1/n of each cell's east and south face (0.5 x the sum: the same product as in the face formula) */
+  private nEast: Float64Array;
+  private nSouth: Float64Array;
   private pervious: Float64Array;
   private soil: Float64Array; // m infiltrated into soil storage (per unit pervious area)
   private inletRate: Float64Array; // m/s depth-equivalent removal capacity per cell (before blockage)
@@ -179,6 +182,12 @@ export class SimCore {
       this.pervious[i] = 1 - imp;
       // sealed surfaces ~0.015, vegetated/rough ~0.06
       this.invN[i] = 1 / (0.015 * imp + 0.06 * (1 - imp));
+    }
+    this.nEast = new Float64Array(n);
+    this.nSouth = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      if ((i % w) + 1 < w) this.nEast[i] = 0.5 * (this.invN[i] + this.invN[i + 1]);
+      if (i + w < n) this.nSouth[i] = 0.5 * (this.invN[i] + this.invN[i + w]);
     }
     this.soil = new Float64Array(n);
     this.inside = g.boundaryMask ?? new Uint8Array(n).fill(1);
@@ -339,10 +348,35 @@ export class SimCore {
     return Array.from(this.lakeRoomInit, (cap, k) => ({ cells: cells[k], capacityM3: cap, freeM3: this.lakeRoom[k] }));
   }
 
-  /** Close grid-edge cells to outflow: inflow boundaries, where the land beyond the edge is upstream (src/sim/inflow.ts). */
+  /**
+   * Close grid-edge cells to outflow: inflow boundaries, where the land beyond the edge is upstream
+   * (src/sim/inflow.ts). They stay registered: `setEdgesClosed(false)` reopens them as free outfalls
+   * (the runner does once the inflow has receded, so water pooled against them can leave).
+   */
   closeEdges(cells: ArrayLike<number>): void {
-    for (let k = 0; k < cells.length; k++) if (cells[k] >= 0 && cells[k] < this.n) this.edgeSlopeSqrt[cells[k]] = 0;
+    const keep = new Map<number, number>();
+    for (let k = 0; k < this.closedCells.length; k++) keep.set(this.closedCells[k], this.closedOpenSlope[k]);
+    this.setEdgesClosed(false);
+    for (let k = 0; k < cells.length; k++) {
+      const i = cells[k];
+      if (i >= 0 && i < this.n && !keep.has(i)) keep.set(i, this.edgeSlopeSqrt[i]);
+    }
+    this.closedCells = Int32Array.from(keep.keys());
+    this.closedOpenSlope = Float64Array.from(keep.values());
+    this.setEdgesClosed(true);
   }
+
+  /** Close (true) or reopen (false) the edge cells registered by closeEdges. */
+  setEdgesClosed(on: boolean): void {
+    const cells = this.closedCells, open = this.closedOpenSlope, es = this.edgeSlopeSqrt;
+    for (let k = 0; k < cells.length; k++) es[cells[k]] = on ? 0 : open[k];
+    this.edgesClosed = on && cells.length > 0;
+  }
+
+  /** whether the registered inflow edge cells are currently closed */
+  edgesClosed = false;
+  private closedCells = new Int32Array(0);
+  private closedOpenSlope = new Float64Array(0);
 
   reset(): void {
     this.h.fill(0);
@@ -442,22 +476,40 @@ export class SimCore {
     for (let i = 0; i < this.n; i++) if (s[i] > 0) s[i] = Math.max(0, s[i] - d);
   }
 
+  /** wet extent per row (cells deeper than H_MIN_FLOW), by a pass over the grid */
+  private wetExtents(): void {
+    const { w, hgt: H, h } = this;
+    const rowMin = this.wetRowMin, rowMax = this.wetRowMax;
+    for (let r = 0; r < H; r++) {
+      let lo = w, hi = -1;
+      const base = r * w;
+      for (let c = 0; c < w; c++) if (h[base + c] > H_MIN_FLOW) { if (lo === w) lo = c; hi = c; }
+      rowMin[r] = lo;
+      rowMax[r] = hi;
+    }
+  }
+
   /**
    * Remove ponded water through the basin's free roadside-drain capacity. `capDepth` = free capacity
    * per fully sealed cell this step (m). Returns the removed depth summed over cells (m*cells).
    */
   private drainPonds(capDepth: number): number {
-    const { n, h, basin, imp, lakeComp } = this;
+    const { w, hgt: H, h, basin, imp, lakeComp } = this;
     const wetImp = this.basinWetImp, pond = this.basinPond, bImp = this.basinImp;
+    // ponds are deeper than H_MIN_FLOW: only the wet extents hold any (same cells, same order)
+    const rowMin = this.wetRowMin, rowMax = this.wetRowMax;
     wetImp.fill(0);
     pond.fill(0);
     let any = false;
-    for (let i = 0; i < n; i++) {
-      const d = h[i];
-      if (d <= POND_MIN_M) continue;
-      const b = basin[i];
-      wetImp[b] += imp[i]; // wet cells' own drains are already counted by the local inlet term
-      if (lakeComp[i] < 0) { pond[b] += d; any = true; }
+    for (let r = 0; r < H; r++) {
+      const hi = rowMax[r];
+      for (let i = r * w + rowMin[r], e = r * w + hi; i <= e; i++) {
+        const d = h[i];
+        if (d <= POND_MIN_M) continue;
+        const b = basin[i];
+        wetImp[b] += imp[i]; // wet cells' own drains are already counted by the local inlet term
+        if (lakeComp[i] < 0) { pond[b] += d; any = true; }
+      }
     }
     if (!any) return 0;
     // per-basin fraction of the pond that can leave this step
@@ -467,14 +519,17 @@ export class SimCore {
       pond[b] = room <= 0 ? 0 : room >= pond[b] ? 1 : room / pond[b];
     }
     let removed = 0;
-    for (let i = 0; i < n; i++) {
-      const d = h[i];
-      if (d <= POND_MIN_M || lakeComp[i] >= 0) continue;
-      const f = pond[basin[i]];
-      if (f <= 0) continue;
-      const r = d * f;
-      h[i] = d - r;
-      removed += r;
+    for (let r = 0; r < H; r++) {
+      const hi = rowMax[r];
+      for (let i = r * w + rowMin[r], e = r * w + hi; i <= e; i++) {
+        const d = h[i];
+        if (d <= POND_MIN_M || lakeComp[i] >= 0) continue;
+        const f = pond[basin[i]];
+        if (f <= 0) continue;
+        const x = d * f;
+        h[i] = d - x;
+        removed += x;
+      }
     }
     return removed;
   }
@@ -502,6 +557,15 @@ export class SimCore {
     const soil = this.soil, perv = this.pervious;
     const soilRec = SOIL_RECOVERY_M_S * dt;
     let infTot = 0;
+    // storm-drain capacity this step, m. With mapped drains the inlets' capture is folded into this
+    // pass (same per-cell order: rain, soil, inlets; src/sim/network.ts beginCapture)
+    const cap = (Math.max(0, p.drainCapacityMmHr) * (1 - Math.min(1, Math.max(0, p.drainBlockage)))) / 1000 / 3600 * dt;
+    const net = this.net;
+    const fold = net !== null && cap > 0;
+    if (fold) net.beginCapture();
+    const cellNode = net ? net.cellNode : null, tankCell = net ? net.tankCell : null;
+    const want = net ? net.want : null, rcell = net ? net.rcell : null, rate = this.inletRate;
+    let capRemoved = 0, capSink = 0;
     for (let i = 0; i < n; i++) {
       let d = h[i] + rainDepth;
       const pv = perv[i];
@@ -518,6 +582,20 @@ export class SimCore {
       }
       s -= soilRec;
       soil[i] = s > 0 ? s : 0;
+      if (fold) {
+        if (d <= 0) rcell![i] = 0;
+        else {
+          const k = cellNode![i];
+          // water standing on a tank above its cushion leaves through the weir: all of it is offered
+          const m = tankCell![i] && k >= 0 ? d : cap * rate[i];
+          const r = d < m ? d : m;
+          rcell![i] = r;
+          d -= r;
+          capRemoved += r;
+          if (k >= 0) want![k] += r * A;
+          else capSink += r;
+        }
+      }
       h[i] = d;
     }
     this.budget.rain += rainDepth * n * A;
@@ -525,12 +603,9 @@ export class SimCore {
 
     // storm-drain inlets. With mapped drains the captured water enters the drain network, which routes
     // it downstream and gives back what it cannot carry (src/sim/network.ts); without, inlets are sinks.
-    const cap = (Math.max(0, p.drainCapacityMmHr) * (1 - Math.min(1, Math.max(0, p.drainBlockage)))) / 1000 / 3600 * dt;
-    const net = this.net;
     if (cap > 0 || net) {
       let dr = 0;
-      const rate = this.inletRate;
-      if (net) dr = net.exchange(h, cap, rate, cap / dt, dt);
+      if (net) dr = net.exchange(h, cap, rate, cap / dt, dt, fold ? { removed: capRemoved, sink: capSink } : undefined);
       else {
         for (let i = 0; i < n; i++) {
           const d = h[i];
@@ -541,6 +616,9 @@ export class SimCore {
           dr += r;
         }
       }
+      // the wet extents (below) are taken here: pond drainage and the tanks only take water from now on,
+      // so they stay a superset of what the routing needs, and the pond pass visits only them
+      this.wetExtents();
       // post-storm drainage: once rain is below the roadside drains' capacity, the spare capacity of
       // each basin's dry paved area drains that basin's pond (deepest water first, mass-exact)
       const local = cap * this.localShare;
@@ -576,20 +654,13 @@ export class SimCore {
     }
 
     // ---- horizontal routing ----
-    const fx = this.fx, fy = this.fy, out = this.out, chan = this.chan;
+    if (!(cap > 0 || net)) this.wetExtents();
+    const rowMin = this.wetRowMin, rowMax = this.wetRowMax;
+    const fx = this.fx, fy = this.fy, out = this.out, chan = this.chan, nE = this.nEast, nS = this.nSouth;
     out.fill(0);
     const kA = K_LIMIT * A;
     const invDx = 1 / dx;
     let vmax = 0;
-    const rowMin = this.wetRowMin, rowMax = this.wetRowMax;
-    // wet extent per row (skip dry regions cheaply)
-    for (let r = 0; r < H; r++) {
-      let lo = w, hi = -1;
-      const base = r * w;
-      for (let c = 0; c < w; c++) if (h[base + c] > H_MIN_FLOW) { if (lo === w) lo = c; hi = c; }
-      rowMin[r] = lo;
-      rowMax[r] = hi;
-    }
     for (let r = 0; r < H; r++) {
       const base = r * w;
       // east faces: need either cell wet
@@ -606,9 +677,8 @@ export class SimCore {
           if (hf <= H_MIN_FLOW || d === 0) { fx[i] = 0; continue; }
           const ad = d > 0 ? d : -d;
           const h23 = hf < 5 ? LUT23[(hf / LUT_STEP) | 0] : Math.pow(hf, 2 / 3);
-          const q = hf * h23 * 0.5 * (invN[i] + invN[j]) * Math.sqrt(ad * invDx) * dx; // m3/s
-          const v = q / (hf * dx);
-          if (v > vmax && hf > 0.02 && !chan[i] && !chan[j]) vmax = v;
+          const q = hf * h23 * nE[i] * Math.sqrt(ad * invDx) * dx; // m3/s
+          if (hf > 0.02 && !chan[i] && !chan[j]) { const v = q / (hf * dx); if (v > vmax) vmax = v; }
           let vol = q * dt;
           const lim = kA * ad;
           if (vol > lim) vol = lim;
@@ -636,9 +706,8 @@ export class SimCore {
             if (hf <= H_MIN_FLOW || d === 0) { fy[i] = 0; continue; }
             const ad = d > 0 ? d : -d;
             const h23 = hf < 5 ? LUT23[(hf / LUT_STEP) | 0] : Math.pow(hf, 2 / 3);
-            const q = hf * h23 * 0.5 * (invN[i] + invN[j]) * Math.sqrt(ad * invDx) * dx;
-            const v = q / (hf * dx);
-            if (v > vmax && hf > 0.02 && !chan[i] && !chan[j]) vmax = v;
+            const q = hf * h23 * nS[i] * Math.sqrt(ad * invDx) * dx;
+            if (hf > 0.02 && !chan[i] && !chan[j]) { const v = q / (hf * dx); if (v > vmax) vmax = v; }
             let vol = q * dt;
             const lim = kA * ad;
             if (vol > lim) vol = lim;
@@ -673,12 +742,19 @@ export class SimCore {
       if (w > 1) edgeVisit(r * w + w - 1);
     }
 
-    // positivity: scale factor per donor cell, stored in out[] (out -> scale)
-    for (let i = 0; i < n; i++) {
-      const o = out[i];
-      if (o > 0) {
-        const avail = h[i] * A;
-        out[i] = o > avail ? avail / o : 1;
+    // positivity: scale factor per donor cell, stored in out[] (out -> scale). Donors hold more than
+    // H_MIN_FLOW (a face's flow depth never exceeds its donor's depth), so only wet extents are visited.
+    for (let r = 0; r < H; r++) {
+      const hi = rowMax[r];
+      if (hi < 0) continue;
+      const base = r * w;
+      for (let c = rowMin[r]; c <= hi; c++) {
+        const i = base + c;
+        const o = out[i];
+        if (o > 0) {
+          const avail = h[i] * A;
+          out[i] = o > avail ? avail / o : 1;
+        }
       }
     }
     // apply fluxes
@@ -714,11 +790,14 @@ export class SimCore {
       outflow += v;
     }
     this.budget.outflow += outflow;
-    // clamp round-off negatives (tracked into outflow to keep the budget exact)
+    // clamp round-off negatives (tracked into outflow to keep the budget exact); only cells the fluxes
+    // touched can be negative: the same row ranges as above
     let neg = 0;
     for (let r = 0; r < H; r++) {
       const base = r * w;
-      for (let c = 0; c < w; c++) {
+      const lo = Math.max(0, Math.min(rowMin[r], r > 0 ? rowMin[r - 1] : w, r < H - 1 ? rowMin[r + 1] : w) - 1);
+      const hi = Math.min(w - 1, Math.max(rowMax[r], r > 0 ? rowMax[r - 1] : -1, r < H - 1 ? rowMax[r + 1] : -1) + 1);
+      for (let c = lo; c <= hi; c++) {
         const i = base + c;
         if (h[i] < 0) { neg += h[i]; h[i] = 0; }
       }

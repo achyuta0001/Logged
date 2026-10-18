@@ -75,8 +75,8 @@ A pack is one pincode's data, in one folder:
 |---|---|
 | `meta.json` | `TerrainMeta` (`format` absent = 1, or 2) |
 | `grids.bin` | grid layers, see below |
-| `osm.geojson` | `OsmProps` features |
-| `depressions.json` | `Depression[]` |
+| `osm.geojson` | `OsmProps` features (format 2: stored only as `osm.geojson.gz`) |
+| `depressions.json` | `Depression[]` (format 2: stored only as `depressions.json.gz`) |
 | `hotspots.json` | optional, `Hotspot[]` with source URLs |
 | `pack.json` | written by the build: `{ code, format, cellSizeM, bytes, gzipBytes, built, files, sources }` |
 
@@ -98,6 +98,8 @@ Grid layers are quantised and decoded on load into the same typed arrays as form
 | `flowDir`, `drainMask`, `lakeMask`, `boundaryMask` | u8 as-is |
 
 `osm.geojson` (format 2) rounds coordinates to 1e-5° (≈1 m) and leaves out `cell` and `cells`. `src/pack/osm.ts` rebuilds them on load with the same sampling the build uses.
+
+Format-2 packs store `osm.geojson` and `depressions.json` gzipped (level 9) as `<name>.gz`, with no plain copy (`scripts/lib/pack-files.mjs`), because GitHub Pages serves files as they are and the site must stay under 1 GB. `src/pack/fetch.ts` asks for the `.gz` first, inflates it with the browser's `DecompressionStream` (or reads it as JSON when the host already inflated it), and falls back to the plain file: the 560098 reference pack, packs built before this layout and the dev server keep working. `pack.json` `files` lists the stored names; `bytes` and `gzipBytes` stay the uncompressed and gzipped totals.
 
 ### Region modules
 | Module | Role |

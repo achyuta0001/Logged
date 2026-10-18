@@ -4,8 +4,8 @@
  */
 import type { InflowEdgeRun, InflowPoint, SimParams } from '../types.ts';
 import { SimCore, type CoreGrids, type HourStats } from './core.ts';
-import { coarsen, downscaleMm, type Coarse } from './grid.ts';
-import { Inflow } from './inflow.ts';
+import { coarsen, downscaleMm, limitPits, type Coarse } from './grid.ts';
+import { Inflow, closeAcrossWater } from './inflow.ts';
 
 export interface RunnerInit {
   width: number;
@@ -33,6 +33,14 @@ export interface HourResult {
   stats: HourStats;
 }
 
+/**
+ * Deepest a closed street depression may be below its spill level, m (src/sim/grid.ts limitPits):
+ * deeper holes in the bare-earth DEM are surface-model residue, not places water stands 5-7 m deep.
+ */
+export const PIT_MAX_M = 2;
+/** inflow edges reopen once the hour's inflow falls below this share of the run's peak hourly inflow */
+export const EDGE_OPEN_SHARE = 0.05;
+
 export function defaultFactor(width: number, height: number): number {
   return width * height > 60000 ? 2 : 1;
 }
@@ -44,11 +52,19 @@ export class Runner {
   private fineInside?: Uint8Array;
 
   constructor(init: RunnerInit) {
+    // closed street depressions capped at PIT_MAX_M; tanks and mapped drains are outlets, kept as they are
+    const elevation = Float32Array.from(init.elevation);
+    let outlets: Uint8Array | undefined;
+    if (init.lakeMask || init.drainMask) {
+      outlets = new Uint8Array(elevation.length);
+      for (let i = 0; i < outlets.length; i++) outlets[i] = (init.lakeMask?.[i] || init.drainMask?.[i]) ? 1 : 0;
+    }
+    limitPits(elevation, init.width, init.height, PIT_MAX_M, outlets);
     const g: CoreGrids = {
       width: init.width,
       height: init.height,
       cellSizeM: init.cellSizeM,
-      elevation: init.elevation,
+      elevation,
       impervious: init.impervious,
       drainMask: init.drainMask,
       lakeMask: init.lakeMask,
@@ -56,13 +72,14 @@ export class Runner {
     };
     this.coarse = coarsen(g, init.factor ?? defaultFactor(init.width, init.height));
     this.core = new SimCore(this.coarse.grids, init.params);
-    this.fineZ = init.elevation;
+    this.fineZ = elevation;
     this.fineInside = init.boundaryMask;
     if (init.inflow?.length) {
       const cg = this.coarse.grids;
       this.inflow = new Inflow(init.inflow, init.width, init.width * init.height, this.coarse.f, cg.width, cg.height, cg.cellSizeM);
-      // where outside land drains in, the grid edge is an inflow boundary, not an outfall
-      this.core.closeEdges(this.inflow.edgeCells(init.inflowEdge));
+      // where outside land drains in, the grid edge is an inflow boundary, not an outfall; so is the cut of
+      // a tank such a stretch runs into (src/sim/inflow.ts closeAcrossWater)
+      this.core.closeEdges(closeAcrossWater(this.inflow.edgeCells(init.inflowEdge), cg.width, cg.height, cg.cellSizeM, cg.elevation, cg.lakeMask));
       // drains below an inflow point were built for its whole catchment (src/sim/network.ts)
       this.core.net?.addUpstream(this.inflow.cells, this.inflow.points.map((p) => p.areaKm2 * 1e6), this.inflow.points.map((p) => p.timeArea.length * 3600));
     }
@@ -80,10 +97,16 @@ export class Runner {
     this.core.reset();
     const total = mm.length;
     const fineArea = (this.coarse.grids.cellSizeM / this.coarse.f) ** 2;
-    this.inflow?.prepare(mm, params);
+    const inflow = this.inflow;
+    inflow?.prepare(mm, params);
+    // inflow edges are closed only while the inflow runs high: afterwards water pooled against them
+    // (cut-off valleys and corners) drains out like at any other edge
+    let peakIn = 0;
+    if (inflow) for (let hour = 0; hour < total; hour++) peakIn = Math.max(peakIn, inflow.volumeAt(hour));
     for (let hour = 0; hour < total; hour++) {
       const v = Number(mm[hour]);
-      this.core.sources = this.inflow?.sourcesAt(hour) ?? null;
+      this.core.sources = inflow?.sourcesAt(hour) ?? null;
+      if (inflow) this.core.setEdgesClosed(peakIn > 0 && inflow.volumeAt(hour) >= EDGE_OPEN_SHARE * peakIn);
       const stats = this.core.stepHour(Number.isFinite(v) ? v : 0);
       const frame = new Uint16Array(this.fineZ.length);
       downscaleMm(this.coarse, this.core.h, this.fineZ, frame);

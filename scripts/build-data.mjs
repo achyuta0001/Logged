@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Data pipeline: builds one pincode's data pack.
-// Produces <out>/{meta.json,grids.bin,osm.geojson,depressions.json,pack.json}:
+// Produces <out>/{meta.json,grids.bin,osm.geojson,depressions.json,pack.json}; format-2 packs store
+// osm.geojson and depressions.json gzipped as <name>.gz only (scripts/lib/pack-files.mjs):
 //   560098 (the reference pack)  -> public/data/
 //   any other pincode            -> public/data/pins/<code>/   (git-ignored except committed samples)
 // Raw downloads are cached in .cache/ so re-runs are fast and offline-safe.
@@ -21,10 +22,10 @@ import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import osmtogeojson from 'osmtogeojson';
 import * as turf from '@turf/turf';
-import { gzipSync } from 'node:zlib';
 import { regionAvailable, regionOverpassJson } from './lib/osm-local.mjs';
 import { gridOf, meanInside, packInflow, readFlowGrids } from './lib/catchment.mjs';
 import { encodeLayer, v2Specs } from '../src/pack/codec.ts';
+import { packSizes, storedFiles, writePackFile } from './lib/pack-files.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.cache');
@@ -690,10 +691,9 @@ async function annotateInflow() {
   const pj = path.join(OUT, 'pack.json');
   if (fs.existsSync(pj)) {
     const pack = JSON.parse(fs.readFileSync(pj, 'utf8'));
-    const files = pack.files.filter((f) => fs.existsSync(path.join(OUT, f)));
-    pack.bytes = files.reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
-    pack.gzipBytes = files.reduce((a, f) => a + gzipSync(fs.readFileSync(path.join(OUT, f)), { level: 9 }).length, 0);
-    pack.sources = meta.sources;
+    const files = storedFiles(OUT);
+    const { bytes, gzipBytes } = packSizes(OUT, files);
+    Object.assign(pack, { bytes, gzipBytes, files, sources: meta.sources });
     fs.writeFileSync(pj, JSON.stringify(pack, null, 1));
     log(`pack.json: ${(pack.gzipBytes / 1e6).toFixed(2)} MB gzipped`);
   }
@@ -1070,10 +1070,12 @@ async function main() {
     ...(up ? { upstreamOutsideKm2: up.upstreamOutsideKm2, inflow: up.inflow, inflowEdge: up.inflowEdge } : {}),
   };
   fs.writeFileSync(path.join(OUT, 'meta.json'), JSON.stringify(meta));
-  // v2: coordinates to 1e-5 deg (~1 m) and no per-feature cell lists (the app derives them on load)
+  // v2: coordinates to 1e-5 deg (~1 m) and no per-feature cell lists (the app derives them on load),
+  // stored gzipped as <name>.gz (GitHub Pages serves files as they are; src/pack/fetch.ts inflates them)
   const osmOut = FORMAT === 2 ? outFeatures.map(compactFeature) : outFeatures;
-  fs.writeFileSync(path.join(OUT, 'osm.geojson'), JSON.stringify({ type: 'FeatureCollection', ...(FORMAT === 2 ? { format: 2 } : {}), features: osmOut }));
-  fs.writeFileSync(path.join(OUT, 'depressions.json'), JSON.stringify(depressions));
+  const GZ = FORMAT === 2;
+  writePackFile(OUT, 'osm.geojson', JSON.stringify({ type: 'FeatureCollection', ...(FORMAT === 2 ? { format: 2 } : {}), features: osmOut }), GZ);
+  writePackFile(OUT, 'depressions.json', JSON.stringify(depressions), GZ);
   // sourced flood reports inside this pack's grid (560098 keeps its own hand-sourced hotspots.json)
   if (PINCODE !== LEGACY.code) {
     const src = path.join(ROOT, 'scripts', 'data', 'hotspots-blr.json');
@@ -1084,15 +1086,14 @@ async function main() {
     else fs.rmSync(hf, { force: true });
     log(`sourced flood reports in this pack: ${here.length}`);
   }
-  // pack.json: what the pincode index records about this pack (sizes, date, sources)
-  const files = ['meta.json', 'grids.bin', 'osm.geojson', 'depressions.json', 'hotspots.json'].filter((f) => fs.existsSync(path.join(OUT, f)));
-  const bytes = files.reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
-  const gzipBytes = files.reduce((a, f) => a + gzipSync(fs.readFileSync(path.join(OUT, f)), { level: 9 }).length, 0);
+  // pack.json: what the pincode index records about this pack (sizes uncompressed and gzipped, date, sources)
+  const files = storedFiles(OUT);
+  const { bytes, gzipBytes, stored } = packSizes(OUT, files);
   const pack = { code: PINCODE, format: FORMAT, cellSizeM: CELL_M, bytes, gzipBytes, built: new Date().toISOString().slice(0, 10), files, sources };
   fs.writeFileSync(path.join(OUT, 'pack.json'), JSON.stringify(pack, null, 1));
 
   // ------------------------------------------------ report
-  const sz = (f) => (fs.statSync(path.join(OUT, f)).size / 1e6).toFixed(2) + ' MB';
+  const sz = (f) => `${f} ${(fs.statSync(path.join(OUT, f)).size / 1e6).toFixed(2)} MB`;
   log('---------------- summary ----------------');
   log(`DEM source: ${demName}`);
   log(`grid ${W}x${H} (${N} cells), cell ${CELL_M} m, boundary cells ${nB} (${((nB * G.cellArea) / 1e6).toFixed(2)} km2)`);
@@ -1112,7 +1113,7 @@ async function main() {
   for (const d of depressions.slice(0, 10)) {
     log(`  #${d.id} vol ${d.volumeM3} m3, area ${d.areaM2} m2, max ${d.maxDepthM} m, catch ${(d.catchmentM2 / 1e4).toFixed(1)} ha @ ${d.centroid.join(',')}  ${d.label ?? ''}`);
   }
-  log(`files: meta.json ${sz('meta.json')}, grids.bin ${sz('grids.bin')}, osm.geojson ${sz('osm.geojson')}, depressions.json ${sz('depressions.json')}`);
+  log(`files: ${files.map(sz).join(', ')}; ${(stored / 1e6).toFixed(2)} MB on disk, ${(bytes / 1e6).toFixed(2)} MB uncompressed, ${(gzipBytes / 1e6).toFixed(2)} MB gzipped`);
   log(`done in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
 }
 

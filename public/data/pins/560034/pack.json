@@ -8,8 +8,8 @@
  "files": [
   "meta.json",
   "grids.bin",
-  "osm.geojson",
-  "depressions.json",
+  "osm.geojson.gz",
+  "depressions.json.gz",
   "hotspots.json"
  ],
  "sources": [

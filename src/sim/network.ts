@@ -171,10 +171,13 @@ export class DrainNetwork {
   private A: number;
   private Smax: Float64Array;
   private qmax: Float64Array; // m3/s through the node's outlet
-  private want: Float64Array; // per-step scratch, m3
+  /** per-step scratch: capture demand per node, m3 (filled by capture or by the caller, see beginCapture) */
+  readonly want: Float64Array;
   private took: Float64Array;
-  private rcell: Float64Array; // per-cell capture demand this step, m
-  private tankCell: Uint8Array; // cell is part of a tank (its water is the network's: no inlet limit)
+  /** per-cell capture demand this step, m */
+  readonly rcell: Float64Array;
+  /** 1 where the cell is part of a tank (its water is the network's: no inlet limit) */
+  readonly tankCell: Uint8Array;
   private tankStart: Int32Array; // tank c's cells are tankCells[tankStart[c] .. tankStart[c + 1])
   private tankCells: Int32Array;
   private feedStart: Int32Array; // cells feeding node k are feedCells[feedStart[k] .. feedStart[k + 1])
@@ -459,15 +462,27 @@ export class DrainNetwork {
    * `h` at the node. `intensity` = design intensity of the drains, m/s.
    * Returns the net depth removed from the surface, summed over cells (m * cells).
    */
-  exchange(h: Float64Array, cap: number, rate: Float64Array, intensity: number, dt: number): number {
+  /**
+   * Start a step whose inlet capture the caller does itself in its own per-cell pass (core.ts folds it
+   * into the vertical-loss loop to save a pass over the grid). Per wet cell i, exactly as exchange():
+   * k = cellNode[i]; m = tankCell[i] && k >= 0 ? d : cap * rate[i]; r = min(d, m); rcell[i] = r;
+   * h[i] = d - r; want[k] += r * A (k >= 0) or sink += r; dry cells: rcell[i] = 0. Then call exchange
+   * with `pre` = { removed: sum of r, sink }.
+   */
+  beginCapture(): void {
+    this.want.fill(0);
+    this.took.fill(0);
+  }
+
+  exchange(h: Float64Array, cap: number, rate: Float64Array, intensity: number, dt: number, pre?: { removed: number; sink: number }): number {
     this.size_(intensity);
     const { cellNode, want, took, rcell, tankCell, S, Smax, A } = this;
     const N = this.size, n = h.length;
     // inlets take their share off the surface now; what a full node refuses is handed back below
-    want.fill(0);
-    took.fill(0);
     let removed = 0, sink = 0;
-    if (cap > 0) {
+    if (pre) { removed = pre.removed; sink = pre.sink; }
+    else { want.fill(0); took.fill(0); }
+    if (cap > 0 && !pre) {
       for (let i = 0; i < n; i++) {
         const d = h[i];
         if (d <= 0) { rcell[i] = 0; continue; }

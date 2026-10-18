@@ -26,12 +26,12 @@ export interface ForecastVariants {
   fetchedAt: number;
 }
 
-function cacheGet(key: string): unknown {
+function cacheGet(key: string, ttlMs = CACHE_TTL_MS): unknown {
   try {
     const raw = sessionStorage.getItem(key);
     if (!raw) return undefined;
     const v = JSON.parse(raw) as { t: number; data: unknown };
-    if (Date.now() - v.t > CACHE_TTL_MS) return undefined;
+    if (Date.now() - v.t > ttlMs) return undefined;
     return v.data;
   } catch {
     return undefined;
@@ -183,3 +183,200 @@ export const SCENARIOS: { id: string; label: string; description: string; build(
     },
   },
 ];
+
+// ---------------------------------------------------------------- real storms (historical archive)
+
+/** Show wherever archive rainfall is displayed (Open-Meteo Historical Weather API, CC BY 4.0). */
+export const ARCHIVE_ATTRIBUTION = 'Past rain: Open-Meteo historical weather archive (reanalysis, CC BY 4.0)';
+export const ARCHIVE_ATTRIBUTION_URL = 'https://open-meteo.com/en/docs/historical-weather-api';
+const ARCHIVE_URL = 'https://archive-api.open-meteo.com/v1/archive';
+/** past rain does not change: keep it for the whole browser session */
+const ARCHIVE_TTL_MS = 7 * 24 * HOUR;
+
+/**
+ * Reanalysis caveat, shown with every real storm. The archive is a gridded model re-run (ERA5 /
+ * ECMWF IFS, 9-25 km cells), not a rain gauge: a convective cloudburst over a few km is smeared
+ * over the cell, so totals and especially hourly peaks are usually far below the gauge figures
+ * in the news reports.
+ */
+export const ARCHIVE_CAVEAT =
+  'Hourly rain from the Open-Meteo archive at this pincode. It is a reanalysis averaged over a 9-25 km cell, ' +
+  'so it usually shows much less rain, and gentler peaks, than the rain gauges in the reports.';
+
+/** id suffix of each real storm's gauge-scaled twin: `real-2022-09-05` -> `real-2022-09-05-gauge` */
+export const GAUGE_SUFFIX = '-gauge';
+
+/** One line under every gauge-scaled storm: whose timing, whose total, and that the mix is ours. */
+export const gaugeCaveat = (mm: number, gauge: string) =>
+  `Hourly timing from the Open-Meteo archive at this pincode, scaled so the storm totals the ${mm} mm of the ${gauge} gauge: our adjustment, not observed hourly rain.`;
+
+export interface HistoricalEvent {
+  id: string;
+  /** "Real storm: <date>" (the scaled twin adds "· scaled to <mm> mm gauge"), as listed in the scenario picker */
+  label: string;
+  /** first and last local (IST) day requested from the archive, YYYY-MM-DD */
+  start: string;
+  end: string;
+  /** what was reported, with the gauge totals, then the archive caveat (or the scaling note) */
+  description: string;
+  /** a news report that dates the event and gives the gauge totals */
+  source: string;
+  /** the reported gauge total (mm), as `source` quotes it */
+  gaugeMm: number;
+  /** the gauge (network and place) that `source` credits with `gaugeMm` */
+  gauge: string;
+  /** the archive's hourly timing scaled so the event totals `gaugeMm` (our adjustment), instead of the raw archive rain */
+  scaled?: boolean;
+}
+
+/**
+ * A sourced flood day as two picker entries sharing one archive request: the raw archive rain,
+ * and the same hours scaled to the reported gauge total (id + GAUGE_SUFFIX).
+ */
+function storm(id: string, when: string, start: string, end: string, reported: string, source: string, gaugeMm: number, gauge: string): HistoricalEvent[] {
+  const base = { start, end, source, gaugeMm, gauge };
+  return [
+    { ...base, id, label: `Real storm: ${when}`, description: `${reported} (${source}) ${ARCHIVE_CAVEAT}` },
+    {
+      ...base,
+      id: id + GAUGE_SUFFIX,
+      label: `Real storm: ${when} · scaled to ${gaugeMm} mm gauge`,
+      description: `${reported} (${source}) ${gaugeCaveat(gaugeMm, gauge)}`,
+      scaled: true,
+    },
+  ];
+}
+
+/**
+ * Known Bengaluru flood days. Each date range, place and gauge total is in the linked report's text
+ * (checked 2026-10-18). The 2022-05 total is a lower bound: the report says "over 114 mm".
+ */
+export const HISTORICAL_EVENTS: HistoricalEvent[] = [
+  ...storm(
+    'real-2024-10-20',
+    '20-22 Oct 2024',
+    '2024-10-20',
+    '2024-10-22',
+    "KSNDMC's Yelahanka gauge measured 190 mm (GKVK 186.4 mm) as rain pounded the city from the early hours of 22 Oct. Boats evacuated close to 1,000 residents of Kendriya Vihar in Yelahanka, over 100 lakes overflowed and over 4,000 houses were hit.",
+    'https://www.deccanherald.com/india/karnataka/bengaluru/intense-rainfall-cripples-bengaluru-hundreds-evacuated-3244157',
+    190,
+    'KSNDMC Yelahanka',
+  ),
+  ...storm(
+    'real-2022-09-05',
+    '4-6 Sep 2022',
+    '2022-09-04',
+    '2022-09-06',
+    'IMD measured 131 mm in the city overnight into 5 Sep, and most of Mahadevapura had 110-140 mm in 24 hours. Traffic stalled on flooded stretches of the ORR at Bellandur, Sarjapur Road and Yemalur Main Road, and about 30 apartment complexes were still under water that morning.',
+    'https://www.thenewsminute.com/article/bengaluru-flooded-after-rains-traffic-advisory-issued-people-asked-stay-home-167536',
+    131,
+    'IMD Bengaluru city',
+  ),
+  ...storm(
+    'real-2022-05-17',
+    '17-18 May 2022',
+    '2022-05-17',
+    '2022-05-18',
+    "IMD measured over 114 mm in under 12 hours on 17 May; KSNDMC's Horamavu gauge had 155 mm. Two labourers died at a flooded pipeline work site, and houses flooded in RR Nagar, Koramangala, Hoskerehalli, Horamavu and HBR Layout.",
+    'https://scroll.in/latest/1024189/two-labourers-die-in-bengaluru-after-heavy-rains-cause-flooding',
+    114,
+    'IMD Bengaluru',
+  ),
+  ...storm(
+    'real-2017-08-15',
+    '14-16 Aug 2017',
+    '2017-08-14',
+    '2017-08-16',
+    "IMD's HAL airport observatory measured 144 mm on the night of 14-15 Aug, and KSNDMC 184 mm at Bilekahalli. Water entered homes in Koramangala, Wilson Garden, Bilekahalli, Indiranagar and other areas.",
+    'https://www.thenewsminute.com/karnataka/rains-lash-bengaluru-leave-several-areas-city-waterlogged-66805',
+    144,
+    'IMD HAL airport',
+  ),
+];
+
+/** Dry hours kept ahead of the first wet hour, and appended after the last one (the recession). */
+export const HISTORICAL_PAD = { before: 3, after: 24 };
+/** an hour with less than this is treated as dry when trimming */
+const WET_MM = 0.1;
+
+export interface ArchiveHourly {
+  /** unix seconds (timeformat=unixtime) */
+  time: number[];
+  precipitation: (number | null)[];
+}
+
+/**
+ * Scale hourly rain so it adds up to `totalMm` (pure). Every hour gets the same factor and is kept
+ * to 0.1 mm; the leftover tenths go to the hours with the largest remainders (earlier hour first on
+ * a tie), so the rounded series sums to `totalMm` exactly. Dry hours stay dry; so does a dry series.
+ */
+export function scaleToTotal(mm: number[], totalMm: number): number[] {
+  const sum = mm.reduce((a, b) => a + (b > 0 ? b : 0), 0);
+  if (!(sum > 0)) return mm.map(() => 0);
+  const target = Math.max(0, totalMm);
+  const exact = mm.map((v) => (v > 0 ? (v * target * 10) / sum : 0)); // tenths of a mm
+  const out = exact.map((v) => Math.floor(v + 1e-9));
+  let left = Math.round(target * 10) - out.reduce((a, b) => a + b, 0);
+  const order = exact
+    .map((_, i) => i)
+    .filter((i) => exact[i] > 0)
+    .sort((a, b) => exact[b] - out[b] - (exact[a] - out[a]) || a - b);
+  for (let j = 0; left > 0 && j < order.length; j++, left--) out[order[j]]++;
+  return out.map((t) => t / 10);
+}
+
+/**
+ * Archive hourly rain -> RainSeries (pure, no network). Trims to the wet window (first to last hour
+ * with >= 0.1 mm), keeps `pad.before` dry hours ahead of it (prepending zero hours when the archive
+ * starts wet) and appends `pad.after` dry hours. Missing hours count as dry. An all-dry archive
+ * gives the whole requested range, dry. A `scaled` event multiplies every hour by
+ * gaugeMm / (archive total over that wet window), so the series totals the reported gauge reading.
+ */
+export function buildHistoricalSeries(ev: HistoricalEvent, hourly: ArchiveHourly, pad = HISTORICAL_PAD): RainSeries {
+  const n = hourly.time?.length ?? 0;
+  if (!n || hourly.precipitation?.length !== n) throw new Error('Open-Meteo archive: no hourly precipitation');
+  const raw = hourly.precipitation.map((v) => (v != null && Number.isFinite(v) && v > 0 ? v : 0));
+  let first = raw.findIndex((v) => v >= WET_MM);
+  let last = n - 1;
+  while (last >= 0 && raw[last] < WET_MM) last--;
+  if (first < 0) [first, last] = [0, n - 1];
+  const s0 = Math.max(0, first - pad.before);
+  const extra = pad.before - (first - s0);
+  const mm = [...new Array(extra).fill(0), ...raw.slice(s0, last + 1), ...new Array(pad.after).fill(0)].map((v) => Math.round(v * 10) / 10);
+  const t0 = hourly.time[s0] * 1000 - extra * HOUR;
+  const times = mm.map((_, i) => t0 + i * HOUR);
+  const total = mm.reduce((a, b) => a + b, 0);
+  if (!ev.scaled) return { source: 'scenario', label: `${ev.label}: ${total.toFixed(0)} mm (Open-Meteo archive)`, times, mm };
+  const how = total > 0 ? `archive ${total.toFixed(1)} mm x ${(ev.gaugeMm / total).toFixed(2)}` : 'the archive is dry here, nothing to scale';
+  return { source: 'scenario', label: `${ev.label} (${how})`, times, mm: scaleToTotal(mm, ev.gaugeMm) };
+}
+
+/** Archive request for one event at one point (hourly precipitation, IST days, unix seconds). */
+export function archiveUrl(lat: number, lon: number, ev: HistoricalEvent): string {
+  return (
+    `${ARCHIVE_URL}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
+    `&start_date=${ev.start}&end_date=${ev.end}&hourly=precipitation&timezone=Asia%2FKolkata&timeformat=unixtime`
+  );
+}
+
+/** archive blocks fetched in this page (or Node run): a storm's raw and scaled entries share one request */
+const archiveMem = new Map<string, ArchiveHourly>();
+
+/**
+ * Real hourly rain for a past storm at [lat, lon] from Open-Meteo's free, keyless historical
+ * archive, trimmed and padded (and, for a scaled entry, scaled) by buildHistoricalSeries.
+ * Cached in memory and in sessionStorage (when available), keyed by the request, not the entry.
+ */
+export async function fetchHistoricalEvent(lat: number, lon: number, ev: HistoricalEvent): Promise<RainSeries> {
+  const key = `oma:${ev.start}:${ev.end}:${lat.toFixed(3)},${lon.toFixed(3)}`;
+  let hourly = archiveMem.get(key) ?? (cacheGet(key, ARCHIVE_TTL_MS) as ArchiveHourly | undefined);
+  if (!hourly?.time?.length) {
+    const res = await fetch(archiveUrl(lat, lon, ev));
+    const body = (await res.json().catch(() => ({}))) as { hourly?: ArchiveHourly; reason?: string; error?: boolean };
+    if (!res.ok || body.error || !body.hourly?.time) throw new Error(`Open-Meteo archive: ${body.reason ?? `HTTP ${res.status}`}`);
+    hourly = body.hourly;
+    cacheSet(key, hourly);
+  }
+  archiveMem.set(key, hourly);
+  return buildHistoricalSeries(ev, hourly);
+}
