@@ -65,3 +65,43 @@ Open source project. Every source must be free, keyless, openly licensed, attrib
 Integration hooks: layout provides an empty `<div id="place-mount">` inside a collapsible "Your place" sidebar section (hidden while empty).
 Place exports `mountPlace(container, opts) -> { setHour(h), refresh(), destroy() }` (see place agent brief).
 Public APIs stay stable: `createMap`, `loadDataset`/`OsmFC` (src/ui/api.ts), `FloodEngine`, `computeImpact`, `loadTerrain`.
+
+## Multi-region (Bengaluru Urban)
+
+### Packs
+A pack is one pincode's data, in one folder:
+
+| File | Content |
+|---|---|
+| `meta.json` | `TerrainMeta` (`format` absent = 1, or 2) |
+| `grids.bin` | grid layers, see below |
+| `osm.geojson` | `OsmProps` features |
+| `depressions.json` | `Depression[]` |
+| `hotspots.json` | optional, `Hotspot[]` with source URLs |
+| `pack.json` | written by the build: `{ code, format, cellSizeM, bytes, gzipBytes, built, files, sources }` |
+
+Locations: the 560098 reference pack stays in `public/data/` (format 1, `pack.path: "."`). Every other pack is in `<packs root>/<code>/`. The packs root defaults to `public/data/pins`, and `?packs=<url>` or `VITE_PACKS_URL` can point it at a hosted copy.
+
+`public/data/pins/index.json` is a `PinIndex` (`src/types.ts`) listing every pincode in the district, with `pack` set when a pack exists. `public/data/city/city.geojson` holds the district outline (`kind: "district"`) and simplified pincode polygons (`kind: "pin"`, with `code`, `name` and `s` = susceptibility).
+
+### Format 2 (`src/pack/codec.ts`)
+Grid layers are quantised and decoded on load into the same typed arrays as format 1, so the sim, impact and UI are unchanged.
+
+| Layer | Stored as |
+|---|---|
+| `elevation` | u16, `base + q*scale` (≈1–3 mm steps), row-delta, byte-shuffled |
+| `depressionDepth` | u16 mm, byte-shuffled |
+| `filled` | `derived: true`, not stored (elevation + depressionDepth) |
+| `flowAccum` | u16, `2^(q/2048)` |
+| `hand` | u16, `base + q*scale`, row-delta, byte-shuffled |
+| `impervious` | u8, `q/250` |
+| `flowDir`, `drainMask`, `lakeMask`, `boundaryMask` | u8 as-is |
+
+`osm.geojson` (format 2) rounds coordinates to 1e-5° (≈1 m) and leaves out `cell` and `cells`. `src/pack/osm.ts` rebuilds them on load with the same sampling the build uses.
+
+### Region modules
+| Module | Role |
+|---|---|
+| `src/region/packs.ts` | `packsRoot`, `loadPinIndex` (falls back to the reference pack), `packBase`, `validatePinIndex`, `validateMeta`, `searchPins` |
+| `src/region/city.ts` | `loadCity`, `openCity(shell, city)`: the overview region |
+| `src/main.ts` | the shell (sidebar, timeline, layout and loader, created once) plus `openPin(shell, entry, base)`. Each region returns `{ destroy, reframe, ... }`, and `destroy()` removes the map, the worker, the panels and the listeners it added. |

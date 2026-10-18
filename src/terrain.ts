@@ -1,4 +1,5 @@
 import type { GridLayerName, Terrain, TerrainMeta } from './types.ts';
+import { decodeLayer, layerBytes } from './pack/codec.ts';
 
 /**
  * Load public/data/meta.json + grids.bin and build typed-array views per layer.
@@ -16,20 +17,22 @@ export async function loadTerrain(base = '/data'): Promise<Terrain> {
 /** Build a Terrain from an already-loaded meta + grids.bin buffer (also used by tests / node scripts). */
 export function terrainFromBuffer(meta: TerrainMeta, buf: ArrayBuffer): Terrain {
   const grids = {} as Terrain['grids'];
-  for (const [name, l] of Object.entries(meta.layers) as [GridLayerName, TerrainMeta['layers'][GridLayerName]][]) {
-    const bytesPer = l.dtype === 'f32' ? 4 : 1;
-    if (l.offset + l.length * bytesPer > buf.byteLength) {
+  const entries = Object.entries(meta.layers) as [GridLayerName, TerrainMeta['layers'][GridLayerName]][];
+  for (const [name, l] of entries) {
+    if (l.derived) continue;
+    if (l.offset + layerBytes(l) > buf.byteLength) {
       throw new Error(`grids.bin too short for layer ${name}`);
     }
-    if (l.dtype === 'f32') {
-      // Float32Array needs 4-byte alignment; copy if misaligned.
-      grids[name] =
-        l.offset % 4 === 0
-          ? new Float32Array(buf, l.offset, l.length)
-          : new Float32Array(buf.slice(l.offset, l.offset + l.length * 4));
-    } else {
-      grids[name] = new Uint8Array(buf, l.offset, l.length);
-    }
+    // v1 layers are views (f32 copied only if misaligned); v2 layers are decoded (src/pack/codec.ts)
+    grids[name] = decodeLayer(buf, l, meta.width);
+  }
+  // v2: the depression-filled surface is elevation + fill depth
+  if (meta.layers.filled?.derived) {
+    const e = grids.elevation as Float32Array;
+    const d = grids.depressionDepth as Float32Array;
+    const f = new Float32Array(e.length);
+    for (let i = 0; i < f.length; i++) f[i] = e[i] + d[i];
+    grids.filled = f;
   }
   return { meta, grids };
 }

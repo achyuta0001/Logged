@@ -1,11 +1,19 @@
 #!/usr/bin/env node
-// Data pipeline for the 560098 (Rajarajeshwari Nagar) flood prototype.
-// Produces public/data/{meta.json,grids.bin,osm.geojson,depressions.json}.
+// Data pipeline: builds one pincode's data pack.
+// Produces <out>/{meta.json,grids.bin,osm.geojson,depressions.json,pack.json}:
+//   560098 (the reference pack)  -> public/data/
+//   any other pincode            -> public/data/pins/<code>/   (git-ignored except committed samples)
 // Raw downloads are cached in .cache/ so re-runs are fast and offline-safe.
 //
-//   node scripts/build-data.mjs            (DEM=copernicus by default, falls back to terrarium)
-//   DEM=terrarium node scripts/build-data.mjs
-//   REFRESH=1 node scripts/build-data.mjs  (ignore cached OSM)
+//   npm run data -- --pin 560034   (pincode from public/data/pins/index.json; default 560098)
+//   DEM=terrarium npm run data      (DEM=copernicus by default, falls back to terrarium)
+//   REFRESH=1 npm run data          (ignore cached OSM)
+//   npm run data -- --pin 560034 --inflow-only   (only recompute an existing pack's upstream inflow:
+//                                                 meta.inflow / upstreamOutsideKm2, grids untouched)
+// OSM comes from the local Bengaluru extract (.cache/osm/blr-region.osm.pbf, scripts/osm-extract.sh)
+// when it and osmium-tool exist, otherwise from Overpass (one query per pack, cached).
+// Upstream inflow (M4) needs the district routing from `npm run data:city` (.cache/city/flow60.*);
+// without it the pack is built without inflow points.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,19 +21,53 @@ import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 import osmtogeojson from 'osmtogeojson';
 import * as turf from '@turf/turf';
+import { gzipSync } from 'node:zlib';
+import { regionAvailable, regionOverpassJson } from './lib/osm-local.mjs';
+import { gridOf, meanInside, packInflow, readFlowGrids } from './lib/catchment.mjs';
+import { encodeLayer, v2Specs } from '../src/pack/codec.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.cache');
-const OUT = path.join(ROOT, 'public', 'data');
 fs.mkdirSync(CACHE, { recursive: true });
-fs.mkdirSync(OUT, { recursive: true });
 
-const PINCODE = '560098';
-const RELATION_ID = 17817376;
-const APPROX_BBOX = [77.499, 12.8924, 77.5323, 12.9363]; // W S E N (fallback only)
+const arg = (name, def) => {
+  const i = process.argv.indexOf(`--${name}`);
+  return i > 0 && process.argv[i + 1] ? process.argv[i + 1] : def;
+};
+const LEGACY = { code: '560098', name: 'Rajarajeshwari Nagar', relation: 17817376, bbox: [77.499, 12.8924, 77.5323, 12.9363] };
+const PIN = pinEntry(arg('pin', LEGACY.code));
+const PINCODE = PIN.code;
+const RELATION_ID = PIN.relation;
+const APPROX_BBOX = PIN.bbox; // W S E N of the boundary (the grid uses the boundary itself once loaded)
+// pack format: 2 (quantised grids, compact OSM; src/pack/codec.ts) except the 560098 reference pack
+const FORMAT = Number(arg('format', 0)) || (PIN.code === LEGACY.code ? 1 : 2);
+const OUT = arg('out', PINCODE === LEGACY.code ? path.join(ROOT, 'public', 'data') : path.join(ROOT, 'public', 'data', 'pins', PINCODE));
+const PIN_CACHE = path.join(CACHE, 'pins', PINCODE);
+fs.mkdirSync(OUT, { recursive: true });
+fs.mkdirSync(PIN_CACHE, { recursive: true });
 const PAD_DEG = 0.006;
-const CELL_M = 15;
-const UA = 'flood-prototype-560098/0.1 (research prototype; contact achyuta0001@gmail.com)';
+// 15 m like the reference pack, coarser for big pincodes so a pack stays near the reference's
+// ~140k cells (simulation time and pack size scale with cells). --cell <m> overrides.
+const MAX_CELLS = 140000;
+const CELL_M = Number(arg('cell', 0)) || cellSizeFor(APPROX_BBOX);
+function cellSizeFor([w, s, e, n]) {
+  const lat0 = (s + n) / 2;
+  const areaM2 = (e - w + 2 * PAD_DEG) * 111320 * Math.cos((lat0 * Math.PI) / 180) * (n - s + 2 * PAD_DEG) * 110574;
+  return Math.max(15, Math.ceil(Math.sqrt(areaM2 / MAX_CELLS) / 5) * 5);
+}
+const UA = 'logged-flood-explorer/0.2 (open-source research prototype; github.com/achyuta0001/Logged)';
+
+/** pincode -> { code, name, relation, bbox } from the pincode index (npm run data:city) */
+function pinEntry(code) {
+  if (!/^\d{6}$/.test(code)) throw new Error(`--pin must be a 6-digit pincode, got "${code}"`);
+  for (const f of [path.join(CACHE, 'pins', 'catalog.json'), path.join(ROOT, 'public', 'data', 'pins', 'index.json')]) {
+    if (!fs.existsSync(f)) continue;
+    const p = JSON.parse(fs.readFileSync(f, 'utf8')).pins?.find((x) => x.code === code);
+    if (p) return { code, name: p.name, relation: p.relation, bbox: p.bbox };
+  }
+  if (code === LEGACY.code) return LEGACY;
+  throw new Error(`pincode ${code} is not in the pincode index; run npm run data:city first`);
+}
 const OVERPASS = [
   'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
   'https://overpass-api.de/api/interpreter',
@@ -53,7 +95,10 @@ async function fetchRetry(url, opts = {}, tries = 4) {
 }
 
 async function overpass(query, cacheName) {
-  const file = path.join(CACHE, cacheName);
+  const file = path.join(PIN_CACHE, cacheName);
+  // the reference pack's cache predates per-pincode folders
+  const legacy = path.join(CACHE, cacheName);
+  if (PINCODE === LEGACY.code && !fs.existsSync(file) && fs.existsSync(legacy) && !process.env.REFRESH) return JSON.parse(fs.readFileSync(legacy, 'utf8'));
   if (fs.existsSync(file) && !process.env.REFRESH) return JSON.parse(fs.readFileSync(file, 'utf8'));
   let lastErr;
   for (let round = 0; round < 3; round++) {
@@ -86,9 +131,21 @@ async function overpass(query, cacheName) {
 }
 
 // ---------------------------------------------------------------- OSM
+let osmSource = 'Overpass API';
 async function loadOsm() {
   const [w, s, e, n] = [APPROX_BBOX[0] - 0.012, APPROX_BBOX[1] - 0.012, APPROX_BBOX[2] + 0.012, APPROX_BBOX[3] + 0.012];
   const bb = `${s},${w},${n},${e}`;
+  const cached = path.join(PIN_CACHE, 'osm-raw.json');
+  if (!(fs.existsSync(cached) && !process.env.REFRESH) && regionAvailable(ROOT) && !process.env.OVERPASS) {
+    log(`OSM from the local extract (${bb}) ...`);
+    const raw = regionOverpassJson(ROOT, [w, s, e, n], [RELATION_ID], path.join(PIN_CACHE, 'tmp'));
+    fs.writeFileSync(cached, JSON.stringify(raw));
+    const info = path.join(CACHE, 'osm', 'blr-region.json');
+    const ex = fs.existsSync(info) ? JSON.parse(fs.readFileSync(info, 'utf8')) : null;
+    osmSource = ex ? `OSM extract ${ex.built.slice(0, 10)} (${/geofabrik/i.test(ex.source ?? '') ? 'Geofabrik India southern zone' : 'planet via AWS osm-pds'}, osmium)` : 'local OSM extract';
+    log(`OSM elements: ${raw.elements.length}`);
+    return osmtogeojson(raw, { flatProperties: false });
+  }
   const q = `[out:json][timeout:240][bbox:${bb}];
 (
   relation(${RELATION_ID});
@@ -230,9 +287,30 @@ function lineLengthM(coords) {
 
 // ---------------------------------------------------------------- DEM
 async function demCopernicus(G) {
-  // GLO-30 1x1 deg tile covering N12-13, E077-078
-  const name = 'Copernicus_DSM_COG_10_N12_00_E077_00_DEM';
-  const cacheFile = path.join(CACHE, `cop30_${G.w.toFixed(4)}_${G.n.toFixed(4)}_${G.width}x${G.height}.json`);
+  // GLO-30 1x1 deg tiles; Bengaluru Urban straddles N12/N13 (and the grid can straddle E77/E78)
+  const tiles = [];
+  for (let lat = Math.floor(G.s); lat <= Math.floor(G.n); lat++)
+    for (let lon = Math.floor(G.w); lon <= Math.floor(G.e); lon++) tiles.push([lat, lon]);
+  const wins = [];
+  for (const [lat, lon] of tiles) {
+    const sub = { ...G, w: Math.max(G.w, lon), e: Math.min(G.e, lon + 1), s: Math.max(G.s, lat), n: Math.min(G.n, lat + 1) };
+    wins.push(await copWindow(G, sub, `Copernicus_DSM_COG_10_N${String(lat).padStart(2, '0')}_00_E${String(lon).padStart(3, '0')}_00_DEM`, tiles.length === 1));
+  }
+  const sample = (lon, lat) => {
+    const win = wins.find((w) => lon >= w.lon0 && lon < w.lon0 + 1 && lat >= w.lat0 && lat < w.lat0 + 1) ?? wins[0];
+    // pixel-is-area: pixel centre at origin + (i+0.5)*res
+    const fx = (lon - win.ox) / win.rx - 0.5 - win.x0;
+    const fy = (lat - win.oy) / win.ry - 0.5 - win.y0;
+    return bilinear(win.data, win.w, win.h, fx, fy);
+  };
+  return resample(G, sample);
+}
+
+async function copWindow(G, B, name, legacyCache) {
+  // the single-tile cache name predates multi-tile support (keeps the 560098 cache valid)
+  const cacheFile = legacyCache
+    ? path.join(CACHE, `cop30_${G.w.toFixed(4)}_${G.n.toFixed(4)}_${G.width}x${G.height}.json`)
+    : path.join(CACHE, `cop30_${name.slice(22, 39)}_${B.w.toFixed(4)}_${B.n.toFixed(4)}_${B.e.toFixed(4)}_${B.s.toFixed(4)}.json`);
   let win;
   if (fs.existsSync(cacheFile)) win = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
   else {
@@ -243,19 +321,16 @@ async function demCopernicus(G) {
     const img = await tiff.getImage();
     const [ox, oy] = img.getOrigin();
     const [rx, ry] = img.getResolution(); // ry negative
-    const x0 = Math.floor((G.w - ox) / rx) - 3, x1 = Math.ceil((G.e - ox) / rx) + 3;
-    const y0 = Math.floor((G.n - oy) / ry) - 3, y1 = Math.ceil((G.s - oy) / ry) + 3;
+    const clampX = (x) => Math.max(0, Math.min(img.getWidth(), x)), clampY = (y) => Math.max(0, Math.min(img.getHeight(), y));
+    const x0 = clampX(Math.floor((B.w - ox) / rx) - 3), x1 = clampX(Math.ceil((B.e - ox) / rx) + 3);
+    const y0 = clampY(Math.floor((B.n - oy) / ry) - 3), y1 = clampY(Math.ceil((B.s - oy) / ry) + 3);
     const [band] = await img.readRasters({ window: [x0, y0, x1, y1] });
     win = { ox, oy, rx, ry, x0, y0, w: x1 - x0, h: y1 - y0, data: Array.from(band, (v) => Math.round(v * 100) / 100) };
     fs.writeFileSync(cacheFile, JSON.stringify(win));
   }
-  const sample = (lon, lat) => {
-    // pixel-is-area: pixel centre at origin + (i+0.5)*res
-    const fx = (lon - win.ox) / win.rx - 0.5 - win.x0;
-    const fy = (lat - win.oy) / win.ry - 0.5 - win.y0;
-    return bilinear(win.data, win.w, win.h, fx, fy);
-  };
-  return resample(G, sample);
+  win.lon0 = Math.round(win.ox);
+  win.lat0 = Math.round(win.oy) - 1;
+  return win;
 }
 
 async function demTerrarium(G, z = 15) {
@@ -542,6 +617,18 @@ function openCover(t) {
 // lower priority = painted first (smaller areas painted later override)
 
 const round6 = (x) => Math.round(x * 1e6) / 1e6;
+function compactFeature(f) {
+  const { cells, cell, ...props } = f.properties;
+  const r5 = (c) => (typeof c[0] === 'number' ? [Math.round(c[0] * 1e5) / 1e5, Math.round(c[1] * 1e5) / 1e5] : c.map(r5));
+  let coordinates = r5(f.geometry.coordinates);
+  // rounding can make neighbouring vertices identical: drop the repeats
+  const dedupe = (c) => (typeof c[0][0] === 'number' ? c.filter((p, i) => i === 0 || p[0] !== c[i - 1][0] || p[1] !== c[i - 1][1]) : c.map(dedupe));
+  if (f.geometry.type !== 'Point') coordinates = dedupe(coordinates);
+  // a tiny polygon that collapses at 1 m precision keeps its original coordinates
+  const rings = f.geometry.type === 'Polygon' ? coordinates : f.geometry.type === 'MultiPolygon' ? coordinates.flat() : [];
+  if (rings.some((r) => r.length < 4) || (f.geometry.type === 'LineString' && coordinates.length < 2)) coordinates = f.geometry.coordinates;
+  return { type: 'Feature', geometry: { type: f.geometry.type, coordinates }, properties: props };
+}
 function roundCoords(c) { return typeof c[0] === 'number' ? [round6(c[0]), round6(c[1])] : c.map(roundCoords); }
 function dedupeRing(c) {
   // drop consecutive duplicate points after rounding
@@ -550,8 +637,72 @@ function dedupeRing(c) {
   return c.map(dedupeRing);
 }
 
+// ---------------------------------------------------------------- upstream inflow (M4)
+/**
+ * Inflow points for grid G from the district routing (scripts/lib/catchment.mjs). The district cover
+ * estimates imperviousness more coarsely than a pack does, so the outside catchments' value is rescaled
+ * by (pack mean / district mean over the same grid), clamped to 0.67..1.5. Null without the routing.
+ */
+function upstreamInflow(G, flowDir, flowAccum, impervious) {
+  const flow = readFlowGrids(ROOT);
+  if (!flow) {
+    log('no .cache/city/flow60.*: upstream inflow left out (run npm run data:city first)');
+    return null;
+  }
+  let packImp = 0;
+  for (let i = 0; i < impervious.length; i++) packImp += impervious[i];
+  packImp /= impervious.length;
+  const cityImp = meanInside(flow, [G.w, G.s, G.e, G.n], flow.imp);
+  const impScale = cityImp > 0 ? Math.min(1.5, Math.max(0.67, packImp / cityImp)) : 1;
+  const r = packInflow(flow, G, flowDir, flowAccum, { impScale });
+  const km2 = (v) => Math.round(v * 100) / 100;
+  log(`upstream inflow: ${r.totalKm2.toFixed(1)} km² outside the grid drains in; ${r.points.length} points carry ${r.simulatedKm2.toFixed(1)} km² (imperviousness x${impScale.toFixed(2)})`);
+  const closedCells = r.edge.reduce((s, [, a, b]) => s + b - a + 1, 0);
+  log(`inflow edges: ${r.edge.length} stretches, ${closedCells} of ${2 * (G.width + G.height)} edge cells closed to outflow while inflow runs`);
+  for (const p of r.points.slice(0, 6)) log(`  ${p.areaKm2} km² at ${p.at.join(',')} (cell ${p.cell}), imp ${p.impervious}, drains ${p.drainShare}, tanks ${p.tankShare} / ${Math.round(p.tankM3 / 1000)}k m³, Clark ${p.storageH} h, time-area ${JSON.stringify(p.timeArea)}`);
+  return {
+    upstreamOutsideKm2: km2(r.totalKm2),
+    inflow: r.points,
+    inflowEdge: r.edge,
+    source:
+      `Upstream inflow (M4): ${km2(r.totalKm2)} km² outside the grid drains into it (district 60 m D8 routing of Copernicus GLO-30 with OSM drains and lakes, npm run data:city); ` +
+      `${km2(r.simulatedKm2)} km² of it enters at ${r.points.length} points through a lumped runoff model with the grid's own losses and Clark routing (src/sim/inflow.ts)`,
+  };
+}
+
+/** --inflow-only: recompute an existing pack's inflow points (grids, OSM and depressions untouched) */
+async function annotateInflow() {
+  const metaFile = path.join(OUT, 'meta.json');
+  const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+  const raw = fs.readFileSync(path.join(OUT, 'grids.bin'));
+  const { terrainFromBuffer } = await import('../src/terrain.ts');
+  const { grids } = terrainFromBuffer(meta, raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));
+  const [w, s, e, n] = meta.bbox;
+  const G = gridOf({ w, n, width: meta.width, height: meta.height, dLat: (n - s) / meta.height, dLon: (e - w) / meta.width, cellM: meta.cellSizeM });
+  const up = upstreamInflow(G, grids.flowDir, grids.flowAccum, grids.impervious);
+  if (!up) throw new Error('no district routing: run npm run data:city -- --flow-only first');
+  meta.sources = [...meta.sources.filter((x) => !x.startsWith('Upstream inflow')), up.source];
+  meta.upstreamOutsideKm2 = up.upstreamOutsideKm2;
+  meta.inflow = up.inflow;
+  meta.inflowEdge = up.inflowEdge;
+  fs.writeFileSync(metaFile, JSON.stringify(meta));
+  // pack.json carries sizes and sources (the 560098 reference pack predates it and has none)
+  const pj = path.join(OUT, 'pack.json');
+  if (fs.existsSync(pj)) {
+    const pack = JSON.parse(fs.readFileSync(pj, 'utf8'));
+    const files = pack.files.filter((f) => fs.existsSync(path.join(OUT, f)));
+    pack.bytes = files.reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
+    pack.gzipBytes = files.reduce((a, f) => a + gzipSync(fs.readFileSync(path.join(OUT, f)), { level: 9 }).length, 0);
+    pack.sources = meta.sources;
+    fs.writeFileSync(pj, JSON.stringify(pack, null, 1));
+    log(`pack.json: ${(pack.gzipBytes / 1e6).toFixed(2)} MB gzipped`);
+  }
+  log(`meta.json: ${up.inflow.length} inflow points written`);
+}
+
 // ---------------------------------------------------------------- main
 async function main() {
+  if (process.argv.includes('--inflow-only')) return annotateInflow();
   const t0 = Date.now();
   const fc = await loadOsm();
 
@@ -587,7 +738,7 @@ async function main() {
       `${BARE.qLow * 100}th/${100 - BARE.qLow * 100}th percentile) blended in where OSM buildings, trees or built-up land make the surface model unreliable`,
   );
   sources.push(`DEM smoothed with Gaussian sigma=${SIGMA} cells; OSM drains burned (-1..2.5 m) and lakes lowered 0.5 m`);
-  sources.push('© OpenStreetMap contributors, ODbL 1.0 (openstreetmap.org/copyright), fetched once via Overpass API and cached');
+  sources.push(`© OpenStreetMap contributors, ODbL 1.0 (openstreetmap.org/copyright), from ${osmSource}, cached`);
 
   // ------------------------------------------------ rasterise OSM
   const S = 3; // sub-cells per cell for coverage fractions
@@ -876,9 +1027,18 @@ async function main() {
   const layers = {};
   const chunks = [];
   let off = 0;
+  const specs = FORMAT === 2 ? v2Specs({ elevation, hand }) : null;
   for (const [name, arr, dtype] of layerDefs) {
-    const bytes = Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength);
-    layers[name] = { offset: off, length: arr.length, dtype };
+    if (specs && name === 'filled') { layers.filled = { offset: 0, length: arr.length, dtype: 'f32', derived: true }; continue; }
+    let bytes;
+    if (specs) {
+      const enc = encodeLayer(arr, W, specs[name]);
+      bytes = Buffer.from(enc.bytes.buffer, enc.bytes.byteOffset, enc.bytes.byteLength);
+      layers[name] = { offset: off, ...enc.info };
+    } else {
+      bytes = Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength);
+      layers[name] = { offset: off, length: arr.length, dtype };
+    }
     chunks.push(bytes);
     off += bytes.length;
     const pad = (4 - (off % 4)) % 4;
@@ -886,14 +1046,19 @@ async function main() {
   }
   fs.writeFileSync(path.join(OUT, 'grids.bin'), Buffer.concat(chunks));
 
+  // upstream inflow (M4): flow paths entering the grid from outside it
+  const up = upstreamInflow(G, flowDir, flowAccum, impervious);
+  if (up) sources.push(up.source);
+
   let minE = Infinity, maxE = -Infinity, minB = Infinity, maxB = -Infinity, impSum = 0, nB = 0;
   for (let i = 0; i < N; i++) {
     minE = Math.min(minE, elevation[i]); maxE = Math.max(maxE, elevation[i]);
     if (boundaryMask[i]) { nB++; impSum += impervious[i]; minB = Math.min(minB, elevation[i]); maxB = Math.max(maxB, elevation[i]); }
   }
   const meta = {
+    ...(FORMAT === 2 ? { format: 2 } : {}),
     pincode: PINCODE,
-    name: 'Rajarajeshwari Nagar',
+    name: PIN.name,
     bbox: [G.w, G.s, G.e, G.n].map((v) => Math.round(v * 1e7) / 1e7),
     width: W,
     height: H,
@@ -902,10 +1067,29 @@ async function main() {
     layers,
     stats: { minElev: Math.round(minE * 100) / 100, maxElev: Math.round(maxE * 100) / 100 },
     sources,
+    ...(up ? { upstreamOutsideKm2: up.upstreamOutsideKm2, inflow: up.inflow, inflowEdge: up.inflowEdge } : {}),
   };
   fs.writeFileSync(path.join(OUT, 'meta.json'), JSON.stringify(meta));
-  fs.writeFileSync(path.join(OUT, 'osm.geojson'), JSON.stringify({ type: 'FeatureCollection', features: outFeatures }));
+  // v2: coordinates to 1e-5 deg (~1 m) and no per-feature cell lists (the app derives them on load)
+  const osmOut = FORMAT === 2 ? outFeatures.map(compactFeature) : outFeatures;
+  fs.writeFileSync(path.join(OUT, 'osm.geojson'), JSON.stringify({ type: 'FeatureCollection', ...(FORMAT === 2 ? { format: 2 } : {}), features: osmOut }));
   fs.writeFileSync(path.join(OUT, 'depressions.json'), JSON.stringify(depressions));
+  // sourced flood reports inside this pack's grid (560098 keeps its own hand-sourced hotspots.json)
+  if (PINCODE !== LEGACY.code) {
+    const src = path.join(ROOT, 'scripts', 'data', 'hotspots-blr.json');
+    const all = fs.existsSync(src) ? JSON.parse(fs.readFileSync(src, 'utf8')).hotspots : [];
+    const here = all.filter((h) => G.cellOf(h.coord[0], h.coord[1]) >= 0).map(({ osm, ...h }) => h);
+    const hf = path.join(OUT, 'hotspots.json');
+    if (here.length) fs.writeFileSync(hf, JSON.stringify(here, null, 1));
+    else fs.rmSync(hf, { force: true });
+    log(`sourced flood reports in this pack: ${here.length}`);
+  }
+  // pack.json: what the pincode index records about this pack (sizes, date, sources)
+  const files = ['meta.json', 'grids.bin', 'osm.geojson', 'depressions.json', 'hotspots.json'].filter((f) => fs.existsSync(path.join(OUT, f)));
+  const bytes = files.reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
+  const gzipBytes = files.reduce((a, f) => a + gzipSync(fs.readFileSync(path.join(OUT, f)), { level: 9 }).length, 0);
+  const pack = { code: PINCODE, format: FORMAT, cellSizeM: CELL_M, bytes, gzipBytes, built: new Date().toISOString().slice(0, 10), files, sources };
+  fs.writeFileSync(path.join(OUT, 'pack.json'), JSON.stringify(pack, null, 1));
 
   // ------------------------------------------------ report
   const sz = (f) => (fs.statSync(path.join(OUT, f)).size / 1e6).toFixed(2) + ' MB';

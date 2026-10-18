@@ -6,10 +6,11 @@ import { cellToLngLat, lngLatToCell } from './terrain';
 import { fetchForecastVariants, SCENARIOS, WEATHER_ATTRIBUTION, WEATHER_ATTRIBUTION_URL, type ForecastVariants } from './weather';
 import { FloodEngine, DEFAULT_PARAMS } from './sim/index';
 import { computeImpact } from './impact';
-import { createMap, setBasemap, setExaggeration, CENTER } from './map/mapView';
+import { createMap, setBasemap, setExaggeration } from './map/mapView';
 import { WaterFx } from './map/waterFx';
 import { RainFx } from './map/rainFx';
 import { mountStoryPanel } from './ui/story';
+import { mountPlace } from './ui/place';
 import { createTour } from './ui/tour';
 import { AnalysisLayers } from './map/analysisLayers';
 import { FeatureLayers, FACILITY_LABEL } from './map/features';
@@ -23,10 +24,13 @@ import { Timeline } from './ui/timeline';
 import { Tooltip } from './ui/tooltip';
 import { esc, fmtArea, fmtDepth, fmtHour, fmtWeekday, relHours } from './ui/format';
 import { iconSvg } from './ui/icons';
+import type { PinEntry, PinIndex } from './types';
+import { LEGACY_PIN, inflowCaveat, loadPinIndex, packBase, packsRoot } from './region/packs';
+import { loadCity, openCity } from './region/city';
 
 const DEMO_SCENARIO = 'rrnagar-2024-10-20';
-/** ?scenario=<id>&basemap=satellite&view=lng,lat,zoom[,pitch,bearing] */
-const url = new URLSearchParams(location.search);
+/** ?pin=<code>&scenario=<id>&basemap=satellite&view=lng,lat,zoom[,pitch,bearing] (scenario/basemap/view apply to the first region opened) */
+let url = new URLSearchParams(location.search);
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** below this flooded area (m², cells deeper than 10 cm) the outlook reads "no flooding" */
 const DRY_AREA_M2 = 1000;
@@ -57,48 +61,150 @@ interface App {
   forecastDryNote: boolean;
 }
 
-async function main() {
+/** The persistent chrome every region renders into. */
+export interface Shell {
+  loader: Loader;
+  sidebar: Sidebar;
+  timeline: Timeline;
+  timelineEl: HTMLElement;
+  layout: Layout;
+  index: PinIndex;
+  /** the city overview data loaded (otherwise the app is pincode-only) */
+  hasCity: boolean;
+  /** switch region: a pincode, or the city overview (null) */
+  go(pin: string | null): void;
+}
+
+/** What is on screen: the city overview or one pincode. Everything it creates goes in destroy(). */
+export interface Region {
+  kind: 'city' | 'pin';
+  destroy(): void;
+  reframe(): void;
+  onTour?(): void;
+  onStatus?(): void;
+  setHour?(h: number): void;
+  setPlaying?(p: boolean): void;
+  setSpeed?(s: number): void;
+  togglePlay?(): void;
+  /** true while the region owns the keyboard (guided tour) */
+  busy?(): boolean;
+}
+
+async function boot() {
   const loader = new Loader();
+  let region: Region | null = null;
+  const sidebar = new Sidebar(document.getElementById('sidebar')!, document.getElementById('rail')!, {
+    onTour: () => region?.onTour?.(),
+    onFocus: () => layout.toggleFocus(),
+    onStatus: () => region?.onStatus?.(),
+    onFootprint: () => region?.reframe(),
+    onBack: () => go(null),
+  });
+  const timelineEl = document.getElementById('timeline')!;
+  const timeline = new Timeline(timelineEl, {
+    onHour: (h) => region?.setHour?.(h),
+    onPlay: (p) => region?.setPlaying?.(p),
+    onSpeed: (s) => region?.setSpeed?.(s),
+    onCompact: () => region?.reframe(),
+  });
+  const layout = new Layout(sidebar, timeline, timelineEl, document.getElementById('focus-bar')!, {
+    onFrame: () => region?.reframe(),
+    onPlay: () => region?.togglePlay?.(),
+    busy: () => !!region?.busy?.(),
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.code !== 'Space' || e.defaultPrevented || region?.busy?.() || !region?.togglePlay) return; // Space pauses the tour instead
+    const t = e.target;
+    if (t instanceof HTMLElement && (t.isContentEditable || t.closest('input, textarea, select, button, a, [role="slider"]'))) return;
+    e.preventDefault();
+    region.togglePlay();
+  });
+
+  loader.set(0.02, 'Loading the pincode index');
+  const root = packsRoot();
+  const [index, city] = await Promise.all([loadPinIndex(root), loadCity()]);
+  const shell: Shell = { loader, sidebar, timeline, timelineEl, layout, index, hasCity: !!city, go };
+
+  // navigation is serialised: a region is fully torn down before the next one loads
+  let nav = Promise.resolve();
+  let first = true;
+  function go(pin: string | null, push = true) {
+    nav = nav.then(async () => {
+      if (!pin && !city) pin = LEGACY_PIN;
+      const entry = pin ? index.pins.find((p) => p.code === pin) : undefined;
+      if (pin && !entry?.pack) {
+        // unknown pincode, or one without a data pack: fall back to the overview (or 560098 without one)
+        console.warn(`[app] no data pack for ${pin}`);
+        if (!city) pin = LEGACY_PIN;
+        else pin = null;
+      }
+      if (push) {
+        const q = new URLSearchParams(location.search);
+        if (pin) q.set('pin', pin);
+        else q.delete('pin');
+        if (!first) for (const k of ['scenario', 'view']) q.delete(k);
+        const next = `${location.pathname}${q.toString() ? `?${q}` : ''}${location.hash}`;
+        if (next !== `${location.pathname}${location.search}${location.hash}`) history[first ? 'replaceState' : 'pushState']({ pin }, '', next);
+      }
+      if (!first) url = new URLSearchParams();
+      first = false;
+      try {
+        region?.destroy();
+      } catch (e) {
+        console.error('[app] teardown', e);
+      }
+      region = null;
+      layout.setFocus(false);
+      try {
+        const e = pin ? index.pins.find((p) => p.code === pin)! : undefined;
+        region = e ? await openPin(shell, e, packBase(root, e)) : await openCity(shell, city!);
+      } catch (err) {
+        console.error(err);
+        const back = !!pin && !!city;
+        loader.error(`Could not load ${pin ? `pincode ${pin}` : 'the city overview'}: ${err instanceof Error ? err.message : String(err)}${back ? '. Back to the overview in a moment.' : ''}`);
+        if (back) setTimeout(() => go(null), 3500);
+      }
+    });
+  }
+  window.addEventListener('popstate', () => go(new URLSearchParams(location.search).get('pin'), false));
+  const asked = url.get('pin');
+  go(asked ?? (city ? null : LEGACY_PIN));
+}
+
+async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Region> {
+  const { loader, sidebar, timeline, layout } = shell;
+  const timelineEl = shell.timelineEl;
+  const ac = new AbortController();
+  let disposed = false;
   let impactTimer = 0;
   let raf = 0;
   let exTimer = 0;
   let sumRaf = 0;
   /** true once the map is framed and the tour exists; layout callbacks wait for it */
   let ready = false;
-  loader.set(0.04, 'Loading terrain, buildings and roads');
-  const ds = await loadDataset();
+  const legacy = pin.code === LEGACY_PIN;
+  const placeName = pin.name.replace(/^Pincode \d+$/, '').trim();
+  loader.setTitle(pin.code, `${placeName || 'Bengaluru'} flood outlook`);
+  loader.show('Loading terrain, buildings and roads');
+  loader.set(0.04);
+  sidebar.setScope('pin');
+  sidebar.setRegion(pin.code, legacy ? 'Rajarajeshwari Nagar, Bengaluru' : `${placeName ? `${placeName}, ` : ''}Bengaluru`, { back: shell.hasCity });
+  sidebar.setTitle('story', legacy ? 'Why RR Nagar floods' : 'Model vs reported');
+  sidebar.setStatus('none', 'Working out the flood outlook', '');
+  // M4: catchments cross pincode edges; say quietly how much land drains in from outside the grid and how much is simulated
+  const caveat = inflowCaveat(pin);
+  sidebar.setCaveat(caveat?.text ?? null, caveat?.tip);
+  timelineEl.hidden = false;
+  document.title = `${pin.code} Flood Outlook`;
+  const ds = await loadDataset(base);
   const { terrain, osm } = ds;
   const meta = terrain.meta;
   const c2l = (c: number) => cellToLngLat(meta, c);
-
-  // ---------- chrome first, so the map is framed against the real layout ----------
-  const sidebar = new Sidebar(document.getElementById('sidebar')!, document.getElementById('rail')!, {
-    onTour: () => ready && (tour.isRunning ? tour.stop() : startTour()),
-    onFocus: () => layout.toggleFocus(),
-    onStatus: () => {
-      if (!ready) return;
-      setPlaying(false);
-      setHour(app.peak);
-      sidebar.getOutOfTheWay();
-    },
-    onFootprint: () => reframe(),
-  });
-  const timelineEl = document.getElementById('timeline')!;
-  const timeline = new Timeline(timelineEl, {
-    onHour: (h) => setHour(h),
-    onPlay: (p) => setPlaying(p),
-    onSpeed: (s) => (app.speed = s),
-    onCompact: () => reframe(),
-  });
-  const layout = new Layout(sidebar, timeline, timelineEl, document.getElementById('focus-bar')!, {
-    onFrame: () => reframe(),
-    onPlay: () => setPlaying(!app.playing),
-    busy: () => ready && tour.isRunning,
-  });
+  const center: [number, number] = [(meta.bbox[0] + meta.bbox[2]) / 2, (meta.bbox[1] + meta.bbox[3]) / 2];
 
   loader.set(0.25, 'Building the 3D map');
   const exaggeration = 2.4;
-  const map = await createMap(document.getElementById('map')!, meta.boundary, exaggeration);
+  const map = await createMap(document.getElementById('map')!, meta.boundary, exaggeration, legacy ? undefined : center);
   map.addControl(new Legend(), 'bottom-right');
 
   loader.set(0.35, 'Tracing low spots and flow paths');
@@ -147,7 +253,7 @@ async function main() {
   loader.set(0.42, 'Fetching the rain forecast');
   let forecast: ForecastVariants | null = null;
   try {
-    forecast = await fetchForecastVariants(CENTER[1], CENTER[0]);
+    forecast = await fetchForecastVariants(center[1], center[0]);
   } catch (e) {
     console.warn('[weather] forecast failed', e);
   }
@@ -182,7 +288,7 @@ async function main() {
 
   if (import.meta.env.DEV) (window as any).__app = app;
   analysis.modelLookup = (coord) => modelNear(app, terrain, coord);
-  wireHover(app, terrain);
+  const hoverTip = wireHover(app, terrain);
 
   const modelAt = (lng: number, lat: number) => modelNear(app, terrain, [lng, lat]);
   // the tour flies with the chrome hidden; it ends where it started, re-framed for the panels
@@ -191,6 +297,7 @@ async function main() {
     hotspots: ds.hotspots,
     depressions: ds.depressions,
     getModelDepthAt: modelAt,
+    region: { code: pin.code, name: pin.name, center },
     onEnd: () => {
       const cam = preTour;
       preTour = null;
@@ -206,11 +313,25 @@ async function main() {
     tour.start();
   }
   const story = mountStoryPanel(sidebar.body('story'), {
+    why: legacy,
     hotspots: ds.hotspots,
     depressions: ds.depressions,
     getModelDepthAt: modelAt,
     onFocus: (coord) => flyTo(coord, 16.2),
   });
+  const place = mountPlace(document.getElementById('place-mount')!, {
+    map,
+    terrain,
+    osm,
+    engine,
+    getHour: () => app.hour,
+    getTimes: () => app.series?.times ?? [],
+    depressions: ds.depressions,
+    hotspots: ds.hotspots,
+    onFocus: (coord) => flyTo(coord, 16.4),
+    onChange: (p) => p && sidebar.setOpen('place', true, false),
+  });
+  let placeTimer = 0;
 
   // Live forecast by default. If it is dry for the next 48 h, or the model finds no
   // flooding ahead, open on the Oct 2024 storm so the map shows what flooding looks like.
@@ -244,6 +365,50 @@ async function main() {
   loader.hide();
   ready = true;
   if (!view) intro(map);
+  // no sourced reports and no hand-written story: nothing to show in that section
+  sidebar.setHidden('story', !legacy && !ds.hotspots.length);
+
+  const region: Region = {
+    kind: 'pin',
+    reframe,
+    onTour: () => ready && (tour.isRunning ? tour.stop() : startTour()),
+    onStatus: () => {
+      if (!ready) return;
+      setPlaying(false);
+      setHour(app.peak);
+      sidebar.getOutOfTheWay();
+    },
+    setHour: (h) => setHour(h),
+    setPlaying: (p) => setPlaying(p),
+    setSpeed: (s) => (app.speed = s),
+    togglePlay: () => setPlaying(!app.playing),
+    busy: () => ready && tour.isRunning,
+    destroy() {
+      if (disposed) return;
+      disposed = true;
+      ac.abort();
+      setPlaying(false);
+      cancelAnimationFrame(raf);
+      cancelAnimationFrame(sumRaf);
+      clearTimeout(impactTimer);
+      clearTimeout(exTimer);
+      clearTimeout(placeTimer);
+      if (tour.isRunning) tour.stop();
+      place.destroy();
+      story.destroy();
+      flood.destroy();
+      rain.destroy();
+      feats.destroy();
+      engine.dispose();
+      hoverTip.hide();
+      map.remove();
+      sidebar.clearBodies();
+      sidebar.setHidden('story', false);
+      sidebar.setCaveat(null);
+      app.impact.clear();
+    },
+  };
+  return region;
 
   // ---------------------------------------------------------------------------
   /** Re-pad the camera so the subject stays centred in the free map area. */
@@ -269,7 +434,7 @@ async function main() {
     if (id === 'forecast') {
       if (!app.forecast) {
         try {
-          app.forecast = await fetchForecastVariants(CENTER[1], CENTER[0]);
+          app.forecast = await fetchForecastVariants(center[1], center[0]);
           controls.setForecastNote(forecastSummary(app.forecast));
         } catch {
           controls.setRain(app.series ?? demo.build(), 'The forecast could not be loaded. Check your connection, or pick a scenario.');
@@ -308,6 +473,7 @@ async function main() {
     controls.setBusy(false);
     analysis.refreshCompare();
     story.refresh();
+    place.refresh();
     // open at the worst hour still ahead (or the worst overall for a scenario)
     const from = series.source === 'forecast' ? (series.nowIndex ?? 0) : 0;
     let best = from;
@@ -388,6 +554,9 @@ async function main() {
     rain.setIntensity(app.series?.mm[h] ?? 0);
     feats.update(depth);
     timeline.setHour(h);
+    clearTimeout(placeTimer);
+    if (app.playing) placeTimer = window.setTimeout(() => app.hour === h && place.setHour(h), 160);
+    else place.setHour(h);
     const maxA = Math.max(1, ...app.area);
     document.documentElement.style.setProperty('--level', (0.1 + 0.55 * ((app.area[h] ?? 0) / maxA)).toFixed(3));
     const time = app.series?.times[h] ?? Date.now();
@@ -443,14 +612,6 @@ async function main() {
     map.flyTo({ center: c, zoom, pitch: 64, bearing: map.getBearing(), padding: layout.padding(), speed: 0.9, curve: 1.4, essential: true });
     map.once('moveend', () => void reground(map));
   }
-
-  document.addEventListener('keydown', (e) => {
-    if (e.code !== 'Space' || e.defaultPrevented || tour.isRunning) return; // Space pauses the tour instead
-    const t = e.target;
-    if (t instanceof HTMLElement && (t.isContentEditable || t.closest('input, textarea, select, button, a, [role="slider"]'))) return;
-    e.preventDefault();
-    setPlaying(!app.playing);
-  });
 }
 
 const SEV_PHRASE: Record<Severity, string> = {
@@ -607,6 +768,7 @@ function wireHover(app: App, t: Terrain) {
     pending = { x: e.point.x, y: e.point.y, lng: e.lngLat.lng, lat: e.lngLat.lat };
     render();
   });
+  return tip;
 }
 
 async function frame(map: MLMap, bbox: [number, number, number, number], padding: PaddingOptions) {
@@ -644,7 +806,7 @@ function intro(map: MLMap) {
   map.easeTo({ ...end, duration: 4200, easing: (t) => 1 - Math.pow(1 - t, 3), essential: true });
 }
 
-main().catch((e) => {
+boot().catch((e) => {
   console.error(e);
   new Loader().error(`Could not start: ${e instanceof Error ? e.message : String(e)}`);
 });

@@ -1,0 +1,60 @@
+# Builds the app plus every Bengaluru Urban pincode pack and publishes them to GitHub Pages
+# (https://achyuta0001.github.io/Logged/). The packs live only in the published site, never in git.
+# Deploys when a commit is pushed to the `deploy` branch (git push origin HEAD:deploy), or by hand.
+name: Deploy to GitHub Pages
+on:
+  push:
+    branches: [deploy]
+  workflow_dispatch:
+    inputs:
+      pins:
+        description: 'Comma-separated pincodes (empty = all)'
+        required: false
+        default: ''
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: sudo apt-get update && sudo apt-get install -y osmium-tool
+      - run: npm ci
+      # Geofabrik's India southern zone (~560 MB, ODbL) is far quicker than streaming the planet.
+      - name: OSM extract for Bengaluru Urban
+        run: |
+          mkdir -p .cache/osm
+          curl -sSfL -A "Logged flood explorer (github.com/achyuta0001/Logged)" -o .cache/osm/southern-zone.osm.pbf \
+            https://download.geofabrik.de/asia/india/southern-zone-latest.osm.pbf
+          osmium extract -b 77.15,12.45,78.05,13.45 -s smart .cache/osm/southern-zone.osm.pbf -o .cache/osm/blr-region.osm.pbf --overwrite
+          rm .cache/osm/southern-zone.osm.pbf
+          printf '{"source":"%s","bbox":"%s","built":"%s","licence":"ODbL 1.0, (c) OpenStreetMap contributors"}\n' \
+            "https://download.geofabrik.de/asia/india/southern-zone-latest.osm.pbf" "77.15,12.45,78.05,13.45" "$(date -u +%FT%TZ)" > .cache/osm/blr-region.json
+      - run: npm run data:city
+      - run: npm run data:all -- --jobs 2 ${{ inputs.pins && format('--pins {0}', inputs.pins) || '' }}
+      - run: npm test
+      - run: npx vite build --base /Logged/
+      - name: Site size
+        run: du -sh dist dist/data/pins dist/data/city && find dist -type f | wc -l
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

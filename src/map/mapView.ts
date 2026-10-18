@@ -20,7 +20,14 @@ export let OVERLAY_ANCHOR: string | undefined;
 /** Basemap vector layer ids that hide when satellite is on. */
 let vectorBaseLayers: string[] = [];
 
+let baseStyle: Promise<StyleSpecification> | null = null;
+/** fetched once per page: switching regions rebuilds the map from a fresh copy */
 async function loadBaseStyle(): Promise<StyleSpecification> {
+  baseStyle ??= fetchBaseStyle();
+  return structuredClone(await baseStyle);
+}
+
+async function fetchBaseStyle(): Promise<StyleSpecification> {
   try {
     const ctl = new AbortController();
     const to = setTimeout(() => ctl.abort(), 6000);
@@ -65,15 +72,20 @@ function retheme(style: StyleSpecification) {
   vectorBaseLayers = keep.filter((l) => l.type !== 'symbol' && l.type !== 'background').map((l) => l.id);
 }
 
-export async function createMap(container: HTMLElement, boundary: GeoJSON.Geometry, exaggeration: number): Promise<MLMap> {
+/**
+ * demMaxZoom: deepest terrain tile zoom (default 14, matching the basemap). The city overview uses a
+ * shallower DEM: at district scale z14 terrain + z15 hillshade tiles alone would be ~7 MB.
+ */
+export async function createMap(container: HTMLElement, boundary: GeoJSON.Geometry, exaggeration: number, center: [number, number] = CENTER, opts: { demMaxZoom?: number } = {}): Promise<MLMap> {
+  const demZ = opts.demMaxZoom ?? 14;
   const style = await loadBaseStyle();
   retheme(style);
 
   style.sources['eox'] = { type: 'raster', tiles: [EOX], tileSize: 256, maxzoom: 15, attribution: ATTR_EOX };
   // terrain maxzoom matches the vector basemap (z14): overscaled basemap tiles above a deeper DEM
   // trigger a MapLibre warning, and z14 terrarium (~9 m) already out-resolves the ~30 m SRTM data
-  style.sources['dem'] = { type: 'raster-dem', tiles: [TERRARIUM], encoding: 'terrarium', tileSize: 256, maxzoom: 14, attribution: ATTR_TERRAIN };
-  style.sources['dem-hs'] = { type: 'raster-dem', tiles: [TERRARIUM], encoding: 'terrarium', tileSize: 256, maxzoom: 15 };
+  style.sources['dem'] = { type: 'raster-dem', tiles: [TERRARIUM], encoding: 'terrarium', tileSize: 256, maxzoom: demZ, attribution: ATTR_TERRAIN };
+  style.sources['dem-hs'] = { type: 'raster-dem', tiles: [TERRARIUM], encoding: 'terrarium', tileSize: 256, maxzoom: opts.demMaxZoom === undefined ? 15 : demZ };
   const bgIdx = style.layers.findIndex((l) => l.type === 'background');
   style.layers.splice(
     bgIdx + 1,
@@ -112,7 +124,7 @@ export async function createMap(container: HTMLElement, boundary: GeoJSON.Geomet
   const map = new maplibregl.Map({
     container,
     style,
-    center: [CENTER[0] - 0.002, CENTER[1] - 0.012],
+    center: [center[0] - 0.002, center[1] - 0.012],
     zoom: 13.55,
     pitch: 62,
     bearing: -18,
@@ -121,10 +133,13 @@ export async function createMap(container: HTMLElement, boundary: GeoJSON.Geomet
     canvasContextAttributes: { antialias: true, preserveDrawingBuffer: false },
   });
   map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+  // calm start: attribution stays one tap away (the "i" button), not a strip across the map.
+  // Marking it compact now stops MapLibre from auto-expanding it when the first source
+  // attribution arrives (it only auto-opens a control that is not compact yet).
+  container.querySelector('.maplibregl-ctrl-attrib')?.classList.add('maplibregl-compact');
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), 'top-right');
 
   await new Promise<void>((res) => map.once('load', () => res()));
-  // calm start: attribution stays one tap away (the "i" button), not a strip across the map
   container.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
   addBoundary(map, boundary);
   return map;
@@ -147,7 +162,8 @@ function addBoundary(map: MLMap, boundary: GeoJSON.Geometry) {
   ];
   const holes = rings(boundary).map((r) => [...r].reverse());
   map.addSource('mask', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [world, ...holes] } } });
-  map.addSource('boundary', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: boundary } });
+  // our own OSM-derived overlays carry the credit too, in case the basemap (which also credits OSM) fails to load
+  map.addSource('boundary', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: boundary }, attribution: 'Boundaries, roads, buildings &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL); flood model elevation: Copernicus DEM GLO-30 &copy; DLR e.V., &copy; Airbus Defence and Space GmbH, provided under COPERNICUS by the EU and ESA' });
   map.addLayer({ id: 'mask', type: 'fill', source: 'mask', paint: { 'fill-color': '#02050b', 'fill-opacity': 0.58 } }, OVERLAY_ANCHOR);
   map.addLayer({ id: 'boundary-glow-wide', type: 'line', source: 'boundary', paint: { 'line-color': '#3fd4ff', 'line-width': 14, 'line-blur': 12, 'line-opacity': 0.28 } });
   map.addLayer({ id: 'boundary-glow', type: 'line', source: 'boundary', paint: { 'line-color': '#5fe0ff', 'line-width': 4, 'line-blur': 3, 'line-opacity': 0.6 } });

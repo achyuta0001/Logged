@@ -126,7 +126,7 @@ export class Controls {
       <div class="layers">${LAYERS.filter((l) => l.analysis).map(lyr).join('')}</div>`;
 
     m.drainage.innerHTML = `
-      <p class="sec-lede">What the model assumes about RR Nagar's drains. Change them and re-run.</p>
+      <p class="sec-lede">What the model assumes about the drains here. Change them and re-run.</p>
       ${this.slider('drainCapacityMmHr', 'Drain capacity', 0, 80, 1)}
       ${this.slider('drainBlockage', 'Drains blocked by silt and garbage', 0, 1, 0.05)}
       ${this.slider('infiltrationMmHr', 'Soaks into open ground', 0, 40, 1)}

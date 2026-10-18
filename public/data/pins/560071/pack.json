@@ -1,0 +1,21 @@
+{
+ "code": "560071",
+ "format": 2,
+ "cellSizeM": 15,
+ "bytes": 4126885,
+ "gzipBytes": 586108,
+ "built": "2026-10-17",
+ "files": [
+  "meta.json",
+  "grids.bin",
+  "osm.geojson",
+  "depressions.json"
+ ],
+ "sources": [
+  "DEM: Copernicus DEM GLO-30 (DSM) © DLR e.V. 2010-2014 and © Airbus Defence and Space GmbH 2014-2018, provided under COPERNICUS by the European Union and ESA; all rights reserved; free licence. Accessed via public AWS bucket copernicus-dem-30m (no login), bilinear-resampled to 15 m",
+  "Bare-earth approximation: rank-order opening of the DSM (7x7 cells, 10th/90th percentile) blended in where OSM buildings, trees or built-up land make the surface model unreliable",
+  "DEM smoothed with Gaussian sigma=1.5 cells; OSM drains burned (-1..2.5 m) and lakes lowered 0.5 m",
+  "© OpenStreetMap contributors, ODbL 1.0 (openstreetmap.org/copyright), from OSM extract 2026-10-17 (planet via AWS osm-pds, osmium), cached",
+  "Upstream inflow (M4): 50.6 km² outside the grid drains into it (district 60 m D8 routing of Copernicus GLO-30 with OSM drains and lakes, npm run data:city); 49.87 km² of it enters at 5 points through a lumped runoff model with the grid's own losses and Clark routing (src/sim/inflow.ts)"
+ ]
+}

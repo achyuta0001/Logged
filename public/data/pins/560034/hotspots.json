@@ -1,0 +1,44 @@
+[
+ {
+  "name": "Silk Board Junction",
+  "coord": [
+   77.62388,
+   12.91588
+  ],
+  "events": [
+   {
+    "date": "2025-05-19",
+    "summary": "Standing water stopped traffic at Silk Board junction; service roads and the adjoining underpasses flooded after about 105 mm of rain in 24 hours.",
+    "source": "https://www.thenewsminute.com/karnataka/silk-board-btm-layout-among-worst-hit-as-rain-batters-bengaluru"
+   }
+  ]
+ },
+ {
+  "name": "HSR Layout",
+  "coord": [
+   77.63886,
+   12.91162
+  ],
+  "events": [
+   {
+    "date": "2025-05-19",
+    "summary": "Flood water entered houses in HSR Layout after torrential overnight rain; boats and tractor-trolleys were used in the worst stretches.",
+    "source": "https://www.deccanherald.com/india/karnataka/bengaluru/flooding-in-many-parts-of-bengaluru-after-torrential-overnight-rain-3546886"
+   }
+  ]
+ },
+ {
+  "name": "ST Bed Layout, Koramangala",
+  "coord": [
+   77.63243,
+   12.93477
+  ],
+  "events": [
+   {
+    "date": "2025-05-20",
+    "summary": "A day after the deluge, ST Bed Layout in Koramangala was still flooded; water had entered homes.",
+    "source": "https://www.deccanherald.com/india/karnataka/bengaluru/day-after-rain-deluge-bengaluru-residents-wade-through-trouble-3549914"
+   }
+  ]
+ }
+]

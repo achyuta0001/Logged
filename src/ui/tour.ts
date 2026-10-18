@@ -14,6 +14,8 @@ export interface TourOptions {
   onEnd?(): void;
   /** modelled max water depth (m) at a point, from the current simulation run */
   getModelDepthAt?(lng: number, lat: number): number | undefined;
+  /** the pincode being toured; anything but 560098 gets the generic, data-driven script */
+  region?: { code: string; name: string; center: [number, number] };
 }
 
 export interface Tour {
@@ -111,6 +113,75 @@ function nearestReport(hotspots: Hotspot[], c: [number, number], maxM: number): 
     if (e && d <= maxM && (!best || d < best.d)) best = { h, e, d };
   }
   return best;
+}
+
+// ---------- generic script (any pincode) ----------
+/**
+ * Tour for pincodes without a hand-written script: the biggest terrain basins, then the reported
+ * flood spots in the pack's hotspots.json (each with its source). Only facts from the data.
+ */
+function buildGenericStops(hotspots: Hotspot[], deps: Depression[], region: NonNullable<TourOptions['region']>): Stop[] {
+  const stops: Stop[] = [];
+  const name = region.name.replace(/^Pincode \d+$/, '').trim();
+  const reported = hotspots.filter((h) => latestEvent(h));
+  stops.push({
+    kind: 'intro',
+    kicker: `Pincode ${region.code}${name ? ` · ${name}` : ''}`,
+    title: 'Where water collects first',
+    text: `The terrain model finds ${deps.length} closed hollows here, where rain pools before it can drain away.${
+      reported.length ? ` ${reported.length} place${reported.length === 1 ? ' has' : 's have'} reported flooding in the news.` : ' No sourced flood reports are on file for this pincode yet.'
+    } Bengaluru's older storm drains were designed for rain peaks of about 75 mm an hour; recent storms have peaked near 125 mm.`,
+    center: region.center,
+    zoom: 13.6,
+    pitch: 60,
+    bearing: -30,
+    drift: 70,
+    dwellMs: 13000,
+    source: SRC.dh2019,
+  });
+  const used: [number, number][] = [];
+  const far = (c: [number, number]) => used.every((u) => distM(u, c) > 600);
+  for (const d of [...deps].sort((a, b) => b.volumeM3 - a.volumeM3)) {
+    if (stops.length >= 4) break;
+    if (!far(d.centroid)) continue;
+    used.push(d.centroid);
+    const near = nearestReport(hotspots, d.centroid, 450);
+    stops.push({
+      kind: 'model',
+      kicker: `Terrain basin · ${d.label ?? 'unnamed'}`,
+      title: stops.length === 1 ? 'The biggest hollow in the pincode' : 'Another low basin',
+      text: `In the terrain model, runoff from about ${fmtKm2(d.catchmentM2)} of streets and rooftops drains into this hollow, which sits up to ${d.maxDepthM.toFixed(1)} m below the point where water would spill out.`,
+      center: d.centroid,
+      zoom: 15.6,
+      pitch: 68,
+      bearing: [-40, 60, -10][stops.length % 3],
+      drift: 14,
+      dwellMs: 12000,
+      facts: basinFacts(d),
+      reported: near?.e,
+      source: near ? { href: near.e.source, label: near.h.name } : undefined,
+      probe: d.centroid,
+    });
+  }
+  for (const h of reported.slice(0, 3)) {
+    const e = latestEvent(h)!;
+    stops.push({
+      kind: 'reported',
+      kicker: `Reported flooding · ${h.name}`,
+      title: `${h.name}, ${fmtEventDate(e.date)}`,
+      text: e.summary,
+      center: h.coord,
+      zoom: 15.7,
+      pitch: 64,
+      bearing: 35,
+      drift: -14,
+      dwellMs: 12000,
+      reported: e,
+      source: { href: e.source, label: 'Source' },
+      probe: h.coord,
+    });
+  }
+  return stops;
 }
 
 // ---------- the script ----------
@@ -266,7 +337,7 @@ function settle(map: MLMap, maxMs: number): Promise<void> {
 
 // ---------- tour ----------
 export function createTour(map: MLMap, opts: TourOptions): Tour {
-  const stops = buildStops(opts.hotspots, opts.depressions);
+  const stops = opts.region && opts.region.code !== '560098' ? buildGenericStops(opts.hotspots, opts.depressions, opts.region) : buildStops(opts.hotspots, opts.depressions);
   let running = false;
   let idx = 0;
   let token = 0;

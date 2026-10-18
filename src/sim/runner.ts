@@ -2,9 +2,10 @@
  * Runs a whole hourly rain series on the (coarsened) grid and produces one fine-grid depth frame
  * per hour (Uint16 millimetres). Shared by the Web Worker and the inline fallback (tests / node).
  */
-import type { SimParams } from '../types.ts';
+import type { InflowEdgeRun, InflowPoint, SimParams } from '../types.ts';
 import { SimCore, type CoreGrids, type HourStats } from './core.ts';
 import { coarsen, downscaleMm, type Coarse } from './grid.ts';
+import { Inflow } from './inflow.ts';
 
 export interface RunnerInit {
   width: number;
@@ -18,6 +19,10 @@ export interface RunnerInit {
   params: SimParams;
   /** coarsening factor (1 = native grid). Default: 2 when the grid has > 60k cells. */
   factor?: number;
+  /** upstream inflow points on this (fine) grid: terrain.meta.inflow, see src/sim/inflow.ts */
+  inflow?: InflowPoint[];
+  /** edge stretches of this (fine) grid where outside land drains in: terrain.meta.inflowEdge */
+  inflowEdge?: InflowEdgeRun[];
 }
 
 export interface HourResult {
@@ -53,7 +58,17 @@ export class Runner {
     this.core = new SimCore(this.coarse.grids, init.params);
     this.fineZ = init.elevation;
     this.fineInside = init.boundaryMask;
+    if (init.inflow?.length) {
+      const cg = this.coarse.grids;
+      this.inflow = new Inflow(init.inflow, init.width, init.width * init.height, this.coarse.f, cg.width, cg.height, cg.cellSizeM);
+      // where outside land drains in, the grid edge is an inflow boundary, not an outfall
+      this.core.closeEdges(this.inflow.edgeCells(init.inflowEdge));
+      // drains below an inflow point were built for its whole catchment (src/sim/network.ts)
+      this.core.net?.addUpstream(this.inflow.cells, this.inflow.points.map((p) => p.areaKm2 * 1e6), this.inflow.points.map((p) => p.timeArea.length * 3600));
+    }
   }
+
+  private inflow?: Inflow;
 
   get factor(): number {
     return this.coarse.f;
@@ -65,8 +80,10 @@ export class Runner {
     this.core.reset();
     const total = mm.length;
     const fineArea = (this.coarse.grids.cellSizeM / this.coarse.f) ** 2;
+    this.inflow?.prepare(mm, params);
     for (let hour = 0; hour < total; hour++) {
       const v = Number(mm[hour]);
+      this.core.sources = this.inflow?.sourcesAt(hour) ?? null;
       const stats = this.core.stepHour(Number.isFinite(v) ? v : 0);
       const frame = new Uint16Array(this.fineZ.length);
       downscaleMm(this.coarse, this.core.h, this.fineZ, frame);

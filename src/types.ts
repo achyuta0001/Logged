@@ -13,9 +13,64 @@ export interface TerrainMeta {
   /** GeoJSON Polygon/MultiPolygon geometry of the pincode boundary */
   boundary: GeoJSON.Geometry;
   /** layers inside public/data/grids.bin, all row-major, row 0 = north */
-  layers: Record<GridLayerName, { offset: number; length: number; dtype: 'f32' | 'u8' }>;
+  layers: Record<GridLayerName, LayerInfo>;
+  /** pack format (absent = 1); 2 = quantised grids + compact OSM, see src/pack/codec.ts */
+  format?: PackFormat;
   stats: { minElev: number; maxElev: number };
   sources: string[];
+  /** M4: land outside the grid that drains into it, km² (district 60 m routing, outside cells only) */
+  upstreamOutsideKm2?: number;
+  /** M4: the part of that land whose runoff the sim routes in (src/sim/inflow.ts) */
+  inflow?: InflowPoint[];
+  /** M4: edge stretches where outside land drains in; closed to outflow while inflow runs */
+  inflowEdge?: InflowEdgeRun[];
+}
+
+/** [side, from, to]: side 0 north, 1 south, 2 west, 3 east; from..to inclusive, grid cells along that side */
+export type InflowEdgeRun = [number, number, number];
+
+/**
+ * One flow path entering the grid from outside it, with its outside catchment summarised for the
+ * lumped runoff model in src/sim/inflow.ts (written by scripts/build-data.mjs, see scripts/lib/catchment.mjs).
+ */
+export interface InflowPoint {
+  /** grid cell (row * width + col) where the inflow enters: on the pack's flow path, a few cells inside the edge */
+  cell: number;
+  /** [lon, lat] where the path crosses into the grid */
+  at: [number, number];
+  /** contributing area outside the grid, km² */
+  areaKm2: number;
+  /** mean sealed share of that area, 0..1 */
+  impervious: number;
+  /** share of the area within ~500 m of a mapped drain, 0..1 (absent = 1) */
+  drainShare?: number;
+  /** share of the area whose runoff passes a mapped tank on the way, 0..1 */
+  tankShare?: number;
+  /** flood cushion of those tanks, m³ (filled before they pass water on) */
+  tankM3?: number;
+  /** share of the area per hour of travel time to the grid edge (time-area histogram, sums to 1) */
+  timeArea: number[];
+  /** Clark storage coefficient, hours (linear-reservoir attenuation; 0 = translation only) */
+  storageH?: number;
+}
+
+/** One layer in grids.bin. v1: f32 / u8 as-is. v2: quantised, see src/pack/codec.ts. */
+export interface LayerInfo {
+  /** byte offset in grids.bin */
+  offset: number;
+  /** elements */
+  length: number;
+  dtype: 'f32' | 'u8' | 'u16';
+  /** v2: value = base + q * scale (or 2^(q / scale) with log2) */
+  scale?: number;
+  base?: number;
+  log2?: boolean;
+  /** v2: q stored as differences along each row */
+  delta?: boolean;
+  /** v2: u16 bytes stored as a low-byte plane then a high-byte plane */
+  shuffle?: boolean;
+  /** v2: not stored; filled = elevation + depressionDepth */
+  derived?: boolean;
 }
 
 export type GridLayerName =
@@ -135,4 +190,57 @@ export interface ImpactReport {
   /** human-readable daily-life consequences, ordered by importance */
   dailyLife: { icon: string; title: string; detail: string; severity: Severity }[];
   overall: Severity;
+}
+
+// ---------------------------------------------------------------- multi-region (Bengaluru Urban)
+
+/** Pack format version. 1 = f32 grids (560098 reference pack); 2 = quantised grids (see CONTRACT.md). */
+export type PackFormat = 1 | 2;
+
+/** One pincode in public/data/pins/index.json */
+export interface PinEntry {
+  /** "560098" */
+  code: string;
+  /** locality name from OSM (`name` / `note` of the postal_code relation, else the largest place inside) */
+  name: string;
+  /** other locality names inside the pincode (search) */
+  localities?: string[];
+  /** OSM relation id of the boundary=postal_code relation */
+  relation: number;
+  /** [west, south, east, north] of the boundary */
+  bbox: [number, number, number, number];
+  /** [lon, lat] */
+  centroid: [number, number];
+  areaKm2: number;
+  /** share of the pincode's area inside Bengaluru Urban (0..1) */
+  districtShare: number;
+  /** precomputed flood-susceptibility index 0..1 (see README "Susceptibility index") */
+  susceptibility?: number;
+  /** a data pack exists for this pincode */
+  pack?: PackInfo;
+}
+
+export interface PackInfo {
+  /** pack folder, relative to the packs root (e.g. "560098"); "." = the legacy pack in public/data */
+  path: string;
+  format: PackFormat;
+  /** total bytes of the pack files (uncompressed) and gzipped */
+  bytes: number;
+  gzipBytes: number;
+  /** ISO date of the build */
+  built: string;
+  sources: string[];
+  /** upstream area draining in from outside the padded bbox, km² (M4) */
+  upstreamOutsideKm2?: number;
+  /** part of upstreamOutsideKm2 whose runoff the pack's sim routes in (meta.inflow), km² (M4) */
+  inflowKm2?: number;
+}
+
+export interface PinIndex {
+  version: 1;
+  generated: string;
+  district: { relation: number; name: string };
+  /** how pincodes were selected (documented rule) */
+  rule: string;
+  pins: PinEntry[];
 }

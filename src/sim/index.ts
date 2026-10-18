@@ -52,6 +52,9 @@ export class FloodEngine {
       boundaryMask: g.boundaryMask ? new Uint8Array(g.boundaryMask as Uint8Array) : undefined,
       params,
       factor: opts.factor,
+      // M4: runoff from land outside the grid enters at these points (src/sim/inflow.ts)
+      inflow: m.inflow?.length ? m.inflow.map((p) => ({ ...p, timeArea: [...p.timeArea] })) : undefined,
+      inflowEdge: m.inflowEdge?.map((r) => [...r] as typeof r),
     };
     if (opts.inline || typeof Worker === 'undefined') this.inlineRunner = new Runner(this.init);
   }

@@ -1,0 +1,78 @@
+{
+  "about": "Reported flood spots across Bengaluru Urban, copied by scripts/build-data.mjs into the hotspots.json of every pack whose bbox contains them. Each event links its source; summaries state only what the source reports. Coordinates come from the named OSM object (osm field), not from a geocoder or memory. 560098 keeps its own hand-sourced public/data/hotspots.json.",
+  "hotspots": [
+    {
+      "name": "Kendriya Vihar Apartments, Yelahanka",
+      "coord": [77.5996, 13.1068],
+      "osm": "way/96710695",
+      "events": [
+        { "date": "2024-10-16", "summary": "BBMP deployed two tractors to move residents in and out of the Kendriya Vihar apartment complex, which was under about three feet of water. The complex is next to Yelahanka lake and floods often.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/bbmp-deploys-two-tractors-to-evacuate-kendriya-vihar-residents-3234395" },
+        { "date": "2024-10", "summary": "Kendriya Vihar apartments in Yelahanka flooded for the third time in a month.", "source": "https://www.thenewsminute.com/karnataka/bengalurus-kendriya-vihar-apartments-in-yelahanka-flood-for-the-third-time-in-a-month" }
+      ]
+    },
+    {
+      "name": "Rainbow Drive Layout, Sarjapur Road",
+      "coord": [77.6870, 12.9062],
+      "osm": "way/101573097",
+      "events": [
+        { "date": "2022-09", "summary": "After heavy overnight rain Rainbow Drive and the Sarjapur Road and Outer Ring Road area were flooded, with large sections of main roads under water. The layout sits in a valley between Halanayakanahalli and Junnasandra lakes.", "source": "https://citizenmatters.in/rainbow-drive-layout-or-lake-bengaluru-flood-prone-neighbourhoods/" }
+      ]
+    },
+    {
+      "name": "Outer Ring Road at Ecospace, Bellandur",
+      "coord": [77.68116, 12.92834],
+      "osm": "node/3170452369",
+      "events": [
+        { "date": "2022-09-05", "summary": "Two to three feet of water on the Outer Ring Road from Silk Board junction to Bellandur, Marathahalli and Sarjapura Road after heavy overnight rain.", "source": "https://www.oneindia.com/bengaluru/bengaluru-rains-cars-submerged-residential-layouts-flooded-after-overnight-heavy-downpour-3457456.html" }
+      ]
+    },
+    {
+      "name": "Marathahalli Bridge, Outer Ring Road",
+      "coord": [77.70226, 12.95698],
+      "osm": "node/7133498141",
+      "events": [
+        { "date": "2022-09-05", "summary": "Roads leading to the Marathahalli flyover were under water, cutting it off to vehicles, after 131.6 mm of overnight rain (IMD).", "source": "https://www.thenewsminute.com/article/bengaluru-flooded-again-after-rains-marathahalli-orr-under-water-167535" }
+      ]
+    },
+    {
+      "name": "Silk Board Junction",
+      "coord": [77.62388, 12.91588],
+      "osm": "node/13955791828",
+      "events": [
+        { "date": "2025-05-19", "summary": "Standing water stopped traffic at Silk Board junction; service roads and the adjoining underpasses flooded after about 105 mm of rain in 24 hours.", "source": "https://www.thenewsminute.com/karnataka/silk-board-btm-layout-among-worst-hit-as-rain-batters-bengaluru" }
+      ]
+    },
+    {
+      "name": "HSR Layout",
+      "coord": [77.63886, 12.91162],
+      "osm": "node/456016994",
+      "events": [
+        { "date": "2025-05-19", "summary": "Flood water entered houses in HSR Layout after torrential overnight rain; boats and tractor-trolleys were used in the worst stretches.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/flooding-in-many-parts-of-bengaluru-after-torrential-overnight-rain-3546886" }
+      ]
+    },
+    {
+      "name": "ST Bed Layout, Koramangala",
+      "coord": [77.63243, 12.93477],
+      "osm": "node/1278162259",
+      "events": [
+        { "date": "2025-05-20", "summary": "A day after the deluge, ST Bed Layout in Koramangala was still flooded; water had entered homes.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/day-after-rain-deluge-bengaluru-residents-wade-through-trouble-3549914" }
+      ]
+    },
+    {
+      "name": "Electronic City Flyover, Hosur Road",
+      "coord": [77.6658, 12.8455],
+      "osm": "way/38321920",
+      "events": [
+        { "date": "2024-10-05", "summary": "Hosur Road was waterlogged between Chandapura Circle and Bommasandra, with queues on the roads linking Electronics City to Hosur Road; commuters said the Electronic City flyover flooded within 30 minutes of rain.", "source": "https://www.deccanherald.com/india/karnataka/bengaluru/sudden-deluge-of-rains-trigger-traffic-jams-water-logging-in-bengaluru-3221194" }
+      ]
+    },
+    {
+      "name": "Hebbal Flyover",
+      "coord": [77.5907, 13.04362],
+      "osm": "way/151675203",
+      "events": [
+        { "date": "2024-08", "summary": "Traffic advisory for waterlogging at the Hebbal flyover upper ramp towards the city and the down ramp towards the airport after overnight rain.", "source": "https://thesouthfirst.com/karnataka/overnight-rains-cause-widespread-waterlogging-in-bengaluru-traffic-advisory-issued/" }
+      ]
+    }
+  ]
+}
