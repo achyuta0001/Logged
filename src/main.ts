@@ -25,7 +25,7 @@ import { Tooltip } from './ui/tooltip';
 import { esc, fmtArea, fmtDepth, fmtHour, fmtWeekday, relHours } from './ui/format';
 import { iconSvg } from './ui/icons';
 import type { PinEntry, PinIndex } from './types';
-import { LEGACY_PIN, loadPinIndex, packBase, packsRoot } from './region/packs';
+import { LEGACY_PIN, inflowCaveat, loadPinIndex, packBase, packsRoot } from './region/packs';
 import { loadCity, openCity } from './region/city';
 
 const DEMO_SCENARIO = 'rrnagar-2024-10-20';
@@ -191,12 +191,9 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
   sidebar.setRegion(pin.code, legacy ? 'Rajarajeshwari Nagar, Bengaluru' : `${placeName ? `${placeName}, ` : ''}Bengaluru`, { back: shell.hasCity });
   sidebar.setTitle('story', legacy ? 'Why RR Nagar floods' : 'Model vs reported');
   sidebar.setStatus('none', 'Working out the flood outlook', '');
-  // M4: catchments cross pincode edges; say so quietly when a lot of land drains in from outside the grid
-  const inflow = pin.pack?.upstreamOutsideKm2 ?? 0;
-  sidebar.setCaveat(
-    inflow >= Math.max(5, pin.areaKm2) ? `About ${Math.round(inflow)} km² upstream drains in from outside this map; the model leaves that inflow out.` : null,
-    'Upstream area from a district-wide 60 m flow-accumulation run (npm run data:city). Streams entering from outside the modelled area are not simulated, so valley-floor depths may be underestimated.',
-  );
+  // M4: catchments cross pincode edges; say quietly how much land drains in from outside the grid and how much is simulated
+  const caveat = inflowCaveat(pin);
+  sidebar.setCaveat(caveat?.text ?? null, caveat?.tip);
   timelineEl.hidden = false;
   document.title = `${pin.code} Flood Outlook`;
   const ds = await loadDataset(base);
