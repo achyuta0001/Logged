@@ -35,6 +35,7 @@ The index is the weighted mean of the four percentile ranks, from 0 to 1. The le
 - **Terrain analysis**: priority-flood depression filling, D8 flow accumulation, height-above-nearest-drainage (HAND), and 103 detected basins with volume and catchment.
 - **Live weather**: hourly Open-Meteo forecast for the past 2 days plus the next 7. Shows a best estimate and a worst case (the hourly max across 4 models).
 - **Scenarios**: a typical monsoon evening, the **20 Oct 2024 RR Nagar storm (177.6 mm)**, a hypothetical cloudburst, and a multi-day soak.
+- **Real storms**: four sourced Bengaluru flood days (14–16 Aug 2017, 17–18 May 2022, 4–6 Sep 2022, 20–22 Oct 2024), each run on the hourly rain that the free Open-Meteo historical archive holds for the open pincode's centroid. The archive is a reanalysis, so it shows much less rain than the gauges in the reports (see Limitations).
 - **Flood simulation**: a 2D diffusive-wave model in a Web Worker. It accounts for infiltration, storm-drain capacity and blockage, and lake storage, and is mass-conserving (tested). Storm drains are a network: inlets feed the mapped drains, which carry the water downstream through tanks to the grid edge and overflow onto the street where a reach is full (`src/sim/network.ts`). A 9-day forecast runs in about 2 s.
 - **Impact**: road passability for two-wheelers (>0.15 m), cars (>0.30 m) and buses (>0.50 m); wet ground floors (>0.25 m); affected schools, hospitals, metro stations, bus stops and substations; plus daily-life cards.
 - **Model vs reported**: 12 historically reported flood spots (each with a news source) compared against modelled depth, plus a sourced "Why RR Nagar floods" explainer.
@@ -61,7 +62,7 @@ Requires Node 22.18+ or 24+. The tests and data scripts import TypeScript direct
 | `npm run data:city` | Builds the pincode index, the district outline, the pincode polygons and the susceptibility index (≈40 s). Writes `public/data/pins/index.json`, `public/data/city/city.geojson` and `.cache/pins/catalog.json`. |
 | `npm run data -- --pin <code>` | Builds one pincode's pack into `public/data/pins/<code>/` (5–25 s; 560098 builds into `public/data/`). |
 | `npm run data:all [-- --pins a,b] [--jobs 2] [--force]` | Builds every pack (or the listed ones), then refreshes the index. It is resumable: packs that already exist are skipped. It is polite to public servers: OSM comes from the local extract and Copernicus windows are cached, and failures back off exponentially. |
-| `node scripts/calibrate.mjs --pin <code> --impact` | Runs the scenarios headlessly. Reports peak flooded area, recession time, buildings with water over plinth, road closed, and model depth near the pack's reported flood spots. |
+| `node scripts/calibrate.mjs --pin <code> --impact` | Runs the scenarios headlessly. Reports peak flooded area, recession time, buildings with water over plinth, road closed, and model depth near the pack's reported flood spots. Add `--event all` (or a comma list of ids) to also run the real storms on archive rain at the pin centroid. |
 
 Without the local extract, `npm run data -- --pin <code>` falls back to one Overpass query per pack (cached).
 
@@ -175,6 +176,7 @@ Captured water enters the nearest mapped drain (OSM `waterway` lines) instead of
   - Some areas inside the district have no pincode relation in OSM; they show as dark gaps on the overview.
 - **Catchments cross pincode edges:** each pack simulates only its padded bbox. `data:city` records how much upstream area drains in from outside each pack (`upstreamOutsideKm2`), and the app shows a quiet caveat when that is large. That inflow is not simulated, so valley-floor depths there are likely too low.
 - **Scenarios:** the "20 Oct 2024" scenario replays the rainfall recorded at RR Nagar for every pincode; other parts of the city had different totals that day.
+- **Real storms use reanalysis rain:** the Open-Meteo archive is a gridded model re-run (ERA5 / ECMWF IFS, cells of roughly 9–25 km), not a rain gauge. It smears a convective cloudburst over the whole cell, so it holds 2–6 times less rain than the reported gauge totals, and wettest hours of 4–12 mm instead of 30–60 mm. Koramangala, HSR Layout and Bellandur even fall in the same cell. On that rain the model floods nothing in any committed pack (`calibrate.mjs --event all`), although all four days flooded streets. Read them as "the real timing, far too little rain", not as a replay.
 - **Drains:**
   - The drain network is a storage-routing approximation. It has no water levels, so backwater only reaches one tank or one reach upstream, and overflow appears at the node just above a full reach rather than spreading along the bank.
   - Drain sizes are estimated from the area each reach serves (the rational method), not surveyed. OSM tags almost every Bengaluru drain `waterway=drain`, so the tags cannot tell a trunk from a side drain.
@@ -195,6 +197,7 @@ Captured water enters the nearest mapped drain (OSM `waterway` lines) instead of
 | Roads, buildings, drains, facilities, boundaries | [OpenStreetMap](https://www.openstreetmap.org/copyright): planet from AWS Open Data [`osm-pds`](https://registry.opendata.aws/osm/) via osmium (or Overpass) | © OpenStreetMap contributors, **ODbL 1.0** |
 | Pincode boundaries | OSM `boundary=postal_code` relations (tagged as sourced from NIC PostalGIS) | © OpenStreetMap contributors, ODbL 1.0 |
 | Weather | [Open-Meteo](https://open-meteo.com/) | CC BY 4.0 |
+| Past rain (real storms) | [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) (reanalysis); event dates and gauge totals from the news reports linked in `src/weather.ts` | CC BY 4.0; reports cited, facts only |
 | Basemap | [OpenFreeMap](https://openfreemap.org/) | OSM data, ODbL; OpenMapTiles schema |
 | Flood reports | Deccan Herald, The News Minute, Citizen Matters, Gulf News, OneIndia, South First (links in `public/data/hotspots.json` and `scripts/data/hotspots-blr.json`) | cited, facts only |
 
