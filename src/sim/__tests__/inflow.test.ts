@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { SimCore } from '../core.ts';
 import { Inflow, inflowExcess, inflowHydrograph } from '../inflow.ts';
 import { noisyTerrain } from './synthetic.ts';
-import { gridOf, injectionCell, outsideInflow, packInflow } from '../../../scripts/lib/catchment.mjs';
+import { gridOf, inflowEdge, injectionCell, outsideInflow, packInflow } from '../../../scripts/lib/catchment.mjs';
 
 const P = { drainCapacityMmHr: 50, infiltrationMmHr: 10, drainBlockage: 0.4 }; // 30 mm/h effective drains
 const point = (extra = {}) => ({ cell: 0, at: [77.6, 12.9], areaKm2: 1, impervious: 1, drainShare: 1, timeArea: [1], ...extra });
@@ -74,13 +74,18 @@ test('Inflow maps fine cells onto the coarse grid; FloodEngine routes meta.inflo
   fl.prepare([40, 0], P);
   assert.equal(fl.sourcesAt(1), null);
   assert.ok(Math.abs(fl.sourcesAt(0).m3s[0] - 10000 / 3600) < 1e-9);
-  // the point sits at coarse (2, 3), near the north-west corner: 1 km² -> +-150 m = +-5 cells at 30 m on
-  // both nearby edges (north row 0, cols 0..8; west col 0, rows 0..7)
-  const closed = new Set(fl.edgeCells(55, 30));
-  for (let c = 0; c <= 8; c++) assert.ok(closed.has(c), `north edge col ${c}`);
-  for (let r = 0; r <= 7; r++) assert.ok(closed.has(r * 45), `west edge row ${r}`);
-  assert.equal(closed.size, 9 + 7);
-  assert.ok(!closed.has(9) && !closed.has(8 * 45) && !closed.has(54 * 45), 'south edge and the rest stay open');
+  // with the grid's size known, a point's inflow is spread over the interior cells within 60 m (2 cells at 30 m)
+  const sp = new Inflow([point({ cell: 20 * 90 + 40 })], 90, 90 * 110, 2, 45, 55, 30);
+  sp.prepare([40], P);
+  const src = sp.sourcesAt(0);
+  assert.equal(src.cells.length, 13, 'a disc of radius 2 cells');
+  assert.ok(Math.abs(src.m3s.reduce((s, v) => s + v, 0) - 10000 / 3600) < 1e-9, 'same total rate');
+  assert.ok([...src.cells].every((i) => Math.abs(Math.floor(i / 45) - 10) <= 2 && Math.abs((i % 45) - 20) <= 2));
+  // inflow edge runs on the fine grid map onto the coarse edge cells (f = 2: fine 10..21 -> coarse 5..10)
+  const closed = [...sp.edgeCells([[2, 10, 21], [0, 0, 5], [1, 88, 89], [3, 108, 109], [7, 0, 3], [2, 5, 1]])].sort((a, b) => a - b);
+  const wantEdge = [0, 1, 2, ...[5, 6, 7, 8, 9, 10].map((r) => r * 45), 54 * 45 + 44];
+  assert.deepEqual(closed, wantEdge, 'west rows 5-10, north cols 0-2, south col 44, east row 54; bad runs ignored');
+  assert.equal(fl.edgeCells([[2, 0, 9]]).length, 0, 'unknown grid height: nothing closed');
   // a closed edge keeps water that would otherwise drain out of it
   const tilt = { width: 20, height: 20, cellSizeM: 30, elevation: Float32Array.from({ length: 400 }, (_, i) => 900 + Math.floor(i / 20) * 0.3), impervious: new Float32Array(400).fill(1) };
   const outflow = (close) => {
@@ -163,4 +168,12 @@ test('catchment: injection cells sit on the pack’s flow path, clear of the edg
   const pk = packInflow(flow, grid, fd, fa, { minKm2: 0 });
   assert.ok(Math.abs(pk.simulatedKm2 - pk.totalKm2) < 0.02 && pk.points.length >= 1);
   for (const p of pk.points) assert.ok(p.cell % 40 >= 6 && p.cell >= 0 && p.cell < 1600);
+  // the plane drains east: outside land drains in across the whole west edge and nowhere else
+  assert.deepEqual(pk.edge, [[2, 0, 39]]);
+  // gaps up to 300 m are closed; a longer one stays open, less 150 m margins at both ends
+  const holed = { ...flow, dir: Uint8Array.from(flow.dir) };
+  holed.dir[8 * 30 + 9] = 6; // one cell beyond the west edge (rows 12-15 of the pack) drains north instead
+  assert.deepEqual(inflowEdge(holed, grid), [[2, 0, 39]], 'a 60 m gap is closed');
+  for (let r = 7; r <= 12; r++) holed.dir[r * 30 + 9] = 6; // pack rows 8-31: a 360 m gap
+  assert.deepEqual(inflowEdge(holed, grid), [[2, 0, 17], [2, 22, 39]]);
 });
