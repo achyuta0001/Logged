@@ -71,6 +71,10 @@ test('meta schema: inflow points must sit on the grid with an area and a time-ar
   assert.deepEqual(validateMeta({ ...meta, inflow: [ok] }), []);
   const errs = validateMeta({ ...meta, inflow: [{ ...ok, cell: n }, { ...ok, areaKm2: 0 }, { ...ok, impervious: 2 }, { ...ok, timeArea: [] }] });
   for (const want of ['inflow[0]: cell', 'inflow[1]: bad areaKm2', 'inflow[2]: impervious', 'inflow[3]: bad timeArea']) assert.ok(errs.some((e) => e.startsWith(want)), `${want}: ${errs.join(' | ')}`);
+  // inflow edge runs lie along a grid side
+  assert.deepEqual(validateMeta({ ...meta, inflowEdge: [[0, 0, meta.width - 1], [3, 2, 5]] }), []);
+  const bad = validateMeta({ ...meta, inflowEdge: [[4, 0, 1], [0, 3, 2], [2, 0, meta.height], [1, 0.5, 2]] });
+  assert.equal(bad.filter((e) => e.startsWith('inflowEdge[')).length, 4, bad.join(' | '));
   // committed sample packs that carry inflow points validate against their own grids
   for (const code of ['560034', '560071']) {
     const dir = new URL(`../../../public/data/pins/${code}/`, import.meta.url);
