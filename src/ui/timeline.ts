@@ -50,16 +50,16 @@ export class Timeline {
             <span><i class="dot area"></i><b id="tl-area">–</b> under water</span>
           </div>
           <div class="segmented small" id="tl-speed" role="group" aria-label="Playback speed">
-            ${SPEEDS.map((s, i) => `<button type="button" data-s="${s}" aria-pressed="${i === 1}" title="${s} simulated hours per second">${s}×</button>`).join('')}
+            ${SPEEDS.map((s, i) => `<button type="button" data-s="${s}" aria-pressed="${i === 1}" title="${s} predicted hours per second">${s}×</button>`).join('')}
           </div>
           <button type="button" class="icon-btn tl-min" aria-label="Minimise the timeline" data-tip="Minimise">${iconSvg('chevron', 15, 1.8)}</button>
         </div>
-        <div class="tl-chart" id="tl-chart"><svg id="tl-svg" role="slider" tabindex="0" aria-label="Simulation hour" aria-valuemin="0"></svg></div>
+        <div class="tl-chart" id="tl-chart"><svg id="tl-svg" role="slider" tabindex="0" aria-label="Prediction hour" aria-valuemin="0"></svg></div>
       </div>
       <div class="tl-mini">
         <button type="button" class="tl-play" data-play aria-label="Play">${iconSvg('play', 14)}</button>
         <div class="tl-mtime"><b class="tl-clock">--:--</b><span class="tl-mday"></span></div>
-        <svg class="tl-spark" width="${SPARK_W}" height="${SPARK_H}" viewBox="0 0 ${SPARK_W} ${SPARK_H}" role="slider" tabindex="0" aria-label="Simulation hour (flooded area over time)" aria-valuemin="0"></svg>
+        <svg class="tl-spark" width="${SPARK_W}" height="${SPARK_H}" viewBox="0 0 ${SPARK_W} ${SPARK_H}" role="slider" tabindex="0" aria-label="Prediction hour (flooded area over time)" aria-valuemin="0"></svg>
         <button type="button" class="icon-btn tl-exp" aria-label="Expand the timeline" data-tip="Expand">${iconSvg('chevron', 15, 1.8)}</button>
       </div>
     `;
