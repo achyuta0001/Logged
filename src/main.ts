@@ -68,7 +68,8 @@ interface App {
   speed: number;
   impact: Map<number, ImpactReport>;
   area: number[];
-  forecastDryNote: boolean;
+  /** the live forecast could not be fetched, so the Oct 2024 storm stands in (the status says so) */
+  forecastDown: boolean;
 }
 
 /** The persistent chrome every region renders into. */
@@ -309,7 +310,7 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
     speed: 4,
     impact: new Map(),
     area: [],
-    forecastDryNote: false,
+    forecastDown: false,
   };
 
   if (import.meta.env.DEV) (window as any).__app = app;
@@ -359,31 +360,28 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
   });
   let placeTimer = 0;
 
-  // Live forecast by default. If it is dry for the next 48 h, or the model finds no
-  // flooding ahead, open on the Oct 2024 storm so the map shows what flooding looks like.
+  // The live forecast whenever it loads, even a dry one (the status then says no flooding is
+  // expected). The Oct 2024 storm stands in only when the forecast cannot be fetched, and the
+  // status says so. ?scenario= overrides both.
   const demo = SCENARIOS.find((s) => s.id === DEMO_SCENARIO) ?? SCENARIOS[0];
   if (forecast) controls.setForecastNote(forecastSummary(forecast));
   const asked = SCENARIOS.find((s) => s.id === url.get('scenario'));
-  // ?scenario=<real storm id>: archive rain at the pin centroid (if the archive cannot be reached, open as usual)
+  // ?scenario=<real storm id> (raw archive rain or its -gauge twin) at the pin centroid; if the archive cannot be reached, open as usual
   const askedReal = asked ? undefined : HISTORICAL_EVENTS.find((e) => e.id === url.get('scenario'));
   const realSeries = askedReal ? await fetchHistoricalEvent((pin.centroid ?? center)[1], (pin.centroid ?? center)[0], askedReal).catch(() => null) : null;
-  let useDemo = !forecast || rainAhead(forecast.best, 48) < 5;
   if (asked) {
     controls.selectSource(asked.id);
     await runSim(asked.build(), loader, true, 0.5, 0.5);
-    useDemo = false;
   } else if (askedReal && realSeries) {
     controls.selectSource(askedReal.id);
     await runSim(realSeries, loader, true, 0.5, 0.5);
-    useDemo = false;
-  } else if (!useDemo) {
-    await runSim(forecast!.best, loader, true, 0.5, 0.3);
-    useDemo = maxAhead(app.area, forecast!.best.nowIndex ?? 0) < DRY_AREA_M2;
-  }
-  if (useDemo) {
-    app.forecastDryNote = !!forecast;
+  } else if (forecast) {
+    controls.selectSource('forecast');
+    await runSim(forecast.best, loader, true, 0.5, 0.5);
+  } else {
+    app.forecastDown = true;
     controls.selectSource(demo.id);
-    await runSim(demo.build(), loader, true, forecast ? 0.8 : 0.5, forecast ? 0.2 : 0.5);
+    await runSim(demo.build(), loader, true, 0.5, 0.5);
   }
   await frame(map, meta.bbox, layout.padding());
   if (url.get('basemap') === 'satellite') {
@@ -472,24 +470,24 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
 
   async function selectSource(id: string) {
     setPlaying(false);
-    app.forecastDryNote = false;
+    let series: RainSeries | undefined;
     if (id === 'forecast') {
       if (!app.forecast) {
         try {
           app.forecast = await fetchForecastVariants(center[1], center[0]);
           controls.setForecastNote(forecastSummary(app.forecast));
         } catch {
+          // the map keeps what it shows (still the stand-in storm if the forecast never loaded)
           controls.setRain(app.series ?? demo.build(), 'The forecast could not be loaded. Check your connection, or pick a scenario.');
           return;
         }
       }
-      await runSim(app.variant === 'worst' ? app.forecast.worst : app.forecast.best);
+      series = app.variant === 'worst' ? app.forecast.worst : app.forecast.best;
     } else if (HISTORICAL_EVENTS.some((e) => e.id === id)) {
-      // real storm: archive rain at the pin centroid (the series ends in a 24 h dry recession)
+      // real storm: archive rain at the pin centroid, raw or scaled to the gauge (the series ends in a 24 h dry recession)
       const ev = HISTORICAL_EVENTS.find((e) => e.id === id)!;
       const [lon, lat] = pin.centroid ?? center;
       controls.setBusy(true);
-      let series: RainSeries;
       try {
         series = await fetchHistoricalEvent(lat, lon, ev);
       } catch {
@@ -497,11 +495,10 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
         controls.setRain(app.series ?? demo.build(), 'The rainfall archive could not be loaded. Check your connection, or pick another scenario.');
         return;
       }
-      if (!disposed) await runSim(series);
-    } else {
-      const sc = SCENARIOS.find((s) => s.id === id);
-      if (sc) await runSim(sc.build());
-    }
+    } else series = SCENARIOS.find((s) => s.id === id)?.build();
+    if (!series || disposed) return;
+    app.forecastDown = false;
+    await runSim(series);
   }
 
   async function runSim(series: RainSeries, ld: Loader = loader, first = false, base = 0, span = 1) {
@@ -525,7 +522,7 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
     const area = Array.from({ length: n }, (_, h) => engine.snapshot(h)?.floodedAreaM2 ?? 0);
     app.area = area;
     timeline.setSeries(series, area);
-    controls.setRain(series, rainNote(series, app.forecast, app.forecastDryNote));
+    controls.setRain(series, rainNote(series, app.forecast, app.forecastDown));
     controls.setBusy(false);
     analysis.refreshCompare();
     story.refresh();
@@ -566,11 +563,8 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
     let peak = from;
     for (let h = from; h < to; h++) if (app.area[h] > app.area[peak]) peak = h;
     app.peak = peak;
-    // the live forecast is dry, so a past storm is on the map: answer for the forecast
-    if (app.forecastDryNote && app.forecast) {
-      sidebar.setStatus('none', '<b>No flooding expected</b> in the next 48\u00a0h', `${fmtMm(rainAhead(app.forecast.best, 48))} of rain forecast · the map replays the Oct 2024 storm`);
-      return;
-    }
+    // the forecast could not be fetched, so the Oct 2024 storm stands in: say so instead of "Scenario: ..."
+    const standIn = !fc && app.forecastDown ? 'Live forecast unavailable · showing the Oct 2024 storm' : '';
     const r = (app.area[peak] ?? 0) >= DRY_AREA_M2 ? impactAt(peak) : undefined;
     const sev: Severity = r?.overall ?? 'none';
     if (!r || sev === 'none') {
@@ -578,13 +572,13 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
       sidebar.setStatus(
         'none',
         fc ? '<b>No flooding expected</b> in the next 48\u00a0h' : '<b>No flooding</b> in this scenario',
-        fc ? `${fmtMm(rainMm)} of rain forecast${app.variant === 'worst' ? ' (worst case)' : ''}` : `Scenario: ${controls.sourceLabel}, ${fmtMm(rainMm)}`,
+        fc ? `${fmtMm(rainMm)} of rain forecast${app.variant === 'worst' ? ' (worst case)' : ''}` : standIn || `Scenario: ${controls.sourceLabel}, ${fmtMm(rainMm)}`,
       );
       return;
     }
     const t = s.times[peak];
     const area = (r.floodedAreaKm2 >= 0.01 ? `${r.floodedAreaKm2.toFixed(2)} km²` : fmtArea(r.floodedAreaKm2 * 1e6)).replace(' ', '\u00a0');
-    const ctx = fc ? `Live forecast${app.variant === 'worst' ? ', worst case' : ''} · peak ${relHours(peak, s.nowIndex)}` : `Scenario: ${controls.sourceLabel}`;
+    const ctx = fc ? `Live forecast${app.variant === 'worst' ? ', worst case' : ''} · peak ${relHours(peak, s.nowIndex)}` : standIn || `Scenario: ${controls.sourceLabel}`;
     sidebar.setStatus(sev, `<b>${SEV_PHRASE[sev]}</b> at ${fmtHour(t)}\u00a0${fmtWeekday(t)} — ${area} under water`, ctx, 'Show that hour');
   }
 
@@ -689,9 +683,9 @@ function samePad(a: PaddingOptions, b: PaddingOptions) {
   return k.every((x) => Math.abs((a[x] ?? 0) - (b[x] ?? 0)) < 1);
 }
 
-function rainNote(s: RainSeries, fc: ForecastVariants | null, forecastWontFlood = false): string {
+function rainNote(s: RainSeries, fc: ForecastVariants | null, forecastDown = false): string {
   if (s.source !== 'forecast') {
-    if (forecastWontFlood) return 'The live forecast floods nothing in the next 48 h, so the map opens on the October 2024 storm. Pick Live forecast to see the coming days.';
+    if (forecastDown) return 'The live forecast could not be loaded, so the map shows the October 2024 storm. Pick Live forecast to try again.';
     return fc ? `Live forecast: ${forecastSummary(fc).replace(/^Next 48 h: /, '')} over the next 48 h.` : '';
   }
   const i0 = s.nowIndex ?? 0;
@@ -699,12 +693,6 @@ function rainNote(s: RainSeries, fc: ForecastVariants | null, forecastWontFlood 
   const past48 = s.mm.slice(Math.max(0, i0 - 48), i0).reduce((a, b) => a + b, 0);
   if (next72 < 5) return `Little rain in the next 3 days (${next72.toFixed(1)} mm), so not much water collects. Pick a scenario to see a heavy storm.`;
   return `${next72.toFixed(0)} mm forecast over the next 3 days${past48 > 1 ? `, after ${past48.toFixed(0)} mm in the last 2 days` : ''}.`;
-}
-
-function maxAhead(a: number[], from: number) {
-  let m = 0;
-  for (let i = from; i < a.length; i++) m = Math.max(m, a[i]);
-  return m;
 }
 
 function rainAhead(s: RainSeries, hours: number) {
