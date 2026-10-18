@@ -6,11 +6,15 @@
 //   npm run data:city -- --index-only refresh public/data/pins/index.json from built packs' pack.json
 //   ... --only-committed              list only packs git tracks (use before committing index.json;
 //                                     a hosted copy built by data:all lists every built pack)
+//   npm run data:city -- --flow-only  only the district routing for the packs' upstream inflow
+//                                     (.cache/city/flow60.*); leaves the committed outputs alone
 //
 // Writes
 //   public/data/pins/index.json    PinIndex (src/types.ts): every pincode kept, with its pack if built
 //   public/data/city/city.geojson  district outline + pincode polygons (code, name, susceptibility)
 //   .cache/pins/catalog.json       the same entries before pack info is merged (input to build-data)
+//   .cache/city/flow60.{json,bin}  district D8 routing (scripts/lib/catchment.mjs): build-data turns it
+//                                  into each pack's upstream inflow points (meta.inflow, M4)
 //
 // Pincode rule: OSM boundary=postal_code relations with a 6-digit code (postal_code tag, else name)
 // whose area is at least 50 % inside the Bengaluru Urban district relation (2020589).
@@ -31,6 +35,7 @@ import { fileURLToPath } from 'node:url';
 import * as turf from '@turf/turf';
 import { REGION_PBF, hasOsmium } from './lib/osm-local.mjs';
 import { accumulate, d8, downstream, fillGeom, gaussian, lineCells, linesOf, priorityFlood } from './lib/hydro.mjs';
+import { outsideInflow, writeFlowGrids } from './lib/catchment.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CACHE = path.join(ROOT, '.cache');
@@ -241,6 +246,20 @@ const round = (v, d = 3) => Math.round(v * 10 ** d) / 10 ** d;
 
 /** merge built packs (pack.json) into the catalog and write public/data/pins/index.json */
 const ONLY_COMMITTED = process.argv.includes('--only-committed');
+const FLOW_ONLY = process.argv.includes('--flow-only');
+
+/** M4 numbers a pack's meta.json carries (build-data.mjs): total upstream area outside its grid, and how much of it is simulated */
+function packInflowInfo(dir, hydro) {
+  let meta = {};
+  try {
+    meta = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+  } catch {
+    /* no meta: fall back to the district value */
+  }
+  const total = meta.upstreamOutsideKm2 ?? hydro?.upstreamOutsideKm2;
+  const sim = Array.isArray(meta.inflow) ? round(meta.inflow.reduce((s, p) => s + (p.areaKm2 || 0), 0), 2) : undefined;
+  return { ...(total !== undefined ? { upstreamOutsideKm2: total } : {}), ...(sim !== undefined ? { inflowKm2: sim } : {}) };
+}
 function gitIgnored(dir) {
   try {
     execFileSync('git', ['check-ignore', '-q', path.join(dir, 'pack.json')], { cwd: ROOT, stdio: 'ignore' });
@@ -259,14 +278,14 @@ function writeIndex(catalog) {
     const pj = path.join(dir, 'pack.json');
     if (fs.existsSync(pj) && !(ONLY_COMMITTED && !legacy && gitIgnored(dir))) {
       const k = JSON.parse(fs.readFileSync(pj, 'utf8'));
-      e.pack = { path: legacy ? '.' : p.code, format: k.format, bytes: k.bytes, gzipBytes: k.gzipBytes, built: k.built, sources: k.sources, ...(p.hydro?.upstreamOutsideKm2 !== undefined ? { upstreamOutsideKm2: p.hydro.upstreamOutsideKm2 } : {}) };
+      e.pack = { path: legacy ? '.' : p.code, format: k.format, bytes: k.bytes, gzipBytes: k.gzipBytes, built: k.built, sources: k.sources, ...packInflowInfo(dir, p.hydro) };
     } else if (p.code === '560098') {
       // the committed reference pack predates pack.json: measure its files
       const files = ['meta.json', 'grids.bin', 'osm.geojson', 'depressions.json', 'hotspots.json'].map((f) => path.join(ROOT, 'public', 'data', f)).filter((f) => fs.existsSync(f));
       const bytes = files.reduce((a, f) => a + fs.statSync(f).size, 0);
       const gzipBytes = files.reduce((a, f) => a + gzipSync(fs.readFileSync(f), { level: 9 }).length, 0);
       const sources = JSON.parse(fs.readFileSync(path.join(ROOT, 'public', 'data', 'meta.json'), 'utf8')).sources ?? [];
-      e.pack = { path: '.', format: 1, bytes, gzipBytes, built: '2026-10-17', sources, ...(p.hydro?.upstreamOutsideKm2 !== undefined ? { upstreamOutsideKm2: p.hydro.upstreamOutsideKm2 } : {}) };
+      e.pack = { path: '.', format: 1, bytes, gzipBytes, built: '2026-10-17', sources, ...packInflowInfo(path.join(ROOT, 'public', 'data'), p.hydro) };
     }
     return e;
   });
@@ -278,8 +297,13 @@ function writeIndex(catalog) {
 async function main() {
   const catalogFile = path.join(CACHE, 'pins', 'catalog.json');
   if (process.argv.includes('--index-only')) {
-    if (!fs.existsSync(catalogFile)) throw new Error('no .cache/pins/catalog.json yet: run npm run data:city first');
-    return writeIndex(JSON.parse(fs.readFileSync(catalogFile, 'utf8')));
+    if (fs.existsSync(catalogFile)) return writeIndex(JSON.parse(fs.readFileSync(catalogFile, 'utf8')));
+    // no catalog (e.g. a checkout that only ran --flow-only): the committed index is the catalog
+    const idxFile = path.join(PINS_OUT, 'index.json');
+    if (!fs.existsSync(idxFile)) throw new Error('no .cache/pins/catalog.json or index.json yet: run npm run data:city first');
+    const idx = JSON.parse(fs.readFileSync(idxFile, 'utf8'));
+    log('no catalog: refreshing the packs listed in the existing index.json');
+    return writeIndex({ ...idx, pins: idx.pins.map(({ pack, ...p }) => ({ ...p, hydro: pack?.upstreamOutsideKm2 !== undefined ? { upstreamOutsideKm2: pack.upstreamOutsideKm2 } : undefined })) });
   }
   if (!fs.existsSync(path.join(ROOT, REGION_PBF)) || !hasOsmium()) throw new Error(`needs ${REGION_PBF} (scripts/osm-extract.sh) and osmium-tool`);
   const t0 = Date.now();
@@ -331,6 +355,11 @@ async function main() {
   const filled = priorityFlood(dem, G.width, G.height, 1e-3);
   const dir = d8(filled, G.width, G.height, CELL_M);
   const acc = accumulate(dir, G.width, G.height);
+  // the packs' upstream inflow (build-data.mjs) starts from this routing
+  const flow = { G, dir, acc, dem, imp, lake, drain };
+  writeFlowGrids(ROOT, G, flow);
+  log(`flow grids: .cache/city/flow60.{json,bin} (${G.width} x ${G.height})`);
+  if (FLOW_ONLY) return log(`--flow-only: done in ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   const thresh = (DRAIN_KM2 * 1e6) / G.cellArea;
   const order = Array.from({ length: N }, (_, i) => i).sort((a, b) => filled[a] - filled[b]);
   const target = new Int32Array(N).fill(-1);
@@ -357,22 +386,11 @@ async function main() {
     const j = downstream(i, dir[i], G.width);
     if (j >= 0 && pinOf[j] >= 0 && pinOf[j] !== k) m[pinOf[j]].inflow += acc[i] * G.cellArea;
   }
-  // upstream area entering each pack's padded bbox from outside it (M4 caveat)
+  // upstream area entering each pack's padded bbox from outside it (M4); only outside cells count, as in
+  // the packs' simulated inflow (build-data.mjs writes the exact value for its grid into meta.json)
   for (const p of kept) {
-    const [w, s, e, n] = [p.bbox[0] - PACK_PAD_DEG, p.bbox[1] - PACK_PAD_DEG, p.bbox[2] + PACK_PAD_DEG, p.bbox[3] + PACK_PAD_DEG];
-    const inside = (i) => {
-      const lon = G.lon(i % G.width), lat = G.lat((i / G.width) | 0);
-      return lon >= w && lon <= e && lat >= s && lat <= n;
-    };
-    let up = 0;
-    const c0 = Math.max(0, Math.floor(G.col(w)) - 2), c1 = Math.min(G.width - 1, Math.ceil(G.col(e)) + 2);
-    const r0 = Math.max(0, Math.floor(G.row(n)) - 2), r1 = Math.min(G.height - 1, Math.ceil(G.row(s)) + 2);
-    for (let r = r0; r <= r1; r++)
-      for (let c = c0; c <= c1; c++) {
-        const i = r * G.width + c, j = downstream(i, dir[i], G.width);
-        if (j >= 0 && !inside(i) && inside(j)) up += acc[i] * G.cellArea;
-      }
-    p.upstreamOutsideKm2 = round(up / 1e6, 2);
+    const bb = [p.bbox[0] - PACK_PAD_DEG, p.bbox[1] - PACK_PAD_DEG, p.bbox[2] + PACK_PAD_DEG, p.bbox[3] + PACK_PAD_DEG];
+    p.upstreamOutsideKm2 = round(outsideInflow(flow, bb).totalKm2, 2);
   }
   const low = m.map((x) => (x.n ? x.low / x.n : 0));
   const pond = m.map((x, k) => x.vol / (kept[k].area / 1e6));
