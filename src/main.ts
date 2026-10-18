@@ -232,18 +232,34 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
       if (f) flyTo(c2l(f.properties.cell), 16.4);
     },
   });
+  // The rain and drainage controls are live while the first load still runs, before `app` exists.
+  // A choice made then is held here (the last of each kind wins) and applied once the first run
+  // is on the map; touching `app` earlier threw "Cannot access 'app' before initialization".
+  let early: { source?: string; variant?: 'best' | 'worst'; params?: SimParams } | null = {};
   const controls = new Controls(
     { rain: sidebar.body('rain'), map: sidebar.body('map'), drainage: sidebar.body('drainage'), sources: sidebar.body('sources') },
     [...SCENARIOS, ...HISTORICAL_EVENTS],
     DEFAULT_PARAMS,
     exaggeration,
     {
-      onSource: (id) => void selectSource(id),
+      onSource: (id) => {
+        if (early) early.source = id;
+        else void selectSource(id);
+      },
       onVariant: (v) => {
+        if (early) {
+          early.variant = v;
+          early.source = 'forecast';
+          return;
+        }
         app.variant = v;
         void selectSource('forecast');
       },
       onRerun: (p) => {
+        if (early) {
+          early.params = p;
+          return;
+        }
         app.params = p;
         if (app.series) void runSim(app.series);
       },
@@ -384,6 +400,15 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
   if (!view) intro(map);
   // no sourced reports and no hand-written story: nothing to show in that section
   sidebar.setHidden('story', !legacy && !ds.hotspots.length);
+  // apply what was picked while loading (the first run may have reset the controls since)
+  const picked = early;
+  early = null;
+  if (picked.params) app.params = picked.params;
+  if (picked.variant) app.variant = picked.variant;
+  if (picked.source) {
+    controls.selectSource(picked.source);
+    void selectSource(picked.source);
+  } else if (picked.params && app.series) void runSim(app.series);
 
   const region: Region = {
     kind: 'pin',
