@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { fallbackIndex, loadPinIndex, packBase, searchPins, validateMeta, validatePinIndex } from '../packs.ts';
+import { fallbackIndex, inflowCaveat, loadPinIndex, packBase, searchPins, validateMeta, validatePinIndex } from '../packs.ts';
 import { terrainFromBuffer } from '../../terrain.ts';
 import { SimCore } from '../../sim/core.ts';
 import { bowlAndChannel, noisyTerrain } from '../../sim/__tests__/synthetic.ts';
@@ -61,6 +61,35 @@ test('meta schema: the 560098 reference pack is valid against its grids.bin', ()
   assert.deepEqual(validateMeta(meta, bytes), []);
   assert.ok(validateMeta({ ...meta, width: meta.width + 1 }, bytes).some((e) => e.includes('length')));
   assert.ok(validateMeta(meta, bytes - 100).some((e) => e.includes('past the end')));
+});
+
+test('meta schema: inflow points must sit on the grid with an area and a time-area histogram', () => {
+  const root = new URL('../../../public/data/', import.meta.url);
+  const meta = JSON.parse(readFileSync(new URL('meta.json', root), 'utf8'));
+  const n = meta.width * meta.height;
+  const ok = { cell: 5, at: [77.5, 12.9], areaKm2: 3, impervious: 0.6, timeArea: [0.4, 0.6] };
+  assert.deepEqual(validateMeta({ ...meta, inflow: [ok] }), []);
+  const errs = validateMeta({ ...meta, inflow: [{ ...ok, cell: n }, { ...ok, areaKm2: 0 }, { ...ok, impervious: 2 }, { ...ok, timeArea: [] }] });
+  for (const want of ['inflow[0]: cell', 'inflow[1]: bad areaKm2', 'inflow[2]: impervious', 'inflow[3]: bad timeArea']) assert.ok(errs.some((e) => e.startsWith(want)), `${want}: ${errs.join(' | ')}`);
+  // committed sample packs that carry inflow points validate against their own grids
+  for (const code of ['560034', '560071']) {
+    const dir = new URL(`../../../public/data/pins/${code}/`, import.meta.url);
+    if (!existsSync(new URL('meta.json', dir))) continue;
+    const m = JSON.parse(readFileSync(new URL('meta.json', dir), 'utf8'));
+    assert.deepEqual(validateMeta(m, readFileSync(new URL('grids.bin', dir)).byteLength), [], code);
+  }
+});
+
+test('caveat: says how much upstream inflow is simulated and how much is left out', () => {
+  const c = (extra, area = 5) => inflowCaveat(pin('560034', { areaKm2: area, pack: pack('560034', extra) }));
+  assert.equal(c({}), null, 'nothing known: no line');
+  assert.equal(c({ upstreamOutsideKm2: 3 }), null, 'small upstream area: no line');
+  assert.match(c({ upstreamOutsideKm2: 97.4 }).text, /About 97 km² .* leaves that inflow out/);
+  assert.match(c({ upstreamOutsideKm2: 96.4, inflowKm2: 94.3 }).text, /^Water from about 94 km² upstream is routed in/);
+  const part = c({ upstreamOutsideKm2: 120, inflowKm2: 60 }).text;
+  assert.match(part, /Water from 60 km² .* about 60 km² more is left out/);
+  assert.match(c({ upstreamOutsideKm2: 4, inflowKm2: 3.5 }).text, /about 3\.5 km²/);
+  assert.ok(c({ upstreamOutsideKm2: 96.4, inflowKm2: 94.3 }).tip.includes('Clark'));
 });
 
 // ---------------------------------------------------------------- loader
