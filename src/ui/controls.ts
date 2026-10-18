@@ -45,13 +45,14 @@ const SHORT: Record<string, string> = {
 
 /**
  * Picker text. A real storm drops its "Real storm: " prefix (its group says so) and names its rain,
- * so the closed picker still tells raw archive rain from the gauge-scaled twin.
+ * so the closed picker still tells raw archive rain from the gauge-scaled twin. The scaled twin
+ * also drops the trailing "gauge" to fit the 260 px desktop picker ("20-22 Oct 2024 · scaled to 190 mm").
  */
 function optText(x: Scenario) {
   if (SHORT[x.id]) return SHORT[x.id];
   if (!x.source) return x.label;
   const when = x.label.replace(/^Real storm: /, '');
-  return x.scaled ? when : `${when} · archive rain`;
+  return x.scaled ? when.replace(/ mm gauge$/, ' mm') : `${when} · archive rain`;
 }
 
 /** Made-up scenarios first, then the real storms on archive rain, then the same storms scaled to the gauge totals. */
