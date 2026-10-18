@@ -718,12 +718,19 @@ export class SimCore {
       if (w > 1) edgeVisit(r * w + w - 1);
     }
 
-    // positivity: scale factor per donor cell, stored in out[] (out -> scale)
-    for (let i = 0; i < n; i++) {
-      const o = out[i];
-      if (o > 0) {
-        const avail = h[i] * A;
-        out[i] = o > avail ? avail / o : 1;
+    // positivity: scale factor per donor cell, stored in out[] (out -> scale). Donors hold more than
+    // H_MIN_FLOW (a face's flow depth never exceeds its donor's depth), so only wet extents are visited.
+    for (let r = 0; r < H; r++) {
+      const hi = rowMax[r];
+      if (hi < 0) continue;
+      const base = r * w;
+      for (let c = rowMin[r]; c <= hi; c++) {
+        const i = base + c;
+        const o = out[i];
+        if (o > 0) {
+          const avail = h[i] * A;
+          out[i] = o > avail ? avail / o : 1;
+        }
       }
     }
     // apply fluxes
@@ -759,11 +766,14 @@ export class SimCore {
       outflow += v;
     }
     this.budget.outflow += outflow;
-    // clamp round-off negatives (tracked into outflow to keep the budget exact)
+    // clamp round-off negatives (tracked into outflow to keep the budget exact); only cells the fluxes
+    // touched can be negative: the same row ranges as above
     let neg = 0;
     for (let r = 0; r < H; r++) {
       const base = r * w;
-      for (let c = 0; c < w; c++) {
+      const lo = Math.max(0, Math.min(rowMin[r], r > 0 ? rowMin[r - 1] : w, r < H - 1 ? rowMin[r + 1] : w) - 1);
+      const hi = Math.min(w - 1, Math.max(rowMax[r], r > 0 ? rowMax[r - 1] : -1, r < H - 1 ? rowMax[r + 1] : -1) + 1);
+      for (let c = lo; c <= hi; c++) {
         const i = base + c;
         if (h[i] < 0) { neg += h[i]; h[i] = 0; }
       }
