@@ -339,10 +339,35 @@ export class SimCore {
     return Array.from(this.lakeRoomInit, (cap, k) => ({ cells: cells[k], capacityM3: cap, freeM3: this.lakeRoom[k] }));
   }
 
-  /** Close grid-edge cells to outflow: inflow boundaries, where the land beyond the edge is upstream (src/sim/inflow.ts). */
+  /**
+   * Close grid-edge cells to outflow: inflow boundaries, where the land beyond the edge is upstream
+   * (src/sim/inflow.ts). They stay registered: `setEdgesClosed(false)` reopens them as free outfalls
+   * (the runner does once the inflow has receded, so water pooled against them can leave).
+   */
   closeEdges(cells: ArrayLike<number>): void {
-    for (let k = 0; k < cells.length; k++) if (cells[k] >= 0 && cells[k] < this.n) this.edgeSlopeSqrt[cells[k]] = 0;
+    const keep = new Map<number, number>();
+    for (let k = 0; k < this.closedCells.length; k++) keep.set(this.closedCells[k], this.closedOpenSlope[k]);
+    this.setEdgesClosed(false);
+    for (let k = 0; k < cells.length; k++) {
+      const i = cells[k];
+      if (i >= 0 && i < this.n && !keep.has(i)) keep.set(i, this.edgeSlopeSqrt[i]);
+    }
+    this.closedCells = Int32Array.from(keep.keys());
+    this.closedOpenSlope = Float64Array.from(keep.values());
+    this.setEdgesClosed(true);
   }
+
+  /** Close (true) or reopen (false) the edge cells registered by closeEdges. */
+  setEdgesClosed(on: boolean): void {
+    const cells = this.closedCells, open = this.closedOpenSlope, es = this.edgeSlopeSqrt;
+    for (let k = 0; k < cells.length; k++) es[cells[k]] = on ? 0 : open[k];
+    this.edgesClosed = on && cells.length > 0;
+  }
+
+  /** whether the registered inflow edge cells are currently closed */
+  edgesClosed = false;
+  private closedCells = new Int32Array(0);
+  private closedOpenSlope = new Float64Array(0);
 
   reset(): void {
     this.h.fill(0);
