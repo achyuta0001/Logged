@@ -35,12 +35,18 @@ comments and the draft PR, then continue from **Next step**.
 - M4: `upstreamOutsideKm2` per pack (district-wide 60 m flow accumulation), shown as a quiet caveat line.
 - M5: `scripts/report.mjs`. The results table is in the README. Sourced flood spots are in `scripts/data/hotspots-blr.json`.
 - Committed sample packs: 560034 and 560071 (and 560098). Every other pack is git-ignored; `npm run data:all` builds them.
+- Drains (dual drainage): `src/sim/network.ts`. Inlet capture is routed through the mapped drains and tanks to the grid edge, and overflows where a reach is full. Mass balance is tested (`src/sim/__tests__/network.test.ts`). Measured against the engine just before it (2024 storm / typical evening, `scripts/calibrate.mjs --impact --perf`):
+  - **Typical evening:** unchanged in all three packs. Peak flooded area is 0.034 / 0.014 / 0.015 km², with the same buildings and roads.
+  - **2024 storm, peak flooded area:** 560098 0.633 → 0.709 km², 560034 0.192 → 0.264 km², 560071 0.130 → 0.128 km².
+  - **Recession:** 5 → 4 h, 5 → 4 h and 6 → 5 h.
+  - **Reports wet:** still 8/12 and 3/3. The water moves along the valleys: Global Village / Dubasipalya street300 2.06 → 0.83 / 0.15 m, ST Bed 0.45 → 0.26 m.
+  - **216 h runs:** 1.58 s (was 1.47 s), 1.03 s (was 1.11 s) and 3.45 s (was 2.97 s).
 
 ## Next step (suggested follow-ups, none blocking)
 
 1. Host the packs. Run the manual workflow `.github/workflows/packs.yml` (not triggered by this run), publish `public/data/pins`, and point the app at it with `?packs=` or `VITE_PACKS_URL`.
 2. M4 "better": pad each pack's bbox upstream along its catchment (with a cap), so inflow is simulated.
-3. Model drains surcharging at bottlenecks. Flyover hotspots need a "road under deck" handling.
+3. Drains: detect culverts where a drain line crosses a major road, which needs a road layer in the sim grids. Calibrate the network against more packs: build 560037 (Marathahalli), 560064 (Kendriya Vihar) and 560100 (Electronic City) with `npm run data -- --pin <code>`. Flyover hotspots still need a "road under deck" handling.
 4. Add more sourced flood reports to `scripts/data/hotspots-blr.json`, then run `npm run data:all -- --force --pins <codes>`.
 5. Optional: a coarse district-wide run of the 20 Oct 2024 storm as an overview raster.
 
@@ -54,3 +60,4 @@ Verify: `npx tsc --noEmit && npm test && npx vite build`. For a pack: `node scri
 - 560098 stays format 1 in `public/data/`. `data:all` rebuilds it only when asked by name.
 - Synthetic packs are test fixtures only.
 - The scenarios are city-wide reuses of the RR Nagar 2024 rainfall. This is stated in the README.
+- Drain network: sizes come from the rational method (area served × design intensity at the time of concentration), not from OSM tags, because nearly every drain here is tagged `waterway=drain`. Line ends with no outlet continue through an unmapped culvert-sized link, because OSM lines often stop at road crossings. A pure dead end dumped a whole catchment at one point and flooded the typical evening. Tanks rise 1 m before they back up the drains feeding them: at 0.3 m, chains of small tanks overflowed in a typical evening (560071).
