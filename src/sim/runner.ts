@@ -5,7 +5,7 @@
 import type { InflowEdgeRun, InflowPoint, SimParams } from '../types.ts';
 import { SimCore, type CoreGrids, type HourStats } from './core.ts';
 import { coarsen, downscaleMm, limitPits, type Coarse } from './grid.ts';
-import { Inflow } from './inflow.ts';
+import { Inflow, closeAcrossWater } from './inflow.ts';
 
 export interface RunnerInit {
   width: number;
@@ -77,8 +77,9 @@ export class Runner {
     if (init.inflow?.length) {
       const cg = this.coarse.grids;
       this.inflow = new Inflow(init.inflow, init.width, init.width * init.height, this.coarse.f, cg.width, cg.height, cg.cellSizeM);
-      // where outside land drains in, the grid edge is an inflow boundary, not an outfall
-      this.core.closeEdges(this.inflow.edgeCells(init.inflowEdge));
+      // where outside land drains in, the grid edge is an inflow boundary, not an outfall; so is the cut of
+      // a tank such a stretch runs into (src/sim/inflow.ts closeAcrossWater)
+      this.core.closeEdges(closeAcrossWater(this.inflow.edgeCells(init.inflowEdge), cg.width, cg.height, cg.cellSizeM, cg.elevation, cg.lakeMask));
       // drains below an inflow point were built for its whole catchment (src/sim/network.ts)
       this.core.net?.addUpstream(this.inflow.cells, this.inflow.points.map((p) => p.areaKm2 * 1e6), this.inflow.points.map((p) => p.timeArea.length * 3600));
     }
