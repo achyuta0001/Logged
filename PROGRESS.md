@@ -48,6 +48,21 @@ comments and the draft PR, then continue from **Next step**.
   - **Reports wet:** still 8/12 and 3/3. The water moves along the valleys: Global Village / Dubasipalya street300 2.06 → 0.83 / 0.15 m, ST Bed 0.45 → 0.26 m.
   - **216 h runs:** 1.58 s (was 1.47 s), 1.03 s (was 1.11 s) and 3.45 s (was 2.97 s).
 
+- Real storms (`improvements` branch): `src/weather.ts` `HISTORICAL_EVENTS` lists four sourced flood days, each with the report that dates it: 14–16 Aug 2017 (HAL 144 mm, Koramangala; The News Minute), 17–18 May 2022 (IMD 114.6 mm, Ullal Upanagar deaths; Scroll), 4–6 Sep 2022 (IMD 131 mm, Bellandur/Yemalur; The News Minute), 20–22 Oct 2024 (RR Nagar 177.6 mm, Yelahanka 157 mm in 6 h; ETV Bharat). `fetchHistoricalEvent` gets hourly rain at the pin centroid from the free, keyless Open-Meteo archive (CC BY 4.0, cached per session). `buildHistoricalSeries` (unit-tested, no network) trims it to the wet window with 3 dry hours before and 24 after. The scenario picker lists them under "Real storms, archive rain", and `calibrate.mjs --event all` runs them.
+  - **Result: archive rain floods nothing.** Committed engine (HEAD 50a5427), `calibrate.mjs --pin <code> --event all`. Archive rain total / wettest hour, then peak flooded area > 0.1 m; the reused RR Nagar profile is 177.6 mm / 38 mm:
+
+    | pack | reused profile: area, street300 max (mean) | 2024-10 | 2022-09 | 2022-05 | 2017-08 |
+    |---|---|---|---|---|---|
+    | 560098 RR Nagar | 0.703 km², 1.62 (0.53) m, 9/12 spots ≥ 0.1 m | 65 mm / 10.1: 0 | 30 / 7.3: 0 | 30 / 7.7: 0 | 25 / 4.3: 0 |
+    | 560034 Koramangala | 0.304 km², 0.99 (0.92) m, 3/3 | 50 / 6.6: 0 | 36 / 8.5: 0 | 17 / 4.7: 0 | 30 / 6.1: 0 |
+    | 560102 HSR Layout | 0.361 km², 1.35 (0.90) m, 3/3 | same cell as 560034: 0 | 0 | 0 | 0 |
+    | 560103 Bellandur | 0.614 km², 1.48 (1.03) m, 3/3 | same cell as 560034: 0 | 0 | 0 | 0 |
+    | 560071 Domlur | 0.128 km², no spots | 61 / 8.2: 0 | 45 / 7.1: 0 | 20 / 4.7: 0 | 26 / 3.9: 0 |
+    | 560024 HA Farm | 0.581 km², 0.22 m, 1/1 | 46 / 8.8: 0 | 51 / 11.7: 0 | 41 / 11.7: 0 | 24 / 4.5: 0 |
+
+    street300 at every reported spot is 0.00–0.01 m on archive rain. The archive is a reanalysis (ERA5 / ECMWF IFS grid, one cell covers Koramangala, HSR and Bellandur), so it holds 2.5–7× less than the gauges and its wettest hours (4–12 mm) never beat drains plus infiltration. The typical evening (35 mm, 17 mm wettest hour) floods more than any archive storm.
+  - One-off check, not committed: the archive's timing scaled up to the reported gauge total gives wettest hours of 28–31 mm and peak flooded areas of 0.220 km² (560098, 2024), 0.179 (560103, Sep 2022), 0.104 (560034, Aug 2017) and 0.144 (560102, May 2022), a third to a half of the reconstructed profile's areas.
+
 ## Next step (suggested follow-ups, none blocking)
 
 1. Host the packs. Run the manual workflow `.github/workflows/packs.yml` (not triggered by this run), publish `public/data/pins`, and point the app at it with `?packs=` or `VITE_PACKS_URL`.
@@ -55,6 +70,7 @@ comments and the draft PR, then continue from **Next step**.
 3. Drains: detect culverts where a drain line crosses a major road, which needs a road layer in the sim grids. Calibrate the network against more packs: build 560037 (Marathahalli), 560064 (Kendriya Vihar) and 560100 (Electronic City) with `npm run data -- --pin <code>`. Flyover hotspots still need a "road under deck" handling.
 4. Add more sourced flood reports to `scripts/data/hotspots-blr.json`, then run `npm run data:all -- --force --pins <codes>`.
 5. Optional: a coarse district-wide run of the 20 Oct 2024 storm as an overview raster.
+6. Real storms: decide whether to offer "archive timing scaled to the reported gauge total" next to the raw archive rain (numbers above). Raw reanalysis cannot show any of the four floods. A gauge or radar source (KSNDMC hourly telemetry) would be better, but it is not open or keyless.
 
 Verify: `npx tsc --noEmit && npm test && npx vite build`. For a pack: `node scripts/calibrate.mjs --pin <code> --impact`.
 
@@ -66,5 +82,6 @@ Verify: `npx tsc --noEmit && npm test && npx vite build`. For a pack: `node scri
 - 560098 stays format 1 in `public/data/`. `data:all` rebuilds it only when asked by name.
 - Synthetic packs are test fixtures only.
 - The scenarios are city-wide reuses of the RR Nagar 2024 rainfall. This is stated in the README.
+- Real storms run the archive rain unscaled: it is the only free, keyless hourly rain for any point and date, and scaling it to a news-reported gauge total would be our invention. Its caveat is in every event description, the README and the Sources section. Events whose date could not be tied to a report are left out.
 - Drain network: sizes come from the rational method (area served × design intensity at the time of concentration), not from OSM tags, because nearly every drain here is tagged `waterway=drain`. Line ends with no outlet continue through an unmapped culvert-sized link, because OSM lines often stop at road crossings. A pure dead end dumped a whole catchment at one point and flooded the typical evening. Tanks rise 1 m before they back up the drains feeding them: at 0.3 m, chains of small tanks overflowed in a typical evening (560071).
 - M4 inflow: point sources from a lumped model (option b), not an upstream-padded bbox (option a). Padding the K&C valley packs upstream needs ~150 km² grids (5–10× the cells), which breaks the 3 s / 4 MB budgets. The lumped Clark/time-area model is standard for ungauged urban catchments, adds a few kB to meta.json, and uses the same sim controls (drains, blockage, infiltration). Edges where the 60 m routing has outside land draining in are closed while inflow runs, because the pack DEM, cut off at the edge, slopes outward there and drained most of the inflow straight back out (Koramangala: 494k of 622k m³). The closed stretches come from the routing, not from the inflow area: an area-sized stretch also closed the edge a stream leaves by and made a 7 m pond in a Domlur corner.
