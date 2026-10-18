@@ -26,12 +26,12 @@ export interface ForecastVariants {
   fetchedAt: number;
 }
 
-function cacheGet(key: string): unknown {
+function cacheGet(key: string, ttlMs = CACHE_TTL_MS): unknown {
   try {
     const raw = sessionStorage.getItem(key);
     if (!raw) return undefined;
     const v = JSON.parse(raw) as { t: number; data: unknown };
-    if (Date.now() - v.t > CACHE_TTL_MS) return undefined;
+    if (Date.now() - v.t > ttlMs) return undefined;
     return v.data;
   } catch {
     return undefined;
@@ -183,3 +183,139 @@ export const SCENARIOS: { id: string; label: string; description: string; build(
     },
   },
 ];
+
+// ---------------------------------------------------------------- real storms (historical archive)
+
+/** Show wherever archive rainfall is displayed (Open-Meteo Historical Weather API, CC BY 4.0). */
+export const ARCHIVE_ATTRIBUTION = 'Past rain: Open-Meteo historical weather archive (reanalysis, CC BY 4.0)';
+export const ARCHIVE_ATTRIBUTION_URL = 'https://open-meteo.com/en/docs/historical-weather-api';
+const ARCHIVE_URL = 'https://archive-api.open-meteo.com/v1/archive';
+/** past rain does not change: keep it for the whole browser session */
+const ARCHIVE_TTL_MS = 7 * 24 * HOUR;
+
+/**
+ * Reanalysis caveat, shown with every real storm. The archive is a gridded model re-run (ERA5 /
+ * ECMWF IFS, 9-25 km cells), not a rain gauge: a convective cloudburst over a few km is smeared
+ * over the cell, so totals and especially hourly peaks are usually far below the gauge figures
+ * in the news reports.
+ */
+export const ARCHIVE_CAVEAT =
+  'Hourly rain from the Open-Meteo archive at this pincode. It is a reanalysis averaged over a 9-25 km cell, ' +
+  'so it usually shows much less rain, and gentler peaks, than the rain gauges in the reports.';
+
+export interface HistoricalEvent {
+  id: string;
+  /** "Real storm: <date>", as listed in the scenario picker */
+  label: string;
+  /** first and last local (IST) day requested from the archive, YYYY-MM-DD */
+  start: string;
+  end: string;
+  /** what was reported, with the gauge totals, then the archive caveat */
+  description: string;
+  /** a news report that dates the event and gives the gauge totals */
+  source: string;
+}
+
+const event = (id: string, label: string, start: string, end: string, reported: string, source: string): HistoricalEvent => ({
+  id,
+  label,
+  start,
+  end,
+  description: `${reported} (${source}) ${ARCHIVE_CAVEAT}`,
+  source,
+});
+
+/** Known Bengaluru flood days. Each date range is checked against the linked report. */
+export const HISTORICAL_EVENTS: HistoricalEvent[] = [
+  event(
+    'real-2024-10-20',
+    'Real storm: 20-22 Oct 2024',
+    '2024-10-20',
+    '2024-10-22',
+    'RR Nagar logged 177.6 mm overnight on 20-21 Oct; on 21-22 Oct Yelahanka had 157 mm in six hours, Kogilu lake breached and Kendriya Vihar was evacuated by boat.',
+    'https://www.etvbharat.com/en/!state/heavy-rains-flood-bengaluru-enn24102202323',
+  ),
+  event(
+    'real-2022-09-05',
+    'Real storm: 4-6 Sep 2022',
+    '2022-09-04',
+    '2022-09-06',
+    'IMD measured 131 mm overnight into 5 Sep. Bellandur lake overflowed onto the ORR; Yemalur, Sarjapur Road and Mahadevapura layouts were reached by boat and tractor.',
+    'https://www.thenewsminute.com/article/bengaluru-flooded-after-rains-traffic-advisory-issued-people-asked-stay-home-167536',
+  ),
+  event(
+    'real-2022-05-17',
+    'Real storm: 17-18 May 2022',
+    '2022-05-17',
+    '2022-05-18',
+    'IMD measured 114.6 mm on 17 May, Horamavu 155 mm. Two workers died at a flooded pipeline site in Ullal Upanagar; basements flooded in HSR Layout and Rajajinagar.',
+    'https://scroll.in/latest/1024189/two-labourers-die-in-bengaluru-after-heavy-rains-cause-flooding',
+  ),
+  event(
+    'real-2017-08-15',
+    'Real storm: 14-16 Aug 2017',
+    '2017-08-14',
+    '2017-08-16',
+    'HAL airport measured 144 mm on the night of 14-15 Aug, Bilekahalli 184 mm. Over 300 homes in Koramangala flooded, as did HSR Layout and Wilson Garden.',
+    'https://www.thenewsminute.com/karnataka/rains-lash-bengaluru-leave-several-areas-city-waterlogged-66805',
+  ),
+];
+
+/** Dry hours kept ahead of the first wet hour, and appended after the last one (the recession). */
+export const HISTORICAL_PAD = { before: 3, after: 24 };
+/** an hour with less than this is treated as dry when trimming */
+const WET_MM = 0.1;
+
+export interface ArchiveHourly {
+  /** unix seconds (timeformat=unixtime) */
+  time: number[];
+  precipitation: (number | null)[];
+}
+
+/**
+ * Archive hourly rain -> RainSeries (pure, no network). Trims to the wet window (first to last hour
+ * with >= 0.1 mm), keeps `pad.before` dry hours ahead of it (prepending zero hours when the archive
+ * starts wet) and appends `pad.after` dry hours. Missing hours count as dry. An all-dry archive
+ * gives the whole requested range, dry.
+ */
+export function buildHistoricalSeries(ev: HistoricalEvent, hourly: ArchiveHourly, pad = HISTORICAL_PAD): RainSeries {
+  const n = hourly.time?.length ?? 0;
+  if (!n || hourly.precipitation?.length !== n) throw new Error('Open-Meteo archive: no hourly precipitation');
+  const raw = hourly.precipitation.map((v) => (v != null && Number.isFinite(v) && v > 0 ? v : 0));
+  let first = raw.findIndex((v) => v >= WET_MM);
+  let last = n - 1;
+  while (last >= 0 && raw[last] < WET_MM) last--;
+  if (first < 0) [first, last] = [0, n - 1];
+  const s0 = Math.max(0, first - pad.before);
+  const extra = pad.before - (first - s0);
+  const mm = [...new Array(extra).fill(0), ...raw.slice(s0, last + 1), ...new Array(pad.after).fill(0)].map((v) => Math.round(v * 10) / 10);
+  const t0 = hourly.time[s0] * 1000 - extra * HOUR;
+  const times = mm.map((_, i) => t0 + i * HOUR);
+  const total = mm.reduce((a, b) => a + b, 0);
+  return { source: 'scenario', label: `${ev.label}: ${total.toFixed(0)} mm (Open-Meteo archive)`, times, mm };
+}
+
+/** Archive request for one event at one point (hourly precipitation, IST days, unix seconds). */
+export function archiveUrl(lat: number, lon: number, ev: HistoricalEvent): string {
+  return (
+    `${ARCHIVE_URL}?latitude=${lat.toFixed(4)}&longitude=${lon.toFixed(4)}` +
+    `&start_date=${ev.start}&end_date=${ev.end}&hourly=precipitation&timezone=Asia%2FKolkata&timeformat=unixtime`
+  );
+}
+
+/**
+ * Real hourly rain for a past storm at [lat, lon] from Open-Meteo's free, keyless historical
+ * archive, trimmed and padded by buildHistoricalSeries. Cached in sessionStorage (when available).
+ */
+export async function fetchHistoricalEvent(lat: number, lon: number, ev: HistoricalEvent): Promise<RainSeries> {
+  const key = `oma:${ev.id}:${lat.toFixed(3)},${lon.toFixed(3)}`;
+  let hourly = cacheGet(key, ARCHIVE_TTL_MS) as ArchiveHourly | undefined;
+  if (!hourly?.time?.length) {
+    const res = await fetch(archiveUrl(lat, lon, ev));
+    const body = (await res.json().catch(() => ({}))) as { hourly?: ArchiveHourly; reason?: string; error?: boolean };
+    if (!res.ok || body.error || !body.hourly?.time) throw new Error(`Open-Meteo archive: ${body.reason ?? `HTTP ${res.status}`}`);
+    hourly = body.hourly;
+    cacheSet(key, hourly);
+  }
+  return buildHistoricalSeries(ev, hourly);
+}
