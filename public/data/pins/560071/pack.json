@@ -2,8 +2,8 @@
  "code": "560071",
  "format": 2,
  "cellSizeM": 15,
- "bytes": 4126793,
- "gzipBytes": 586057,
+ "bytes": 4126885,
+ "gzipBytes": 586108,
  "built": "2026-10-17",
  "files": [
   "meta.json",
