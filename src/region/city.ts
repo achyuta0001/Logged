@@ -20,13 +20,13 @@ export interface CityData {
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
 const BASE = (env?.BASE_URL ?? '/').replace(/\/?$/, '/');
 
-/** Sequential single-hue ramp (blue, dark -> light on the dark map: low recedes, high stands out). */
+/** Sequential ramp on the dark map: low recedes into slate, high glows cyan -> violet (same direction as the depth ramp). */
 export const SUSC_RAMP: [number, string][] = [
-  [0, '#104281'],
-  [0.25, '#256abf'],
-  [0.5, '#3987e5'],
-  [0.75, '#6da7ec'],
-  [1, '#cde2fb'],
+  [0, '#1c2636'],
+  [0.35, '#1d4f8f'],
+  [0.6, '#2f8fe0'],
+  [0.8, '#64d2ff'],
+  [1, '#bf8cff'],
 ];
 /** plain-language band for a 0..1 rank-based index */
 export function suscBand(s: number): string {
@@ -87,7 +87,7 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     source: 'pins',
     paint: {
       'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 's'], 0], ...ramp] as unknown as string,
-      'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.85, ['boolean', ['feature-state', 'sel'], false], 0.82, 0.66],
+      'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.85, ['boolean', ['feature-state', 'sel'], false], 0.82, ['interpolate', ['linear'], ['coalesce', ['get', 's'], 0], 0, 0.38, 1, 0.78]],
     },
   });
   map.addLayer({
