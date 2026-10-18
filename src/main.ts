@@ -348,10 +348,17 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
   const demo = SCENARIOS.find((s) => s.id === DEMO_SCENARIO) ?? SCENARIOS[0];
   if (forecast) controls.setForecastNote(forecastSummary(forecast));
   const asked = SCENARIOS.find((s) => s.id === url.get('scenario'));
+  // ?scenario=<real storm id>: archive rain at the pin centroid (if the archive cannot be reached, open as usual)
+  const askedReal = asked ? undefined : HISTORICAL_EVENTS.find((e) => e.id === url.get('scenario'));
+  const realSeries = askedReal ? await fetchHistoricalEvent((pin.centroid ?? center)[1], (pin.centroid ?? center)[0], askedReal).catch(() => null) : null;
   let useDemo = !forecast || rainAhead(forecast.best, 48) < 5;
   if (asked) {
     controls.selectSource(asked.id);
     await runSim(asked.build(), loader, true, 0.5, 0.5);
+    useDemo = false;
+  } else if (askedReal && realSeries) {
+    controls.selectSource(askedReal.id);
+    await runSim(realSeries, loader, true, 0.5, 0.5);
     useDemo = false;
   } else if (!useDemo) {
     await runSim(forecast!.best, loader, true, 0.5, 0.3);
