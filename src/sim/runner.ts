@@ -56,7 +56,11 @@ export class Runner {
     this.core = new SimCore(this.coarse.grids, init.params);
     this.fineZ = init.elevation;
     this.fineInside = init.boundaryMask;
-    if (init.inflow?.length) this.inflow = new Inflow(init.inflow, init.width, init.width * init.height, this.coarse.f, this.coarse.grids.width);
+    if (init.inflow?.length) {
+      this.inflow = new Inflow(init.inflow, init.width, init.width * init.height, this.coarse.f, this.coarse.grids.width);
+      // the edge stretches valleys enter through are inflow boundaries, not outfalls
+      this.core.closeEdges(this.inflow.edgeCells(this.coarse.grids.height, this.coarse.grids.cellSizeM));
+    }
   }
 
   private inflow?: Inflow;
