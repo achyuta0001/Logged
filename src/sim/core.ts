@@ -527,6 +527,15 @@ export class SimCore {
     const soil = this.soil, perv = this.pervious;
     const soilRec = SOIL_RECOVERY_M_S * dt;
     let infTot = 0;
+    // storm-drain capacity this step, m. With mapped drains the inlets' capture is folded into this
+    // pass (same per-cell order: rain, soil, inlets; src/sim/network.ts beginCapture)
+    const cap = (Math.max(0, p.drainCapacityMmHr) * (1 - Math.min(1, Math.max(0, p.drainBlockage)))) / 1000 / 3600 * dt;
+    const net = this.net;
+    const fold = net !== null && cap > 0;
+    if (fold) net.beginCapture();
+    const cellNode = net ? net.cellNode : null, tankCell = net ? net.tankCell : null;
+    const want = net ? net.want : null, rcell = net ? net.rcell : null, rate = this.inletRate;
+    let capRemoved = 0, capSink = 0;
     for (let i = 0; i < n; i++) {
       let d = h[i] + rainDepth;
       const pv = perv[i];
@@ -543,6 +552,20 @@ export class SimCore {
       }
       s -= soilRec;
       soil[i] = s > 0 ? s : 0;
+      if (fold) {
+        if (d <= 0) rcell![i] = 0;
+        else {
+          const k = cellNode![i];
+          // water standing on a tank above its cushion leaves through the weir: all of it is offered
+          const m = tankCell![i] && k >= 0 ? d : cap * rate[i];
+          const r = d < m ? d : m;
+          rcell![i] = r;
+          d -= r;
+          capRemoved += r;
+          if (k >= 0) want![k] += r * A;
+          else capSink += r;
+        }
+      }
       h[i] = d;
     }
     this.budget.rain += rainDepth * n * A;
@@ -550,12 +573,9 @@ export class SimCore {
 
     // storm-drain inlets. With mapped drains the captured water enters the drain network, which routes
     // it downstream and gives back what it cannot carry (src/sim/network.ts); without, inlets are sinks.
-    const cap = (Math.max(0, p.drainCapacityMmHr) * (1 - Math.min(1, Math.max(0, p.drainBlockage)))) / 1000 / 3600 * dt;
-    const net = this.net;
     if (cap > 0 || net) {
       let dr = 0;
-      const rate = this.inletRate;
-      if (net) dr = net.exchange(h, cap, rate, cap / dt, dt);
+      if (net) dr = net.exchange(h, cap, rate, cap / dt, dt, fold ? { removed: capRemoved, sink: capSink } : undefined);
       else {
         for (let i = 0; i < n; i++) {
           const d = h[i];
