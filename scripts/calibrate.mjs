@@ -15,6 +15,7 @@
 //   node scripts/calibrate.mjs --scenario cloudburst             add/override scenarios (comma list)
 //   node scripts/calibrate.mjs --pin 560034                      another pincode's pack (public/data/pins/<code>)
 //   node scripts/calibrate.mjs --pin 560034 --impact             also buildings wet / roads closed at the peak
+//   node scripts/calibrate.mjs --pin 560034 --no-inflow          ignore the pack's upstream inflow points (M4)
 //
 // Requires Node >= 22.6 (native TypeScript type stripping) — the engine and the scenario series are
 // imported straight from src/sim/index.ts and src/weather.ts.
@@ -50,6 +51,9 @@ function loadTerrain(dir) {
 }
 
 const terrain = loadTerrain(DATA);
+// M4: upstream inflow points (meta.inflow) are simulated unless --no-inflow
+const INFLOW_PTS = terrain.meta.inflow?.length ?? 0;
+if (flag('no-inflow')) delete terrain.meta.inflow;
 // packs without sourced reports have no hotspots.json: the hotspot table is then empty
 const hotspots = fs.existsSync(HOTSPOTS) ? JSON.parse(fs.readFileSync(HOTSPOTS, 'utf8')) : [];
 const IMPACT = flag('impact');
@@ -104,9 +108,9 @@ async function runScenario(series) {
     for (let k = Math.max(rainEnd, peak); k < n; k++) if (st[k].floodedAreaM2 < 0.25 * peakArea) { recessionH = k - rainEnd; break; }
   }
   const sum = (key) => st.reduce((s, x) => s + (x[key] || 0), 0);
-  const budget = { rain: sum('rainM3'), infiltrated: sum('infiltratedM3'), drained: sum('drainedM3'), lake: sum('lakeM3'), outflow: sum('outflowM3') };
+  const budget = { rain: sum('rainM3'), inflow: sum('inflowM3'), infiltrated: sum('infiltratedM3'), drained: sum('drainedM3'), lake: sum('lakeM3'), outflow: sum('outflowM3') };
   const endVol = st[n - 1].volumeM3;
-  const closure = (budget.rain - budget.infiltrated - budget.drained - budget.lake - budget.outflow - endVol) / Math.max(1, budget.rain);
+  const closure = (budget.rain + budget.inflow - budget.infiltrated - budget.drained - budget.lake - budget.outflow - endVol) / Math.max(1, budget.rain + budget.inflow);
   const hot = hotspots.map((h, k) => {
     const o = { name: h.name };
     for (const r of RADII) {
@@ -202,7 +206,7 @@ function summaryRows(r) {
     ['peak / final surface volume (m3)', `${Math.round(r.peakVolM3)} / ${Math.round(r.endVolM3)}`],
     ['max depth anywhere (m)', r.maxDepthM.toFixed(2)],
     ['tanks (>= 2 cells) spilled at end', r.lakeSpill ?? 'n/a'],
-    ['budget rain / infil / drain / lake / out (k m3)', [b.rain, b.infiltrated, b.drained, b.lake, b.outflow].map((v) => (v / 1000).toFixed(0)).join(' / ')],
+    ['budget rain / inflow / infil / drain / lake / out (k m3)', [b.rain, b.inflow ?? 0, b.infiltrated, b.drained, b.lake, b.outflow].map((v) => (v / 1000).toFixed(0)).join(' / ')],
     ['budget closure (rel.)', r.closure.toExponential(1)],
     ...(r.impact
       ? [
@@ -215,6 +219,7 @@ function summaryRows(r) {
 }
 
 console.log(`data: ${results.data}   engine: ${results.sim}   grid ${W}x${H} @ ${meta.cellSizeM} m`);
+console.log(`upstream inflow: ${meta.inflow?.length ? `${meta.inflow.length} points, ${meta.inflow.reduce((s, p) => s + p.areaKm2, 0).toFixed(1)} of ${meta.upstreamOutsideKm2 ?? '?'} km² simulated` : INFLOW_PTS ? `off (--no-inflow; the pack has ${INFLOW_PTS} points)` : 'none in this pack'}`);
 printHotspots();
 for (const [id, r] of Object.entries(results.scenarios)) {
   const br = base?.scenarios?.[id];
