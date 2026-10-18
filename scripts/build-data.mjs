@@ -8,8 +8,12 @@
 //   npm run data -- --pin 560034   (pincode from public/data/pins/index.json; default 560098)
 //   DEM=terrarium npm run data      (DEM=copernicus by default, falls back to terrarium)
 //   REFRESH=1 npm run data          (ignore cached OSM)
+//   npm run data -- --pin 560034 --inflow-only   (only recompute an existing pack's upstream inflow:
+//                                                 meta.inflow / upstreamOutsideKm2, grids untouched)
 // OSM comes from the local Bengaluru extract (.cache/osm/blr-region.osm.pbf, scripts/osm-extract.sh)
 // when it and osmium-tool exist, otherwise from Overpass (one query per pack, cached).
+// Upstream inflow (M4) needs the district routing from `npm run data:city` (.cache/city/flow60.*);
+// without it the pack is built without inflow points.
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,6 +23,7 @@ import osmtogeojson from 'osmtogeojson';
 import * as turf from '@turf/turf';
 import { gzipSync } from 'node:zlib';
 import { regionAvailable, regionOverpassJson } from './lib/osm-local.mjs';
+import { gridOf, meanInside, packInflow, readFlowGrids } from './lib/catchment.mjs';
 import { encodeLayer, v2Specs } from '../src/pack/codec.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -136,7 +141,8 @@ async function loadOsm() {
     const raw = regionOverpassJson(ROOT, [w, s, e, n], [RELATION_ID], path.join(PIN_CACHE, 'tmp'));
     fs.writeFileSync(cached, JSON.stringify(raw));
     const info = path.join(CACHE, 'osm', 'blr-region.json');
-    osmSource = fs.existsSync(info) ? `OSM extract ${JSON.parse(fs.readFileSync(info, 'utf8')).built.slice(0, 10)} (planet via AWS osm-pds, osmium)` : 'local OSM extract';
+    const ex = fs.existsSync(info) ? JSON.parse(fs.readFileSync(info, 'utf8')) : null;
+    osmSource = ex ? `OSM extract ${ex.built.slice(0, 10)} (${/geofabrik/i.test(ex.source ?? '') ? 'Geofabrik India southern zone' : 'planet via AWS osm-pds'}, osmium)` : 'local OSM extract';
     log(`OSM elements: ${raw.elements.length}`);
     return osmtogeojson(raw, { flatProperties: false });
   }
@@ -631,8 +637,68 @@ function dedupeRing(c) {
   return c.map(dedupeRing);
 }
 
+// ---------------------------------------------------------------- upstream inflow (M4)
+/**
+ * Inflow points for grid G from the district routing (scripts/lib/catchment.mjs). The district cover
+ * estimates imperviousness more coarsely than a pack does, so the outside catchments' value is rescaled
+ * by (pack mean / district mean over the same grid), clamped to 0.67..1.5. Null without the routing.
+ */
+function upstreamInflow(G, flowDir, flowAccum, impervious) {
+  const flow = readFlowGrids(ROOT);
+  if (!flow) {
+    log('no .cache/city/flow60.*: upstream inflow left out (run npm run data:city first)');
+    return null;
+  }
+  let packImp = 0;
+  for (let i = 0; i < impervious.length; i++) packImp += impervious[i];
+  packImp /= impervious.length;
+  const cityImp = meanInside(flow, [G.w, G.s, G.e, G.n], flow.imp);
+  const impScale = cityImp > 0 ? Math.min(1.5, Math.max(0.67, packImp / cityImp)) : 1;
+  const r = packInflow(flow, G, flowDir, flowAccum, { impScale });
+  const km2 = (v) => Math.round(v * 100) / 100;
+  log(`upstream inflow: ${r.totalKm2.toFixed(1)} km² outside the grid drains in; ${r.points.length} points carry ${r.simulatedKm2.toFixed(1)} km² (imperviousness x${impScale.toFixed(2)})`);
+  for (const p of r.points.slice(0, 6)) log(`  ${p.areaKm2} km² at ${p.at.join(',')} (cell ${p.cell}), imp ${p.impervious}, drains ${p.drainShare}, tanks ${p.tankShare} / ${Math.round(p.tankM3 / 1000)}k m³, Clark ${p.storageH} h, time-area ${JSON.stringify(p.timeArea)}`);
+  return {
+    upstreamOutsideKm2: km2(r.totalKm2),
+    inflow: r.points,
+    source:
+      `Upstream inflow (M4): ${km2(r.totalKm2)} km² outside the grid drains into it (district 60 m D8 routing of Copernicus GLO-30 with OSM drains and lakes, npm run data:city); ` +
+      `${km2(r.simulatedKm2)} km² of it enters at ${r.points.length} points through a lumped runoff model with the grid's own losses and Clark routing (src/sim/inflow.ts)`,
+  };
+}
+
+/** --inflow-only: recompute an existing pack's inflow points (grids, OSM and depressions untouched) */
+async function annotateInflow() {
+  const metaFile = path.join(OUT, 'meta.json');
+  const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8'));
+  const raw = fs.readFileSync(path.join(OUT, 'grids.bin'));
+  const { terrainFromBuffer } = await import('../src/terrain.ts');
+  const { grids } = terrainFromBuffer(meta, raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));
+  const [w, s, e, n] = meta.bbox;
+  const G = gridOf({ w, n, width: meta.width, height: meta.height, dLat: (n - s) / meta.height, dLon: (e - w) / meta.width, cellM: meta.cellSizeM });
+  const up = upstreamInflow(G, grids.flowDir, grids.flowAccum, grids.impervious);
+  if (!up) throw new Error('no district routing: run npm run data:city -- --flow-only first');
+  meta.sources = [...meta.sources.filter((x) => !x.startsWith('Upstream inflow')), up.source];
+  meta.upstreamOutsideKm2 = up.upstreamOutsideKm2;
+  meta.inflow = up.inflow;
+  fs.writeFileSync(metaFile, JSON.stringify(meta));
+  // pack.json carries sizes and sources (the 560098 reference pack predates it and has none)
+  const pj = path.join(OUT, 'pack.json');
+  if (fs.existsSync(pj)) {
+    const pack = JSON.parse(fs.readFileSync(pj, 'utf8'));
+    const files = pack.files.filter((f) => fs.existsSync(path.join(OUT, f)));
+    pack.bytes = files.reduce((a, f) => a + fs.statSync(path.join(OUT, f)).size, 0);
+    pack.gzipBytes = files.reduce((a, f) => a + gzipSync(fs.readFileSync(path.join(OUT, f)), { level: 9 }).length, 0);
+    pack.sources = meta.sources;
+    fs.writeFileSync(pj, JSON.stringify(pack, null, 1));
+    log(`pack.json: ${(pack.gzipBytes / 1e6).toFixed(2)} MB gzipped`);
+  }
+  log(`meta.json: ${up.inflow.length} inflow points written`);
+}
+
 // ---------------------------------------------------------------- main
 async function main() {
+  if (process.argv.includes('--inflow-only')) return annotateInflow();
   const t0 = Date.now();
   const fc = await loadOsm();
 
@@ -976,6 +1042,10 @@ async function main() {
   }
   fs.writeFileSync(path.join(OUT, 'grids.bin'), Buffer.concat(chunks));
 
+  // upstream inflow (M4): flow paths entering the grid from outside it
+  const up = upstreamInflow(G, flowDir, flowAccum, impervious);
+  if (up) sources.push(up.source);
+
   let minE = Infinity, maxE = -Infinity, minB = Infinity, maxB = -Infinity, impSum = 0, nB = 0;
   for (let i = 0; i < N; i++) {
     minE = Math.min(minE, elevation[i]); maxE = Math.max(maxE, elevation[i]);
@@ -993,6 +1063,7 @@ async function main() {
     layers,
     stats: { minElev: Math.round(minE * 100) / 100, maxElev: Math.round(maxE * 100) / 100 },
     sources,
+    ...(up ? { upstreamOutsideKm2: up.upstreamOutsideKm2, inflow: up.inflow } : {}),
   };
   fs.writeFileSync(path.join(OUT, 'meta.json'), JSON.stringify(meta));
   // v2: coordinates to 1e-5 deg (~1 m) and no per-feature cell lists (the app derives them on load)
