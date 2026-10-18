@@ -23,6 +23,7 @@
  * All storage in Float64 so the volume budget closes to round-off.
  */
 import type { SimParams } from '../types.ts';
+import { DrainNetwork, type NetworkTotals } from './network.ts';
 
 export interface CoreGrids {
   width: number;
@@ -45,7 +46,14 @@ export interface HourStats {
   maxDepthM: number;
   rainM3: number;
   infiltratedM3: number;
+  /** net m3 taken off the surface by the drains (captured minus what the drain network gave back) */
   drainedM3: number;
+  /** m3 in the drain network at the end of the hour (src/sim/network.ts; 0 without mapped drains) */
+  networkM3: number;
+  /** m3 the drain network pushed back onto the street at bottlenecks and dead ends during the hour */
+  surchargeM3: number;
+  /** m3 the drain network discharged across the grid edge or into tank storage during the hour */
+  networkOutM3: number;
   lakeM3: number;
   outflowM3: number;
   /** m3 injected by point sources (upstream inflow, src/sim/inflow.ts) */
@@ -124,6 +132,8 @@ export class SimCore {
   private out: Float64Array; // outgoing volume per cell
   private wetRowMin: Int32Array;
   private wetRowMax: Int32Array;
+  /** 1 on drain-network cells: their channel flow is the network's, so it does not set the time step */
+  private chan: Uint8Array;
   private lastVmax = 0.5;
   private hoursSinceRain = 1e9;
   /** s since rain last exceeded the roadside drains' capacity */
@@ -132,6 +142,9 @@ export class SimCore {
   private localShare = DRAIN_LOCAL_SHARE;
   private edgeOut: Float64Array;
   private lakeRoomInit: Float64Array;
+  /** storm-drain network fed by the inlets (null when no drains are mapped: inlets are plain sinks) */
+  readonly net: DrainNetwork | null = null;
+  private net0: NetworkTotals | null = null; // network totals at the start of the hour
   /** sealed fraction per cell (0..1) */
   private imp: Float64Array;
   /** basin id per cell: the local low point its D8 steepest-descent path (unfilled z) ends in */
@@ -174,6 +187,7 @@ export class SimCore {
     this.out = new Float64Array(n);
     this.wetRowMin = new Int32Array(H);
     this.wetRowMax = new Int32Array(H);
+    this.chan = new Uint8Array(n);
 
     // edge outflow slopes
     this.edgeSlopeSqrt = new Float64Array(n);
@@ -269,6 +283,18 @@ export class SimCore {
     this.lakeRoomInit = Float64Array.from(rooms);
     this.edgeOut = new Float64Array(4 * (w + H) + 8);
 
+    // ---- drain network: captured water is routed downstream and can surcharge (src/sim/network.ts) ----
+    if (anyDrain && drain) {
+      const net = new DrainNetwork({
+        w, h: H, dx: this.dx, z: this.z, drainMask: drain, lakeComp: this.lakeComp, lakeRoom: this.lakeRoom,
+        serveRadiusCells: Math.ceil(SERVE_RADIUS_M / this.dx),
+      });
+      if (net.size) {
+        this.net = net;
+        for (let k = 0; k < net.size; k++) this.chan[net.cell[k]] = 1;
+      }
+    }
+
     // ---- basins (for post-storm drainage) ----
     const z = this.z;
     const down = new Int32Array(n).fill(-1);
@@ -327,6 +353,7 @@ export class SimCore {
     this.lastVmax = 0.5;
     this.hoursSinceRain = 1e9;
     this.drainIdleS = 1e9;
+    this.net?.reset();
   }
 
   setParams(p: Partial<SimParams>): void {
@@ -343,12 +370,13 @@ export class SimCore {
   /** Advance one hour with `rainMm` falling uniformly during it. */
   stepHour(rainMm: number, maxDepth?: Float32Array): HourStats {
     const b0 = { ...this.budget };
+    this.net0 = this.net ? { ...this.net.totals } : null;
     let t = 0;
     let steps = 0;
     const rainRate = Math.max(0, rainMm) / 1000 / 3600; // m/s
     const dry = rainRate === 0;
     // quiescent shortcut: no rain, no inflow and essentially no surface water
-    if (dry && !this.sources && this.totalVolume() < 1e-3) {
+    if (dry && !this.sources && this.totalVolume() < 1e-3 && !this.net?.active()) {
       this.recoverSoil(3600);
       this.drainIdleS += 3600;
       this.time += 3600;
@@ -390,6 +418,7 @@ export class SimCore {
       if (d > mx) mx = d;
     }
     const b = this.budget;
+    const nt = this.net?.totals, n0 = this.net0;
     return {
       volumeM3: vol * this.area,
       floodedAreaM2: fl * this.area,
@@ -397,6 +426,9 @@ export class SimCore {
       rainM3: b.rain - b0.rain,
       infiltratedM3: b.infiltrated - b0.infiltrated,
       drainedM3: b.drained - b0.drained,
+      networkM3: this.net ? this.net.storage() : 0,
+      surchargeM3: nt && n0 ? nt.surcharge - n0.surcharge : 0,
+      networkOutM3: nt && n0 ? nt.out + nt.lake - n0.out - n0.lake : 0,
       lakeM3: b.lake - b0.lake,
       outflowM3: b.outflow - b0.outflow,
       inflowM3: b.inflow - b0.inflow,
@@ -491,27 +523,35 @@ export class SimCore {
     this.budget.rain += rainDepth * n * A;
     this.budget.infiltrated += infTot * A;
 
-    // storm-drain inlets
+    // storm-drain inlets. With mapped drains the captured water enters the drain network, which routes
+    // it downstream and gives back what it cannot carry (src/sim/network.ts); without, inlets are sinks.
     const cap = (Math.max(0, p.drainCapacityMmHr) * (1 - Math.min(1, Math.max(0, p.drainBlockage)))) / 1000 / 3600 * dt;
-    if (cap > 0) {
+    const net = this.net;
+    if (cap > 0 || net) {
       let dr = 0;
       const rate = this.inletRate;
-      for (let i = 0; i < n; i++) {
-        const d = h[i];
-        if (d <= 0) continue;
-        const m = cap * rate[i];
-        const r = d < m ? d : m;
-        h[i] = d - r;
-        dr += r;
+      if (net) dr = net.exchange(h, cap, rate, cap / dt, dt);
+      else {
+        for (let i = 0; i < n; i++) {
+          const d = h[i];
+          if (d <= 0) continue;
+          const m = cap * rate[i];
+          const r = d < m ? d : m;
+          h[i] = d - r;
+          dr += r;
+        }
       }
       // post-storm drainage: once rain is below the roadside drains' capacity, the spare capacity of
       // each basin's dry paved area drains that basin's pond (deepest water first, mass-exact)
       const local = cap * this.localShare;
-      if (rainDepth >= local) this.drainIdleS = 0;
+      if (cap <= 0) { /* no capacity: nothing to drain */ }
+      else if (rainDepth >= local) this.drainIdleS = 0;
       else {
         this.drainIdleS += dt;
         const spare = (1 - rainDepth / local) * (1 - Math.exp(-this.drainIdleS / DRAIN_LAG_S));
-        dr += this.drainPonds(spare * local);
+        const pd = this.drainPonds(spare * local);
+        dr += pd;
+        if (net) net.totals.sink += pd * A; // pond drainage stays a sink (not routed through the network)
       }
       this.budget.drained += dr * A;
     }
@@ -536,7 +576,7 @@ export class SimCore {
     }
 
     // ---- horizontal routing ----
-    const fx = this.fx, fy = this.fy, out = this.out;
+    const fx = this.fx, fy = this.fy, out = this.out, chan = this.chan;
     out.fill(0);
     const kA = K_LIMIT * A;
     const invDx = 1 / dx;
@@ -568,7 +608,7 @@ export class SimCore {
           const h23 = hf < 5 ? LUT23[(hf / LUT_STEP) | 0] : Math.pow(hf, 2 / 3);
           const q = hf * h23 * 0.5 * (invN[i] + invN[j]) * Math.sqrt(ad * invDx) * dx; // m3/s
           const v = q / (hf * dx);
-          if (v > vmax && hf > 0.02) vmax = v;
+          if (v > vmax && hf > 0.02 && !chan[i] && !chan[j]) vmax = v;
           let vol = q * dt;
           const lim = kA * ad;
           if (vol > lim) vol = lim;
@@ -598,7 +638,7 @@ export class SimCore {
             const h23 = hf < 5 ? LUT23[(hf / LUT_STEP) | 0] : Math.pow(hf, 2 / 3);
             const q = hf * h23 * 0.5 * (invN[i] + invN[j]) * Math.sqrt(ad * invDx) * dx;
             const v = q / (hf * dx);
-            if (v > vmax && hf > 0.02) vmax = v;
+            if (v > vmax && hf > 0.02 && !chan[i] && !chan[j]) vmax = v;
             let vol = q * dt;
             const lim = kA * ad;
             if (vol > lim) vol = lim;
