@@ -7,8 +7,10 @@
  *
  *  - Nodes: drainMask cells and tank (lakeMask) cells. Topology: a priority flood over the nodes
  *    (8-neighbour) seeded at the grid edge, so each node drains along the lowest path. Edge cells
- *    are lazy seeds: they only become outlets when no lower path reaches them first, so a drain
- *    that enters the grid at the edge keeps flowing inward instead of straight out again.
+ *    are lazy seeds: they only become outlets when no lower path reaches them first, and never
+ *    where the line falls away from the edge (a node within 3 cells lies gapRiseM lower): there
+ *    the edge is the line's upstream end, and its water flows inward to the line's low end instead
+ *    of climbing back out (in 560098 the Vrishabhavathi trunk otherwise left 43 m uphill).
  *  - Gaps: a line or tank that has no path to the edge is joined to a lower node within 3 cells as
  *    a culvert (road crossings are where OSM drain lines usually break); one that stops within
  *    3 cells of the grid edge leaves the grid there (lines are clipped at the pack's bbox). Any
@@ -204,6 +206,17 @@ export class DrainNetwork {
     const byZ = all.slice().sort((a, b) => z[a] - z[b]);
     let lowest = 0;
     const gap = Math.max(0, Math.round(NET_TUNING.gapCells));
+    const fallsInward = (k: number) => {
+      const r0 = (k / w) | 0, c0 = k % w, zLow = z[k] - NET_TUNING.gapRiseM;
+      for (let dr = -gap; dr <= gap; dr++)
+        for (let dc = -gap; dc <= gap; dc++) {
+          const rr = r0 + dr, cc = c0 + dc;
+          if (rr < 0 || cc < 0 || rr >= H || cc >= w) continue;
+          const j = rr * w + cc;
+          if (isNode(j) && z[j] < zLow) return true;
+        }
+      return false;
+    };
     for (;;) {
       while (heap.size) {
         const e = heap.pop();
@@ -211,6 +224,7 @@ export class DrainNetwork {
         const k = e & (SEED - 1);
         if (e & SEED) {
           if (visited[k]) continue; // reached first from a lower outlet: not an outlet
+          if (fallsInward(k)) continue; // the line's upstream end: reached from below, or a dead end
           visited[k] = 1;
           kindCell[k] = EDGE;
           order.push(k);
