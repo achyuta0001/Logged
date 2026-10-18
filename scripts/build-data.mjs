@@ -657,10 +657,13 @@ function upstreamInflow(G, flowDir, flowAccum, impervious) {
   const r = packInflow(flow, G, flowDir, flowAccum, { impScale });
   const km2 = (v) => Math.round(v * 100) / 100;
   log(`upstream inflow: ${r.totalKm2.toFixed(1)} km² outside the grid drains in; ${r.points.length} points carry ${r.simulatedKm2.toFixed(1)} km² (imperviousness x${impScale.toFixed(2)})`);
+  const closedCells = r.edge.reduce((s, [, a, b]) => s + b - a + 1, 0);
+  log(`inflow edges: ${r.edge.length} stretches, ${closedCells} of ${2 * (G.width + G.height)} edge cells closed to outflow while inflow runs`);
   for (const p of r.points.slice(0, 6)) log(`  ${p.areaKm2} km² at ${p.at.join(',')} (cell ${p.cell}), imp ${p.impervious}, drains ${p.drainShare}, tanks ${p.tankShare} / ${Math.round(p.tankM3 / 1000)}k m³, Clark ${p.storageH} h, time-area ${JSON.stringify(p.timeArea)}`);
   return {
     upstreamOutsideKm2: km2(r.totalKm2),
     inflow: r.points,
+    inflowEdge: r.edge,
     source:
       `Upstream inflow (M4): ${km2(r.totalKm2)} km² outside the grid drains into it (district 60 m D8 routing of Copernicus GLO-30 with OSM drains and lakes, npm run data:city); ` +
       `${km2(r.simulatedKm2)} km² of it enters at ${r.points.length} points through a lumped runoff model with the grid's own losses and Clark routing (src/sim/inflow.ts)`,
@@ -681,6 +684,7 @@ async function annotateInflow() {
   meta.sources = [...meta.sources.filter((x) => !x.startsWith('Upstream inflow')), up.source];
   meta.upstreamOutsideKm2 = up.upstreamOutsideKm2;
   meta.inflow = up.inflow;
+  meta.inflowEdge = up.inflowEdge;
   fs.writeFileSync(metaFile, JSON.stringify(meta));
   // pack.json carries sizes and sources (the 560098 reference pack predates it and has none)
   const pj = path.join(OUT, 'pack.json');
@@ -1063,7 +1067,7 @@ async function main() {
     layers,
     stats: { minElev: Math.round(minE * 100) / 100, maxElev: Math.round(maxE * 100) / 100 },
     sources,
-    ...(up ? { upstreamOutsideKm2: up.upstreamOutsideKm2, inflow: up.inflow } : {}),
+    ...(up ? { upstreamOutsideKm2: up.upstreamOutsideKm2, inflow: up.inflow, inflowEdge: up.inflowEdge } : {}),
   };
   fs.writeFileSync(path.join(OUT, 'meta.json'), JSON.stringify(meta));
   // v2: coordinates to 1e-5 deg (~1 m) and no per-feature cell lists (the app derives them on load)
