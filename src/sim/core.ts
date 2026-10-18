@@ -48,6 +48,8 @@ export interface HourStats {
   drainedM3: number;
   lakeM3: number;
   outflowM3: number;
+  /** m3 injected by point sources (upstream inflow, src/sim/inflow.ts) */
+  inflowM3: number;
   steps: number;
 }
 
@@ -57,6 +59,7 @@ export interface Budget {
   drained: number;
   lake: number;
   outflow: number;
+  inflow: number;
 }
 
 /** time-step tuning (seconds); exported for experiments */
@@ -100,7 +103,9 @@ export class SimCore {
   readonly h: Float64Array;
   readonly z: Float64Array;
   /** cumulative budget, m3 */
-  budget: Budget = { rain: 0, infiltrated: 0, drained: 0, lake: 0, outflow: 0 };
+  budget: Budget = { rain: 0, infiltrated: 0, drained: 0, lake: 0, outflow: 0, inflow: 0 };
+  /** point sources for the current hour, m3/s per cell (upstream inflow: the runner sets them from src/sim/inflow.ts) */
+  sources: { cells: Int32Array; m3s: Float64Array } | null = null;
   /** model time, s */
   time = 0;
   params: SimParams;
@@ -312,7 +317,7 @@ export class SimCore {
     this.h.fill(0);
     this.soil.fill(0);
     this.lakeRoom.set(this.lakeRoomInit);
-    this.budget = { rain: 0, infiltrated: 0, drained: 0, lake: 0, outflow: 0 };
+    this.budget = { rain: 0, infiltrated: 0, drained: 0, lake: 0, outflow: 0, inflow: 0 };
     this.time = 0;
     this.lastVmax = 0.5;
     this.hoursSinceRain = 1e9;
@@ -337,8 +342,8 @@ export class SimCore {
     let steps = 0;
     const rainRate = Math.max(0, rainMm) / 1000 / 3600; // m/s
     const dry = rainRate === 0;
-    // quiescent shortcut: no rain and essentially no surface water
-    if (dry && this.totalVolume() < 1e-3) {
+    // quiescent shortcut: no rain, no inflow and essentially no surface water
+    if (dry && !this.sources && this.totalVolume() < 1e-3) {
       this.recoverSoil(3600);
       this.drainIdleS += 3600;
       this.time += 3600;
@@ -389,6 +394,7 @@ export class SimCore {
       drainedM3: b.drained - b0.drained,
       lakeM3: b.lake - b0.lake,
       outflowM3: b.outflow - b0.outflow,
+      inflowM3: b.inflow - b0.inflow,
       steps,
     };
   }
@@ -440,6 +446,18 @@ export class SimCore {
   step(dt: number, rainRate: number): void {
     const { w, hgt: H, n, dx, area: A, h, z, invN } = this;
     const p = this.params;
+
+    // point sources (upstream inflow) enter first, so soil, drains and lakes act on them like on rain
+    const src = this.sources;
+    if (src) {
+      let v = 0;
+      for (let k = 0; k < src.cells.length; k++) {
+        const q = src.m3s[k] * dt;
+        h[src.cells[k]] += q / A;
+        v += q;
+      }
+      this.budget.inflow += v;
+    }
 
     // ---- vertical sources / sinks ----
     const rainDepth = rainRate * dt;
