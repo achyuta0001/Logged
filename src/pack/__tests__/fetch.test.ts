@@ -31,7 +31,7 @@ test('loader: reads <file>.gz and inflates it, without asking for the plain file
   assert.deepEqual(h.asked, ['/p/osm.geojson.gz']);
 });
 
-test('loader: falls back to the plain file when the .gz is missing (old packs, 560098)', async () => {
+test('loader: falls back to the plain file when the .gz is missing (packs built before the .gz layout)', async () => {
   const h = host({ '/data/osm.geojson': text });
   assert.deepEqual(await fetchPackJson('/data/osm.geojson', { gz: true, fetch: h.fetch }), doc);
   assert.deepEqual(h.asked, ['/data/osm.geojson.gz', '/data/osm.geojson']);
@@ -75,7 +75,7 @@ const disk = async (url) => {
 };
 
 test('committed sample packs store osm.geojson / depressions.json only as .gz, and they load', async () => {
-  for (const code of ['560034', '560071']) {
+  for (const code of ['560098', '560034', '560071']) {
     const dir = new URL(`data/pins/${code}/`, pub);
     if (!existsSync(new URL('pack.json', dir))) continue;
     const pack = JSON.parse(readFileSync(new URL('pack.json', dir), 'utf8'));
@@ -92,9 +92,3 @@ test('committed sample packs store osm.geojson / depressions.json only as .gz, a
   }
 });
 
-test('the 560098 reference pack (format 1) stays plain and loads through the fallback', async () => {
-  if (!existsSync(new URL('data/meta.json', pub))) return;
-  for (const name of GZ_FILES) assert.ok(!existsSync(new URL(`data/${name}.gz`, pub)), `public/data/${name}.gz`);
-  const osm = await fetchPackJson('/data/osm.geojson', { gz: true, fetch: disk });
-  assert.ok(osm.features.length > 1000);
-});
