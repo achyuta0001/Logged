@@ -8,21 +8,21 @@ Shared types: `src/types.ts` (source of truth). Stack: Vite + vanilla TS + mapli
 | data   | `scripts/**`, `public/data/**` |
 | sim    | `src/sim/**`, `src/weather.ts`, `src/impact.ts`, `src/terrain.ts` |
 | ui     | `index.html`, `src/main.ts`, `src/map/**`, `src/ui/**`, `src/style.css` |
-| research | `public/data/hotspots.json` |
+| research | `public/data/hotspots-city.json` |
 | water-fx | `src/map/waterFx.ts`, `src/map/rainFx.ts`, `src/map/fxDemo.ts`, `fx-demo.html` |
 | story  | `src/ui/story.ts`, `src/ui/tour.ts`, `src/ui/story.css`, `src/ui/storyDemo.ts`, `story-demo.html` |
 
-## Data artefacts (written by `node scripts/build-data.mjs`)
-- `public/data/meta.json` — `TerrainMeta`
-- `public/data/grids.bin` — concatenated little-endian layers, offsets/lengths (in elements) in `meta.layers`; offsets in BYTES are `offset` field (byte offset, 4-byte aligned)
-- `public/data/osm.geojson` — FeatureCollection, properties `OsmProps`
-- `public/data/depressions.json` — `Depression[]` sorted by volume desc
-- `public/data/hotspots.json` — `Hotspot[]`
+## Data artefacts (written by `node scripts/build-data.mjs` into `public/data/pins/<code>/`; 560098 is `public/data/pins/560098/`)
+- `meta.json` — `TerrainMeta`
+- `grids.bin` — concatenated little-endian layers, offsets/lengths (in elements) in `meta.layers`; offsets in BYTES are `offset` field (byte offset, 4-byte aligned)
+- `osm.geojson` — FeatureCollection, properties `OsmProps` (stored as `osm.geojson.gz`)
+- `depressions.json` — `Depression[]` sorted by volume desc (stored as `depressions.json.gz`)
+- `hotspots.json` — `Hotspot[]`: the reports of `public/data/hotspots-city.json` inside the pack's grid
 
 ## Module APIs (sim agent)
 ```ts
 // src/terrain.ts
-export async function loadTerrain(base = '/data'): Promise<Terrain>
+export async function loadTerrain(base = '/data/pins/560098'): Promise<Terrain>
 export function cellToLngLat(meta, cell): [number, number]
 export function lngLatToCell(meta, lng, lat): number   // -1 if outside
 
@@ -59,7 +59,7 @@ Open source project. Every source must be free, keyless, openly licensed, attrib
 |---|---|
 | layout | `index.html`, `src/style.css`, `src/main.ts`, `src/ui/**` except `src/ui/place.*`, `src/map/features.ts`, `src/map/analysisLayers.ts`, `src/map/mapView.ts`, `src/map/colors.ts` |
 | place  | `src/place/**`, `src/ui/place.ts`, `src/ui/place.css`, `src/map/routeLayer.ts`, `place-demo.html` |
-| model  | `scripts/**`, `public/data/**` (except `hotspots.json`), `src/sim/**` |
+| model  | `scripts/**`, `public/data/**` (except `hotspots-city.json`), `src/sim/**` |
 | integrator | `package.json`, `README.md`, `CONTRACT.md`, wiring `mountPlace` into `main.ts` after layout is done |
 
 Integration hooks: layout provides an empty `<div id="place-mount">` inside a collapsible "Your place" sidebar section (hidden while empty).
@@ -77,10 +77,12 @@ A pack is one pincode's data, in one folder:
 | `grids.bin` | grid layers, see below |
 | `osm.geojson` | `OsmProps` features (format 2: stored only as `osm.geojson.gz`) |
 | `depressions.json` | `Depression[]` (format 2: stored only as `depressions.json.gz`) |
-| `hotspots.json` | optional, `Hotspot[]` with source URLs |
+| `hotspots.json` | optional, `Hotspot[]` with source URLs: the `public/data/hotspots-city.json` spots inside the grid bbox |
 | `pack.json` | written by the build: `{ code, format, cellSizeM, bytes, gzipBytes, built, files, sources }` |
 
-Locations: the 560098 reference pack stays in `public/data/` (format 1, `pack.path: "."`). Every other pack is in `<packs root>/<code>/`. The packs root defaults to `public/data/pins`, and `?packs=<url>` or `VITE_PACKS_URL` can point it at a hosted copy.
+Locations: every pack is in `<packs root>/<code>/`. The packs root defaults to `public/data/pins`, and `?packs=<url>` or `VITE_PACKS_URL` can point it at a hosted copy. The 560098 reference pack is a format-2 pack bundled at `public/data/pins/560098/`; an index entry with `pack.path: "."` (older indexes) means that bundled pack.
+
+Flood reports: `public/data/hotspots-city.json` holds every sourced report in the district (`Hotspot` plus an `osm` id of the named OSM object the spot is pinned to). A pack shows the ones inside its grid bbox, then any of its own `hotspots.json` entries not already listed (same name or within 25 m counts once). One rule for the build, `calibrate.mjs` and the app: `hotspotsInBBox` / `mergeHotspots` in `src/region/packs.ts`.
 
 `public/data/pins/index.json` is a `PinIndex` (`src/types.ts`) listing every pincode in the district, with `pack` set when a pack exists. `public/data/city/city.geojson` holds the district outline (`kind: "district"`) and simplified pincode polygons (`kind: "pin"`, with `code`, `name` and `s` = susceptibility).
 
@@ -99,7 +101,7 @@ Grid layers are quantised and decoded on load into the same typed arrays as form
 
 `osm.geojson` (format 2) rounds coordinates to 1e-5° (≈1 m) and leaves out `cell` and `cells`. `src/pack/osm.ts` rebuilds them on load with the same sampling the build uses.
 
-Format-2 packs store `osm.geojson` and `depressions.json` gzipped (level 9) as `<name>.gz`, with no plain copy (`scripts/lib/pack-files.mjs`), because GitHub Pages serves files as they are and the site must stay under 1 GB. `src/pack/fetch.ts` asks for the `.gz` first, inflates it with the browser's `DecompressionStream` (or reads it as JSON when the host already inflated it), and falls back to the plain file: the 560098 reference pack, packs built before this layout and the dev server keep working. `pack.json` `files` lists the stored names; `bytes` and `gzipBytes` stay the uncompressed and gzipped totals.
+Format-2 packs store `osm.geojson` and `depressions.json` gzipped (level 9) as `<name>.gz`, with no plain copy (`scripts/lib/pack-files.mjs`), because GitHub Pages serves files as they are and the site must stay under 1 GB. `src/pack/fetch.ts` asks for the `.gz` first, inflates it with the browser's `DecompressionStream` (or reads it as JSON when the host already inflated it), and falls back to the plain file: packs built before this layout and the dev server keep working. `pack.json` `files` lists the stored names; `bytes` and `gzipBytes` stay the uncompressed and gzipped totals.
 
 ### Region modules
 | Module | Role |
