@@ -113,12 +113,23 @@ export function rangeText(r: Range, fmt: (v: number) => string): string {
   return a === b ? a : `${a}–${b}`;
 }
 
-/** A flooded-area range in one unit picked from its upper end: km² (>= 0.01 km²), ha (>= 0.1 ha), else m². */
+/** The unit flooded areas up to `top` km² read in: km² (>= 0.01 km²), ha (>= 0.1 ha), else m². */
+function areaUnit(top: number): [(km2: number) => string, string] {
+  if (top >= 0.01) return [(v) => v.toFixed(2), 'km²'];
+  if (top >= 0.001) return [(v) => (v * 100).toFixed(1), 'ha'];
+  return [(v) => Math.round(v * 1e6).toLocaleString('en-IN'), 'm²'];
+}
+
+/** A flooded-area range in one unit picked from its upper end. */
 export function areaRangeText(km2: Range): string {
-  const top = km2.max;
-  if (top >= 0.01) return `${rangeText(km2, (v) => v.toFixed(2))} km²`;
-  if (top >= 0.001) return `${rangeText(km2, (v) => (v * 100).toFixed(1))} ha`;
-  return `${rangeText(km2, (v) => Math.round(v * 1e6).toLocaleString('en-IN'))} m²`;
+  const [f, unit] = areaUnit(km2.max);
+  return `${rangeText(km2, f)} ${unit}`;
+}
+
+/** One flooded area in the unit of a range that tops out at `top` km², so a list of models reads in one unit. */
+export function areaText(km2: number, top: number): string {
+  const [f, unit] = areaUnit(top);
+  return `${rangeText({ min: km2, max: km2 }, f)} ${unit}`;
 }
 
 /** The status line under the header's answer; empty when every model stays dry. */
