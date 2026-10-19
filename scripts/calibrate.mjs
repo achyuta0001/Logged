@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Calibration harness for the flood model (no site-specific tuning happens here — it only measures).
 //
-// Runs FloodEngine inline on public/data for the reference scenarios and prints, per scenario:
+// Runs FloodEngine inline on a pack (public/data/pins/<code>) for the reference scenarios and prints, per scenario:
 //   - max modelled depth within 150 m (and 60 m) of every reported hotspot (running max over the run)
 //   - flooded area (> 0.1 m, inside the pincode boundary) at the peak hour
 //   - hours after the rain stops until the flooded area is back below 25 % of its peak
@@ -13,7 +13,9 @@
 //   node scripts/calibrate.mjs --data <dir> --sim <dir>          other data / engine (e.g. a git worktree)
 //   node scripts/calibrate.mjs --perf                            also time a 216-hour forecast-like run
 //   node scripts/calibrate.mjs --scenario cloudburst             add/override scenarios (comma list)
-//   node scripts/calibrate.mjs --pin 560034                      another pincode's pack (public/data/pins/<code>)
+//   node scripts/calibrate.mjs --pin 560034                      another pincode's pack (public/data/pins/<code>; default 560098)
+//   node scripts/calibrate.mjs --hotspots <file>                 compare against these spots only (default: the pack's
+//                                                                hotspots.json + public/data/hotspots-city.json inside the grid)
 //   node scripts/calibrate.mjs --pin 560034 --impact             also buildings wet / roads closed at the peak
 //   node scripts/calibrate.mjs --pin 560034 --no-inflow          ignore the pack's upstream inflow points (M4)
 //   node scripts/calibrate.mjs --pin 560034 --event all          also the real storms (HISTORICAL_EVENTS in src/weather.ts,
@@ -37,11 +39,14 @@ const opt = (name, def) => {
 };
 const flag = (name) => args.includes(`--${name}`);
 
-const PIN = opt('pin', '');
-const PACK_DIR = PIN && PIN !== '560098' ? `public/data/pins/${PIN}` : 'public/data';
+const PIN = opt('pin', '560098');
+const PACK_DIR = `public/data/pins/${PIN}`;
 const DATA = path.resolve(ROOT, opt('data', PACK_DIR));
 const SIM = path.resolve(ROOT, opt('sim', 'src/sim'));
-const HOTSPOTS = path.resolve(ROOT, opt('hotspots', path.join(path.relative(ROOT, DATA), 'hotspots.json')));
+// reported flood spots: --hotspots <file> as given, else the pack's hotspots.json merged with the
+// district-wide public/data/hotspots-city.json spots inside the grid (the app's rule, src/region/packs.ts)
+const HOTSPOTS_ARG = opt('hotspots', '');
+const CITY_HOTSPOTS = path.resolve(ROOT, opt('city-hotspots', 'public/data/hotspots-city.json'));
 const SCEN_IDS = opt('scenario', 'rrnagar-2024-10-20,typical-evening').split(',');
 const RADII = [150, 300];
 
@@ -61,7 +66,11 @@ const terrain = loadTerrain(DATA);
 const INFLOW_PTS = terrain.meta.inflow?.length ?? 0;
 if (flag('no-inflow')) delete terrain.meta.inflow;
 // packs without sourced reports have no hotspots.json: the hotspot table is then empty
-const hotspots = fs.existsSync(HOTSPOTS) ? JSON.parse(fs.readFileSync(HOTSPOTS, 'utf8')) : [];
+const readJson = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : []);
+const { mergeHotspots } = await import(pathToFileURL(path.join(ROOT, 'src/region/packs.ts')).href);
+const hotspots = HOTSPOTS_ARG
+  ? readJson(path.resolve(ROOT, HOTSPOTS_ARG))
+  : mergeHotspots(readJson(path.join(DATA, 'hotspots.json')), readJson(CITY_HOTSPOTS), terrain.meta.bbox);
 const IMPACT = flag('impact');
 let osm = null;
 let computeImpact = null;
