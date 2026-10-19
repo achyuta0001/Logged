@@ -1,7 +1,7 @@
 // Impact section: four headline numbers, the top daily-life cards (expandable),
 // and the deepest roads / lowest spots lists (collapsed by default).
 import type { Depression, ImpactReport, Severity } from '../types';
-import { areaRangeText, rangeText, type EnsembleSummary, type Range } from '../ensemble';
+import { areaRangeText, areaText, rangeText, type EnsembleSummary, type Range } from '../ensemble';
 import { SEVERITY_COLOR, SEVERITY_LABEL } from '../map/colors';
 import { FACILITY_LABEL } from '../map/features';
 import { esc, fmtArea, fmtDay, fmtDepth, fmtHour, fmtNum } from './format';
@@ -209,7 +209,7 @@ export class ImpactView {
       ? s!.members
           .map(
             (m) => `<li class="ens-row" style="--c:${SEVERITY_COLOR[m.severity]}">
-          <span class="ens-name">${esc(m.name)}</span><span class="ens-v">${fmtArea(m.floodedKm2 * 1e6)}</span>
+          <span class="ens-name">${esc(m.name)}</span><span class="ens-v">${areaText(m.floodedKm2, s!.floodedKm2.max)}</span>
           <span class="ens-meta">${fmtNum(m.rainMm, m.rainMm < 10 ? 1 : 0)} mm in 48 h</span><span class="ens-sev" data-sev="${m.severity}"><i aria-hidden="true"></i>${SEVERITY_LABEL[m.severity]}</span></li>`,
           )
           .join('')
