@@ -2,7 +2,7 @@
 // Run: node --test src/__tests__/ensemble.test.ts   (no deps, no network, no worker)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { aggregateEnsemble, areaRangeText, ensembleStatusText, outlookPeak, rangeText } from '../ensemble.ts';
+import { aggregateEnsemble, areaRangeText, areaText, ensembleStatusText, outlookPeak, rangeText } from '../ensemble.ts';
 import { fakeForecastVariants, variantsFromHourly } from '../weather.ts';
 
 /** a model's result; only what a test cares about needs giving */
@@ -70,6 +70,10 @@ test('range text: en dash between ends, one value when both read the same, zero 
   assert.equal(areaRangeText({ min: 0, max: 0.012 }), '0–0.01 km²');
   assert.equal(areaRangeText({ min: 0.0002, max: 0.004 }), '0–0.4 ha');
   assert.equal(areaRangeText({ min: 0, max: 0.0006 }), '0–600 m²');
+  // a model's own area reads in the unit of the range it belongs to
+  assert.equal(areaText(0.026, 0.77), '0.03 km²');
+  assert.equal(areaText(0, 0.77), '0 km²');
+  assert.equal(areaText(0.0021, 0.004), '0.2 ha');
 });
 
 test('status text: the flooded-area range and the model count; nothing when every model is dry', () => {
