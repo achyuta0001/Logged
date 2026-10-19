@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Data pipeline: builds one pincode's data pack.
-// Produces <out>/{meta.json,grids.bin,osm.geojson,depressions.json,pack.json}; format-2 packs store
-// osm.geojson and depressions.json gzipped as <name>.gz only (scripts/lib/pack-files.mjs):
-//   560098 (the reference pack)  -> public/data/
-//   any other pincode            -> public/data/pins/<code>/   (git-ignored except committed samples)
+// Produces <out>/{meta.json,grids.bin,osm.geojson,depressions.json,hotspots.json,pack.json} in
+// public/data/pins/<code>/ (git-ignored except the committed samples, 560098 among them). Every pack is
+// format 2: osm.geojson and depressions.json are stored gzipped as <name>.gz only (scripts/lib/pack-files.mjs).
+// hotspots.json holds the sourced flood reports of public/data/hotspots-city.json inside the pack's grid.
 // Raw downloads are cached in .cache/ so re-runs are fast and offline-safe.
 //
 //   npm run data -- --pin 560034   (pincode from public/data/pins/index.json; default 560098)
@@ -11,6 +11,8 @@
 //   REFRESH=1 npm run data          (ignore cached OSM)
 //   npm run data -- --pin 560034 --inflow-only   (only recompute an existing pack's upstream inflow:
 //                                                 meta.inflow / upstreamOutsideKm2, grids untouched)
+//   npm run data -- --pin 560034 --hotspots-only (only refresh an existing pack's hotspots.json from
+//                                                 public/data/hotspots-city.json)
 // OSM comes from the local Bengaluru extract (.cache/osm/blr-region.osm.pbf, scripts/osm-extract.sh)
 // when it and osmium-tool exist, otherwise from Overpass (one query per pack, cached).
 // Upstream inflow (M4) needs the district routing from `npm run data:city` (.cache/city/flow60.*);
@@ -25,6 +27,7 @@ import * as turf from '@turf/turf';
 import { regionAvailable, regionOverpassJson } from './lib/osm-local.mjs';
 import { gridOf, meanInside, packInflow, readFlowGrids } from './lib/catchment.mjs';
 import { encodeLayer, v2Specs } from '../src/pack/codec.ts';
+import { hotspotsInBBox } from '../src/region/packs.ts';
 import { packSizes, storedFiles, writePackFile } from './lib/pack-files.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -40,9 +43,11 @@ const PIN = pinEntry(arg('pin', LEGACY.code));
 const PINCODE = PIN.code;
 const RELATION_ID = PIN.relation;
 const APPROX_BBOX = PIN.bbox; // W S E N of the boundary (the grid uses the boundary itself once loaded)
-// pack format: 2 (quantised grids, compact OSM; src/pack/codec.ts) except the 560098 reference pack
-const FORMAT = Number(arg('format', 0)) || (PIN.code === LEGACY.code ? 1 : 2);
-const OUT = arg('out', PINCODE === LEGACY.code ? path.join(ROOT, 'public', 'data') : path.join(ROOT, 'public', 'data', 'pins', PINCODE));
+// pack format 2 (quantised grids, compact OSM; src/pack/codec.ts); --format 1 still writes the old f32 layout
+const FORMAT = Number(arg('format', 0)) || 2;
+const OUT = arg('out', path.join(ROOT, 'public', 'data', 'pins', PINCODE));
+// sourced flood reports across the district (Hotspot[], plus an optional `osm` provenance id per spot)
+const CITY_HOTSPOTS = path.join(ROOT, 'public', 'data', 'hotspots-city.json');
 const PIN_CACHE = path.join(CACHE, 'pins', PINCODE);
 fs.mkdirSync(OUT, { recursive: true });
 fs.mkdirSync(PIN_CACHE, { recursive: true });
@@ -687,22 +692,48 @@ async function annotateInflow() {
   meta.inflow = up.inflow;
   meta.inflowEdge = up.inflowEdge;
   fs.writeFileSync(metaFile, JSON.stringify(meta));
-  // pack.json carries sizes and sources (the 560098 reference pack predates it and has none)
-  const pj = path.join(OUT, 'pack.json');
-  if (fs.existsSync(pj)) {
-    const pack = JSON.parse(fs.readFileSync(pj, 'utf8'));
-    const files = storedFiles(OUT);
-    const { bytes, gzipBytes } = packSizes(OUT, files);
-    Object.assign(pack, { bytes, gzipBytes, files, sources: meta.sources });
-    fs.writeFileSync(pj, JSON.stringify(pack, null, 1));
-    log(`pack.json: ${(pack.gzipBytes / 1e6).toFixed(2)} MB gzipped`);
-  }
+  refreshPackJson({ sources: meta.sources });
   log(`meta.json: ${up.inflow.length} inflow points written`);
+}
+
+/** pack.json carries sizes, stored files and sources; refresh it after a partial rebuild (packs built before pack.json have none) */
+function refreshPackJson(extra = {}) {
+  const pj = path.join(OUT, 'pack.json');
+  if (!fs.existsSync(pj)) return;
+  const pack = JSON.parse(fs.readFileSync(pj, 'utf8'));
+  const files = storedFiles(OUT);
+  const { bytes, gzipBytes } = packSizes(OUT, files);
+  Object.assign(pack, { bytes, gzipBytes, files, ...extra });
+  fs.writeFileSync(pj, JSON.stringify(pack, null, 1));
+  log(`pack.json: ${(pack.gzipBytes / 1e6).toFixed(2)} MB gzipped`);
+}
+
+/**
+ * The pack's hotspots.json: the sourced reports of public/data/hotspots-city.json inside the grid bbox
+ * (same rule as the app and calibrate.mjs, src/region/packs.ts), without the build-only `osm` field.
+ * No reports: no file. Returns how many were written.
+ */
+function writeHotspots(gridBBox) {
+  const all = fs.existsSync(CITY_HOTSPOTS) ? JSON.parse(fs.readFileSync(CITY_HOTSPOTS, 'utf8')) : [];
+  const here = hotspotsInBBox(all, gridBBox);
+  const hf = path.join(OUT, 'hotspots.json');
+  if (here.length) fs.writeFileSync(hf, JSON.stringify(here, null, 1));
+  else fs.rmSync(hf, { force: true });
+  log(`sourced flood reports in this pack: ${here.length}${here.length ? ` (${here.map((h) => h.name).join('; ')})` : ''}`);
+  return here.length;
+}
+
+/** --hotspots-only: refresh an existing pack's hotspots.json from the city-wide file (nothing else changes) */
+function annotateHotspots() {
+  const meta = JSON.parse(fs.readFileSync(path.join(OUT, 'meta.json'), 'utf8'));
+  writeHotspots(meta.bbox);
+  refreshPackJson();
 }
 
 // ---------------------------------------------------------------- main
 async function main() {
   if (process.argv.includes('--inflow-only')) return annotateInflow();
+  if (process.argv.includes('--hotspots-only')) return annotateHotspots();
   const t0 = Date.now();
   const fc = await loadOsm();
 
@@ -1076,16 +1107,8 @@ async function main() {
   const GZ = FORMAT === 2;
   writePackFile(OUT, 'osm.geojson', JSON.stringify({ type: 'FeatureCollection', ...(FORMAT === 2 ? { format: 2 } : {}), features: osmOut }), GZ);
   writePackFile(OUT, 'depressions.json', JSON.stringify(depressions), GZ);
-  // sourced flood reports inside this pack's grid (560098 keeps its own hand-sourced hotspots.json)
-  if (PINCODE !== LEGACY.code) {
-    const src = path.join(ROOT, 'scripts', 'data', 'hotspots-blr.json');
-    const all = fs.existsSync(src) ? JSON.parse(fs.readFileSync(src, 'utf8')).hotspots : [];
-    const here = all.filter((h) => G.cellOf(h.coord[0], h.coord[1]) >= 0).map(({ osm, ...h }) => h);
-    const hf = path.join(OUT, 'hotspots.json');
-    if (here.length) fs.writeFileSync(hf, JSON.stringify(here, null, 1));
-    else fs.rmSync(hf, { force: true });
-    log(`sourced flood reports in this pack: ${here.length}`);
-  }
+  // sourced flood reports inside this pack's grid
+  writeHotspots(meta.bbox);
   // pack.json: what the pincode index records about this pack (sizes uncompressed and gzipped, date, sources)
   const files = storedFiles(OUT);
   const { bytes, gzipBytes, stored } = packSizes(OUT, files);
