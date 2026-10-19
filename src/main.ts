@@ -280,6 +280,7 @@ export async function openPin(shell: Shell, pin: PinEntry, base: string): Promis
     engine,
     getHour: () => app.hour,
     getTimes: () => app.series?.times ?? [],
+    getRain: () => app.series?.mm ?? [],
     depressions: ds.depressions,
     hotspots: ds.hotspots,
     onFocus: (coord) => flyTo(coord, 16.4),
