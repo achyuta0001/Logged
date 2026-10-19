@@ -1,4 +1,6 @@
+// @ts-nocheck -- node:test types are not part of the browser tsconfig
 // Commute check and news-spot pipeline logic: pure functions, no network.
+// Run: node --test src/commute/__tests__/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { acceptHit, dedupeSpots, eventCount, extractMentions, isSpecific, kindOf, nameSimilar, normName, summarize, type GeoMention, type NewsSpot } from '../spots.ts';
