@@ -13,8 +13,12 @@
 //   npx playwright-core install chromium-headless-shell  once, for the browser (CI adds --with-deps)
 //
 // Asserts on the DOM and the console, not on pixels: headless WebGL is SwiftShader on Linux (the
-// flags below) and may render black elsewhere. Third-party failures (basemap, terrain tiles, rain
-// forecast, fonts) are listed but do not fail the run; the app falls back when they are down.
+// flags below) and may render black elsewhere. SwiftShader draws on the CPU, so each view runs with
+// reduced motion (the app then skips its intro flight and draws water and rain as still frames
+// instead of animating them every frame) in a 1024 x 640 window (the same layout band as a laptop).
+// Service workers are blocked: each view starts from a fresh context and tests the app, not the
+// worker. Third-party failures (basemap, terrain tiles, rain forecast, fonts) are listed but do not
+// fail the run; the app falls back when they are down.
 // Known and harmless: the 560098 reference pack has no .gz files, so its .gz probes 404 on a static
 // host (src/pack/fetch.ts falls back to the plain file).
 import fs from 'node:fs';
@@ -69,27 +73,32 @@ log(`${base} (WebGL: ${GL}), screenshots in ${path.relative(ROOT, OUT) || '.'}`)
 
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || undefined, args: GL_ARGS });
 const results = [];
+const line = (r) =>
+  `${r.errors.length ? 'FAIL' : 'ok  '} ${r.name.padEnd(6)} ${r.readyS != null ? `ready in ${r.readyS.toFixed(1)} s` : 'not ready'}${r.sim ? `, ${r.sim}` : ''}${r.external.length ? `, ${r.external.length} third-party failures ignored` : ''}${r.known ? `, ${r.known} known .gz probe 404s` : ''}`;
 try {
-  for (const v of VIEWS) results.push(await check(v));
+  for (const v of VIEWS) {
+    const r = await check(v);
+    results.push(r);
+    log(line(r));
+    for (const e of r.errors) log(`       ${e}`);
+  }
 } finally {
   await browser.close();
   await server?.close();
 }
 
-let failed = 0;
-for (const r of results) {
-  if (r.errors.length) failed++;
-  log(`${r.errors.length ? 'FAIL' : 'ok  '} ${r.name.padEnd(6)} ${r.readyS != null ? `ready in ${r.readyS.toFixed(1)} s` : 'not ready'}${r.sim ? `, ${r.sim}` : ''}${r.external.length ? `, ${r.external.length} third-party failures ignored` : ''}${r.known ? `, ${r.known} known .gz probe 404s` : ''}`);
-  for (const e of r.errors) log(`       ${e}`);
-}
-log(failed ? `${failed} of ${results.length} views failed` : `all ${results.length} views ok`);
-process.exit(failed ? 1 : 0);
+const failed = results.filter((r) => r.errors.length);
+log('summary');
+for (const r of results) log(`  ${line(r)}`);
+log(failed.length ? `${failed.length} of ${results.length} views failed` : `all ${results.length} views ok`);
+process.exit(failed.length ? 1 : 0);
 
 /** Open one view in a fresh browser context and collect what went wrong. */
 async function check(v) {
   const r = { name: v.name, errors: [], external: [], known: 0, warnings: 0, readyS: null, sim: '' };
-  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
+  const ctx = await browser.newContext({ viewport: { width: 1024, height: 640 }, deviceScaleFactor: 1, reducedMotion: 'reduce', serviceWorkers: 'block' });
   const page = await ctx.newPage();
+  log(`${v.name}: opening ${new URL(v.query, base).href}`);
   page.on('pageerror', (e) => r.errors.push(`page error: ${e.message}`));
   page.on('console', (m) => {
     const text = m.text();
@@ -150,7 +159,7 @@ async function check(v) {
     const msg = await page.locator('#loader .ld-msg').textContent({ timeout: 1000 }).catch(() => null);
     if (msg) r.errors.push(`loader says: ${msg}`);
   }
-  await page.screenshot({ path: path.join(OUT, `${v.name}.png`) }).catch((e) => log(`${v.name}: no screenshot (${e.message})`));
+  await page.screenshot({ path: path.join(OUT, `${v.name}.png`), timeout: 60000 }).catch((e) => log(`${v.name}: no screenshot (${e.message.split('\n')[0]})`));
   if (r.renderer) log(`${v.name}: WebGL ${r.renderer}`);
   for (const x of r.external.slice(0, 5)) log(`${v.name}: third party (ignored): ${x}`);
   await ctx.close();
