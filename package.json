@@ -14,6 +14,7 @@
     "preview:data": "node scripts/preview.mjs",
     "test": "node --test 'src/**/__tests__/*.test.ts'",
     "a11y": "node scripts/a11y.mjs",
+    "smoke": "node scripts/smoke.mjs",
     "calibrate": "node scripts/calibrate.mjs"
   },
   "devDependencies": {
