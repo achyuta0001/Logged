@@ -1,7 +1,7 @@
 // Shared contract between data pipeline, simulation, impact, and UI.
 // Do not change shapes without updating CONTRACT.md.
 
-/** public/data/meta.json */
+/** a pack's meta.json (public/data/pins/<code>/) */
 export interface TerrainMeta {
   pincode: string; // "560098"
   name: string; // "Rajarajeshwari Nagar"
@@ -12,7 +12,7 @@ export interface TerrainMeta {
   cellSizeM: number; // approx metres per cell
   /** GeoJSON Polygon/MultiPolygon geometry of the pincode boundary */
   boundary: GeoJSON.Geometry;
-  /** layers inside public/data/grids.bin, all row-major, row 0 = north */
+  /** layers inside the pack's grids.bin, all row-major, row 0 = north */
   layers: Record<GridLayerName, LayerInfo>;
   /** pack format (absent = 1); 2 = quantised grids + compact OSM, see src/pack/codec.ts */
   format?: PackFormat;
@@ -90,7 +90,7 @@ export interface Terrain {
   grids: Record<GridLayerName, Float32Array | Uint8Array>;
 }
 
-/** public/data/osm.geojson features carry these properties */
+/** a pack's osm.geojson features carry these properties */
 export type OsmKind =
   | 'building'
   | 'road'
@@ -124,7 +124,7 @@ export interface OsmProps {
   lengthM?: number;
 }
 
-/** public/data/depressions.json */
+/** a pack's depressions.json */
 export interface Depression {
   id: number;
   /** [lon, lat] */
@@ -140,7 +140,7 @@ export interface Depression {
   label?: string;
 }
 
-/** public/data/hotspots.json — historically reported flood locations (news/BBMP) */
+/** a pack's hotspots.json and public/data/hotspots-city.json — historically reported flood locations (news/BBMP) */
 export interface Hotspot {
   name: string;
   /** [lon, lat] */
@@ -221,7 +221,7 @@ export interface PinEntry {
 }
 
 export interface PackInfo {
-  /** pack folder, relative to the packs root (e.g. "560098"); "." = the legacy pack in public/data */
+  /** pack folder, relative to the packs root (e.g. "560098"); "." (older indexes) = the bundled 560098 pack in public/data/pins/560098 */
   path: string;
   format: PackFormat;
   /** total bytes of the pack files (uncompressed) and gzipped */
