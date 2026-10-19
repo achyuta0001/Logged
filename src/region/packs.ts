@@ -4,14 +4,18 @@
 //   <packs root>/index.json          PinIndex: every pincode in the district, with its pack if built
 //   <packs root>/<code>/meta.json    TerrainMeta (+ format)        grids.bin
 //                      /osm.geojson  depressions.json  hotspots.json (optional)
-// The 560098 reference pack stays in public/data (pack.path "."), so old links keep working.
-import type { PinEntry, PinIndex, TerrainMeta } from '../types.ts';
+//   data/hotspots-city.json          sourced flood reports across the district (ships with the app)
+// The 560098 reference pack ships with the app in data/pins/560098; pack.path "." (indexes written
+// before it moved out of public/data) resolves there too, whatever the packs root.
+import type { Hotspot, PinEntry, PinIndex, TerrainMeta } from '../types.ts';
 import { layerBytes } from '../pack/codec.ts';
 
 export const LEGACY_PIN = '560098';
 
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
 const BASE = (env?.BASE_URL ?? '/').replace(/\/?$/, '/');
+/** packs bundled with the app (public/data/pins), whatever `?packs=` says */
+export const BUNDLED_PACKS = `${BASE}data/pins`;
 
 /**
  * Where packs live. Defaults to the bundled public/data/pins; `?packs=<url>` or VITE_PACKS_URL point it
@@ -19,14 +23,14 @@ const BASE = (env?.BASE_URL ?? '/').replace(/\/?$/, '/');
  */
 export function packsRoot(search: string = typeof location !== 'undefined' ? location.search : ''): string {
   const q = new URLSearchParams(search).get('packs');
-  const root = q && /^(https?:)?\/\/|^\//.test(q) ? q : env?.VITE_PACKS_URL || `${BASE}data/pins`;
+  const root = q && /^(https?:)?\/\/|^\//.test(q) ? q : env?.VITE_PACKS_URL || BUNDLED_PACKS;
   return root.replace(/\/$/, '');
 }
 
-/** Base URL of one pincode's pack (what loadDataset() takes). */
+/** Base URL of one pincode's pack (what loadDataset() takes). Path "." is the bundled reference pack. */
 export function packBase(root: string, pin: PinEntry): string {
   if (!pin.pack) throw new Error(`No data pack for ${pin.code}`);
-  return pin.pack.path === '.' ? `${BASE}data` : `${root}/${pin.pack.path}`;
+  return pin.pack.path === '.' ? `${BUNDLED_PACKS}/${LEGACY_PIN}` : `${root}/${pin.pack.path}`;
 }
 
 /** Minimal index used when index.json is missing: just the reference pack. */
@@ -46,7 +50,7 @@ export function fallbackIndex(meta?: Pick<TerrainMeta, 'bbox' | 'boundary' | 'na
         centroid: [(bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2],
         areaKm2: 11,
         districtShare: 1,
-        pack: { path: '.', format: 1, bytes: 0, gzipBytes: 0, built: '', sources: [] },
+        pack: { path: '.', format: 2, bytes: 0, gzipBytes: 0, built: '', sources: [] },
       },
     ],
   };
@@ -223,4 +227,61 @@ export function searchPins(index: PinIndex, q: string, limit = 8): PinEntry[] {
   }
   scored.sort((a, b) => a.s - b.s || Number(!!b.p.pack) - Number(!!a.p.pack) || a.p.code.localeCompare(b.p.code));
   return scored.slice(0, limit).map((x) => x.p);
+}
+
+// ---------------------------------------------------------------- sourced flood reports (hotspots)
+
+/** public/data/hotspots-city.json entry: a Hotspot, plus the OSM object its coordinate came from when known */
+export type CityHotspot = Hotspot & { osm?: string };
+
+/** URL of the district-wide sourced flood reports (ships with the app, like the reference pack) */
+export const CITY_HOTSPOTS_URL = `${BASE}data/hotspots-city.json`;
+
+const isHotspot = (h: unknown): h is Hotspot => {
+  const x = h as Hotspot;
+  return !!x && typeof x.name === 'string' && Array.isArray(x.coord) && x.coord.length === 2 && x.coord.every(isNum) && Array.isArray(x.events);
+};
+
+/** [lon, lat] inside bbox [west, south, east, north], edges included */
+export const inBBox = ([lon, lat]: readonly number[], [w, s, e, n]: readonly number[]): boolean => lon >= w && lon <= e && lat >= s && lat <= n;
+
+/**
+ * The reports inside a pack's bbox: its grid (meta.bbox), i.e. the pincode's bbox plus the margin the
+ * model covers. One rule for the build (pack hotspots.json), calibrate.mjs and the app. Returns plain
+ * Hotspots (build-only fields such as `osm` dropped), in file order.
+ */
+export function hotspotsInBBox(spots: readonly unknown[], bbox: readonly number[]): Hotspot[] {
+  return spots.filter(isHotspot).filter((h) => inBBox(h.coord, bbox)).map(({ name, coord, events }) => ({ name, coord, events }));
+}
+
+const metres = (a: readonly number[], b: readonly number[]) => {
+  const k = Math.cos((((a[1] + b[1]) / 2) * Math.PI) / 180);
+  return Math.hypot((a[0] - b[0]) * 111320 * k, (a[1] - b[1]) * 110574);
+};
+
+/**
+ * A pack's reports: the district-wide ones inside its bbox, then any of the pack's own hotspots.json
+ * that the city file does not have (same name, or within 25 m, counts as the same spot; the city file
+ * wins as it is the newer source). A pack built before a report was added still shows it.
+ */
+export function mergeHotspots(own: readonly Hotspot[], city: readonly unknown[], bbox: readonly number[]): Hotspot[] {
+  const here = hotspotsInBBox(city, bbox);
+  const key = (s: string) => norm(s);
+  const same = (a: Hotspot, b: Hotspot) => key(a.name) === key(b.name) || metres(a.coord, b.coord) < 25;
+  return [...here, ...own.filter((o) => isHotspot(o) && !here.some((c) => same(o, c)))];
+}
+
+/** Load the district-wide reports (empty when unavailable: the packs' own hotspots.json still work). */
+export async function loadCityHotspots(url: string = CITY_HOTSPOTS_URL, fetchFn: FetchFn = (u) => fetch(u)): Promise<Hotspot[]> {
+  try {
+    const r = await fetchFn(url);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if ((r.headers.get('content-type') ?? '').includes('text/html')) throw new Error('missing'); // dev-server SPA fallback
+    const all = (await r.json()) as unknown;
+    if (!Array.isArray(all)) throw new Error('not an array');
+    return all.filter(isHotspot);
+  } catch (e) {
+    console.warn('[packs] city-wide flood reports unavailable', e);
+    return [];
+  }
 }
