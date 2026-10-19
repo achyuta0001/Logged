@@ -1,0 +1,37 @@
+# Fast checks for every pull request and every push to a branch other than main: type check, unit
+# tests, a production build and a browser smoke test (scripts/smoke.mjs) of that build on the committed
+# packs (city overview, 560034, 560071, 560098). No pack builds: pages.yml does those when it deploys.
+name: CI
+on:
+  pull_request:
+  push:
+    branches-ignore: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npx vite build
+      # Playwright's headless Chromium shell and the system libraries it needs
+      - run: npx playwright-core install --with-deps --only-shell chromium
+      - run: npm run smoke -- --out "$RUNNER_TEMP/smoke"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-screenshots
+          path: ${{ runner.temp }}/smoke
+          if-no-files-found: ignore
+          retention-days: 14
