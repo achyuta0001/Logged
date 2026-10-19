@@ -33,6 +33,7 @@ export const LAYERS: LayerDef[] = [
   { id: 'streams', label: 'Natural flow paths', swatch: '#9be8ff', on: false, analysis: true },
   { id: 'hand', label: 'Land under 3 m above a stream', swatch: '#46ffc8', on: false, analysis: true },
   { id: 'drains', label: 'Storm drains and canals', swatch: '#38e0c8', on: false, analysis: true },
+  { id: 'news', label: 'Flood reports in the news', swatch: 'dot:#ffb340', on: false, analysis: true, hint: 'Bigger circle: more flood days reported. White ring: underpass' },
 ];
 
 const SHORT: Record<string, string> = {
