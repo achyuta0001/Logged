@@ -6,15 +6,19 @@ import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { decodeLayer, encodeLayer, v2Specs } from '../codec.ts';
 import { deriveOsmCells } from '../osm.ts';
-import { terrainFromBuffer } from '../../terrain.ts';
+import { gunzipSync } from 'node:zlib';
+import { lngLatToCell, terrainFromBuffer } from '../../terrain.ts';
 import { validateMeta } from '../../region/packs.ts';
 
-const root = new URL('../../../public/data/', import.meta.url);
-const meta1 = JSON.parse(readFileSync(new URL('meta.json', root), 'utf8'));
-const bin = readFileSync(new URL('grids.bin', root));
-const t1 = terrainFromBuffer(meta1, bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength));
+// the committed 560098 reference pack (format 2), decoded to the f32 / u8 grids the app works on
+const root = new URL('../../../public/data/pins/560098/', import.meta.url);
+const meta2 = JSON.parse(readFileSync(new URL('meta.json', root), 'utf8'));
+const bin2 = readFileSync(new URL('grids.bin', root));
+const t1 = terrainFromBuffer(meta2, bin2.buffer.slice(bin2.byteOffset, bin2.byteOffset + bin2.byteLength));
+/** the same grids in the format-1 layout (f32 / u8 as is): what a v1 grids.bin of this pack holds */
+const bin = Buffer.concat(Object.keys(meta2.layers).map((k) => Buffer.from(t1.grids[k].buffer, t1.grids[k].byteOffset, t1.grids[k].byteLength)));
 
-/** re-encode the 560098 reference grids as a v2 pack (what build-data writes) */
+/** encode the 560098 grids as a v2 pack (what build-data writes) */
 function toV2(t) {
   const W = t.meta.width;
   const specs = v2Specs(t.grids);
@@ -74,12 +78,14 @@ test('codec: log2 flow accumulation keeps ~0.04 % relative precision; u8 masks a
   assert.deepEqual(Array.from(decodeLayer(b.bytes.buffer, { offset: 0, ...b.info }, W)), Array.from(m));
 });
 
-test('v2 pack of the 560098 grids: valid, 3x+ smaller gzipped, every layer within its quantisation step', () => {
+test('v2 pack of the 560098 grids: valid, 2.5x+ smaller gzipped, every layer within its quantisation step', () => {
   const v2 = toV2(t1);
   assert.deepEqual(validateMeta(v2.meta, v2.buf.byteLength), []);
+  // the f32 baseline holds already-quantised values, which gzip better than the build's raw floats did
+  // (the original format-1 grids.bin gzipped 2.9x+ larger), so this ratio is a lower bound
   const gz1 = gzipSync(bin).length;
   const gz2 = gzipSync(new Uint8Array(v2.buf)).length;
-  assert.ok(gz2 < gz1 / 2.9, `gzipped ${gz2} vs ${gz1}`);
+  assert.ok(gz2 < gz1 / 2.5, `gzipped ${gz2} vs ${gz1}`);
   const t2 = terrainFromBuffer(v2.meta, v2.buf);
   const half = (k) => v2.meta.layers[k].scale / 2 + 1e-4; // + float32 rounding at ~900 m
   const tol = { elevation: half('elevation'), depressionDepth: half('depressionDepth'), filled: half('elevation') + half('depressionDepth'), hand: half('hand'), impervious: half('impervious') };
@@ -93,28 +99,24 @@ test('v2 pack of the 560098 grids: valid, 3x+ smaller gzipped, every layer withi
   for (let i = 0; i < t1.grids.flowAccum.length; i++) assert.ok(Math.abs(t2.grids.flowAccum[i] / t1.grids.flowAccum[i] - 1) < 4e-4);
 });
 
-test('derived OSM cells match the cells the build stored (560098)', () => {
-  const osm = JSON.parse(readFileSync(new URL('osm.geojson', root), 'utf8'));
-  const stripped = structuredClone(osm);
-  for (const f of stripped.features) {
-    delete f.properties.cell;
-    delete f.properties.cells;
-  }
-  deriveOsmCells(stripped, meta1);
-  let cellOk = 0, shared = 0, union = 0;
-  stripped.features.forEach((f, i) => {
-    const o = osm.features[i].properties;
-    if (f.properties.cell === o.cell) cellOk++;
-    if (o.cells) {
-      const a = new Set(o.cells);
-      const b = new Set(f.properties.cells);
-      for (const c of a) if (b.has(c)) shared++;
-      union += new Set([...a, ...b]).size;
+test('the 560098 pack stores OSM without cells, and they derive onto its grid (560098)', () => {
+  const osm = JSON.parse(gunzipSync(readFileSync(new URL('osm.geojson.gz', root))).toString('utf8'));
+  assert.equal(osm.format, 2);
+  assert.ok(osm.features.every((f) => f.properties.cell === undefined && f.properties.cells === undefined), 'v2 leaves cell / cells out');
+  deriveOsmCells(osm, meta2);
+  const n = meta2.width * meta2.height;
+  const inGrid = osm.features.filter((f) => Number.isInteger(f.properties.cell) && f.properties.cell >= 0 && f.properties.cell < n).length;
+  // the OSM query is padded beyond the grid, so a few features lie outside it (cell -1)
+  assert.ok(inGrid / osm.features.length > 0.95, `centroid cells on the grid ${inGrid}/${osm.features.length}`);
+  for (const f of osm.features) {
+    const p = f.properties;
+    if (f.geometry?.type === 'Point') assert.equal(p.cell, lngLatToCell(meta2, f.geometry.coordinates[0], f.geometry.coordinates[1]), p.id);
+    if (p.kind === 'road' || p.kind === 'drain') {
+      assert.ok(Array.isArray(p.cells), `${p.id}: cells`);
+      assert.equal(new Set(p.cells).size, p.cells.length, `${p.id}: unique cells`);
+      assert.ok(p.cells.every((c) => c >= 0 && c < n), `${p.id}: cells on the grid`);
     }
-  });
-  // the build's grid origin is unrounded and facility points are stored rounded to 1e-6 deg, so a
-  // rare centroid on a cell edge lands in the neighbouring cell
-  assert.ok(cellOk / osm.features.length > 0.995, `centroid cells ${cellOk}/${osm.features.length}`);
-  // line samples see the same rounding: compare as sets of cells
-  assert.ok(shared / union > 0.99, `line cells overlap ${(shared / union).toFixed(4)}`);
+  }
+  const roads = osm.features.filter((f) => f.properties.kind === 'road');
+  assert.ok(roads.length > 1000 && roads.filter((f) => f.properties.cells.length > 0).length / roads.length > 0.95, 'roads sample cells');
 });
