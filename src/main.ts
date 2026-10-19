@@ -6,6 +6,7 @@ import { cellToLngLat, lngLatToCell } from './terrain';
 import {
   ARCHIVE_ATTRIBUTION,
   ARCHIVE_ATTRIBUTION_URL,
+  fakeForecastVariants,
   fetchForecastVariants,
   fetchHistoricalEvent,
   HISTORICAL_EVENTS,
@@ -16,6 +17,8 @@ import {
 } from './weather';
 import { FloodEngine, DEFAULT_PARAMS } from './sim/index';
 import { computeImpact } from './impact';
+import { aggregateEnsemble, ensembleStatusText, type EnsembleSummary } from './ensemble';
+import type { EnsembleRunner } from './ensembleRun';
 import { createMap, setBasemap, setExaggeration } from './map/mapView';
 import { WaterFx } from './map/waterFx';
 import { RainFx } from './map/rainFx';
@@ -280,13 +283,18 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
   loader.set(0.42, 'Fetching the rain forecast');
   let forecast: ForecastVariants | null = null;
   try {
-    forecast = await fetchForecastVariants(center[1], center[0]);
+    // ?fakeforecast=1 (npm run dev only): a made-up wet forecast, to check the model range on a dry day
+    forecast = import.meta.env.DEV && url.get('fakeforecast') ? fakeForecastVariants() : await fetchForecastVariants(center[1], center[0]);
   } catch (e) {
     console.warn('[weather] forecast failed', e);
   }
 
   loader.set(0.48, 'Starting the flood model');
   const engine = await FloodEngine.create(terrain, DEFAULT_PARAMS);
+  /** the forecast's range across weather models: predicted after the main run (compareModels) */
+  let ensRunner: EnsembleRunner | null = null;
+  let ens: EnsembleSummary | null = null;
+  let compareGen = 0;
 
   const app: App = {
     ds,
@@ -440,6 +448,8 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
       rain.destroy();
       feats.destroy();
       engine.dispose();
+      ensRunner?.dispose();
+      sidebar.setRange('');
       hoverTip.hide();
       map.remove();
       sidebar.clearBodies();
@@ -503,6 +513,7 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
 
   async function runSim(series: RainSeries, ld: Loader = loader, first = false, base = 0, span = 1) {
     app.series = series;
+    stopCompare();
     setPlaying(false);
     controls.setBusy(true);
     if (!first) ld.show('Predicting where water flows');
@@ -534,6 +545,41 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
     updateStatus();
     setHour(area[best] > 0 ? best : from);
     if (!first) ld.hide();
+    if (series.source === 'forecast') void compareModels(series);
+  }
+
+  /** Drop the comparison across weather models (a new prediction is starting) and what it showed. */
+  function stopCompare() {
+    compareGen++;
+    ensRunner?.cancel();
+    ens = null;
+    impactView.setEnsemble(null);
+    sidebar.setRange('');
+  }
+
+  /**
+   * Once the main prediction is on screen: predict the same hours on each forecast model's own rain
+   * (a second worker, one model at a time) and show the range. A newer run or region drops it.
+   */
+  async function compareModels(series: RainSeries) {
+    const fc = app.forecast;
+    if (!fc || fc.members.length < 2) return;
+    const gen = compareGen;
+    impactView.setEnsemble(null, fc.members.length);
+    if (!ensRunner) {
+      const { EnsembleRunner } = await import('./ensembleRun');
+      if (disposed) return;
+      ensRunner ??= new EnsembleRunner(terrain, osm);
+    }
+    if (gen !== compareGen) return;
+    const res = await ensRunner.run({ members: fc.members, params: { ...app.params }, hours: 48, dryAreaM2: DRY_AREA_M2, reuse: { mm: series.mm, area: app.area, impactAt } });
+    if (disposed || gen !== compareGen) return;
+    if (!res) return void impactView.setEnsemble(null); // the comparison failed: no range, as for a scenario
+    const r = (app.area[app.peak] ?? 0) >= DRY_AREA_M2 ? impactAt(app.peak) : undefined;
+    ens = aggregateEnsemble(res, r?.overall ?? 'none');
+    impactView.setEnsemble(ens);
+    timeline.setBand(ens && !ens.dry ? ens.band : null);
+    updateStatus();
   }
 
   function impactAt(h: number): ImpactReport | undefined {
@@ -558,6 +604,7 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
     const n = app.area.length;
     if (!n) return;
     const fc = s.source === 'forecast';
+    sidebar.setRange(fc ? ensembleStatusText(ens) : '');
     const from = fc ? Math.min(n - 1, s.nowIndex ?? 0) : 0;
     const to = fc ? Math.min(n, from + 48) : n;
     let peak = from;
