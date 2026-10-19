@@ -1,16 +1,36 @@
 # Builds the app plus every Bengaluru Urban pincode pack and publishes them to GitHub Pages
 # (https://achyuta0001.github.io/Logged/). The packs live only in the published site, never in git.
-# Deploys when a commit is pushed to the `deploy` branch (git push origin HEAD:deploy), or by hand.
+# Deploys on every push to `main` (merged pull requests) or `deploy` (git push origin HEAD:deploy),
+# or by hand.
+#
+# Pack cache. Building the packs (OSM extract, data:city, data:all) takes most of the run, so the
+# result is cached (actions/cache) under "packs-v1-<UTC month>-<hash>". The hash covers what shapes a
+# pack: scripts/build-*.mjs, scripts/lib/**, scripts/data/** (sourced flood spots), the src modules
+# the builders import (src/pack/**, src/terrain.ts, src/sim/core.ts for lakeFreeboardM) and
+# package-lock.json. The month makes OSM data refresh at least monthly.
+#   - Same month and inputs: the packs, index.json and city.geojson come from the cache, and the OSM
+#     download and every pack build are skipped. A copy or app change deploys in a few minutes.
+#   - Otherwise (new month, a builder or its inputs changed, or no entry yet): the full build runs, and
+#     its packs are saved once the tests pass.
+#   - Run by hand with "rebuild" ticked to force a full build; its entry is newer, so later runs use it.
+#   - Run by hand with "pins" to build and publish only those packs; the cache is neither read nor written.
+# Bump "packs-v1" to drop every entry (e.g. after changing the OSM extract step below).
+# Caches made on main serve every branch; caches made on `deploy` serve only `deploy`.
 name: Deploy to GitHub Pages
 on:
   push:
-    branches: [deploy]
+    branches: [main, deploy]
   workflow_dispatch:
     inputs:
       pins:
         description: 'Comma-separated pincodes (empty = all)'
         required: false
         default: ''
+      rebuild:
+        description: 'Rebuild every pack, ignoring the pack cache'
+        type: boolean
+        required: false
+        default: false
 permissions:
   contents: read
   pages: write
@@ -28,10 +48,36 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: sudo apt-get update && sudo apt-get install -y osmium-tool
       - run: npm ci
+      - name: Pack cache key
+        id: packs-key
+        run: echo "prefix=packs-v1-$(date -u +%Y-%m)-${{ hashFiles('scripts/build-*.mjs', 'scripts/lib/**', 'scripts/data/**', 'src/pack/**', '!src/pack/__tests__/**', 'src/terrain.ts', 'src/sim/core.ts', 'package-lock.json') }}" >> "$GITHUB_OUTPUT"
+      # Every entry gets a unique key (prefix + run), so the newest entry for this prefix is restored
+      # and a forced rebuild can replace an older one.
+      - name: Restore built packs
+        id: packs-cache
+        if: ${{ !inputs.pins && !inputs.rebuild }}
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            public/data/pins
+            public/data/city
+            .cache/pins/catalog.json
+          key: ${{ steps.packs-key.outputs.prefix }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ steps.packs-key.outputs.prefix }}-
+      # the committed sample packs win over their cached copies; index.json then lists what is on disk
+      - name: Committed packs, then refresh index.json
+        if: steps.packs-cache.outputs.cache-matched-key != ''
+        run: |
+          echo "packs from cache entry ${{ steps.packs-cache.outputs.cache-matched-key }}"
+          git checkout -- public/data/pins ':!public/data/pins/index.json'
+          node scripts/build-city.mjs --index-only
+      - name: osmium-tool
+        if: steps.packs-cache.outputs.cache-matched-key == ''
+        run: sudo apt-get update && sudo apt-get install -y osmium-tool
       # Geofabrik's India southern zone (~560 MB, ODbL) is far quicker than streaming the planet.
       - name: OSM extract for Bengaluru Urban
+        if: steps.packs-cache.outputs.cache-matched-key == ''
         run: |
           mkdir -p .cache/osm
           curl -sSfL -A "Logged flood explorer (github.com/achyuta0001/Logged)" -o .cache/osm/southern-zone.osm.pbf \
@@ -40,14 +86,26 @@ jobs:
           rm .cache/osm/southern-zone.osm.pbf
           printf '{"source":"%s","bbox":"%s","built":"%s","licence":"ODbL 1.0, (c) OpenStreetMap contributors"}\n' \
             "https://download.geofabrik.de/asia/india/southern-zone-latest.osm.pbf" "77.15,12.45,78.05,13.45" "$(date -u +%FT%TZ)" > .cache/osm/blr-region.json
-      - run: npm run data:city
-      - run: npm run data:all -- --jobs 2 ${{ inputs.pins && format('--pins {0}', inputs.pins) || '' }}
+      - if: steps.packs-cache.outputs.cache-matched-key == ''
+        run: npm run data:city
+      - if: steps.packs-cache.outputs.cache-matched-key == ''
+        run: npm run data:all -- --jobs 2 ${{ inputs.pins && format('--pins {0}', inputs.pins) || '' }}
       - run: npm test
+      - name: Save built packs
+        if: ${{ steps.packs-cache.outputs.cache-matched-key == '' && !inputs.pins }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            public/data/pins
+            public/data/city
+            .cache/pins/catalog.json
+          key: ${{ steps.packs-key.outputs.prefix }}-${{ github.run_id }}-${{ github.run_attempt }}
       - run: npx vite build --base /Logged/
+      # du counts a file once per call, so the nested folders get their own call
       - name: Site size
-        run: du -sh dist dist/data/pins dist/data/city && find dist -type f | wc -l
+        run: du -sh dist && du -sh dist/data/pins dist/data/city && find dist -type f | wc -l
       # Pages rejects a site over 1 GB. Packs store osm.geojson / depressions.json gzipped
-      # (scripts/lib/pack-files.mjs): about 210 MB for all 117 (estimated); the plain-JSON layout was 968 MB.
+      # (scripts/lib/pack-files.mjs): all 117 take about 240 MB; the plain-JSON layout was 968 MB.
       - name: Site size guard (950 MB)
         run: |
           bytes=$(du -sb dist | cut -f1)
