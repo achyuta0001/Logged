@@ -10,6 +10,8 @@ import { Tooltip } from '../ui/tooltip';
 import { esc } from '../ui/format';
 import { iconSvg } from '../ui/icons';
 import { searchPins } from './packs';
+import { NewsLayer, NEWS_COLOR } from '../map/newsLayer';
+import { reportsByArea } from '../commute/near';
 
 export interface CityData {
   district: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
@@ -124,12 +126,19 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     sel = id;
     if (id >= 0) map.setFeatureState({ source: 'pins', id }, { sel: true });
   };
+  // flood reports in the news: a secondary number per pincode in the hover card, and an optional layer
+  let newsBy = new Map<string, { spots: number; reports: number }>();
+  const news = new NewsLayer(map, 'city-news');
+  void news.ready.then((spots) => {
+    if (!disposed) newsBy = reportsByArea(city.pins.features.map((f) => ({ key: f.properties.code, geometry: f.geometry })), spots);
+  });
   const tipHtml = (code: string) => {
     const p = byCode.get(code);
     const f = data.features[idOf.get(code)!];
     const s = f?.properties.s ?? p?.susceptibility ?? 0;
     return `<div class="tip-h"><div><b>${esc(code)}</b><span>${esc(p?.name ?? f?.properties.name ?? '')}</span></div></div>
       <dl><dt>Flood susceptibility</dt><dd>${suscBand(s)} · ${Math.round(s * 100)}</dd>
+      ${newsBy.has(code) ? `<dt>In the news</dt><dd>${newsBy.get(code)!.reports} flood report${newsBy.get(code)!.reports === 1 ? '' : 's'}</dd>` : ''}
       ${p ? `<dt>Area</dt><dd>${p.areaKm2.toFixed(1)} km²</dd>` : ''}
       <dt>3D flood model</dt><dd class="${p?.pack ? 'wet' : ''}">${p?.pack ? 'Click to open' : 'Not built yet'}</dd></dl>`;
   };
@@ -166,6 +175,7 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
         <div class="city-ramp" style="background: linear-gradient(90deg, ${grad})"></div>
         <figcaption><span>Lower</span><span>Flood susceptibility</span><span>Higher</span></figcaption>
         <p class="city-key"><i class="city-ring" aria-hidden="true"></i>Dashed outline: 3D flood model ready</p>
+        <div class="layers"><label class="lyr" title="Spots named in news reports of flooding. Bigger circle: more flood days reported. White ring: underpass"><i class="sw dot" style="--c:${NEWS_COLOR}"></i><span>Flood reports in the news</span><input type="checkbox" class="switch city-news" role="switch"></label></div>
       </figure>
       <details class="city-how">
         <summary>How the colours are worked out</summary>
@@ -243,6 +253,10 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
   function choose(code: string, fly: boolean) {
     const p = byCode.get(code);
     const id = idOf.get(code) ?? -1;
+  root.addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (t.classList.contains('city-news')) news.setVisible(t.checked);
+  });
     setSel(id);
     if (p?.pack) {
       shell.go(code);
@@ -298,6 +312,7 @@ function color(s: number): string {
     if (s <= v1) {
       const t = (s - v0) / (v1 - v0 || 1);
       const a = parseInt(c0.slice(1), 16);
+      news.destroy();
       const b = parseInt(c1.slice(1), 16);
       const ch = (sh: number) => Math.round(((a >> sh) & 255) * (1 - t) + ((b >> sh) & 255) * t);
       return `rgb(${ch(16)}, ${ch(8)}, ${ch(0)})`;
