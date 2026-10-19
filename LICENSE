@@ -24,6 +24,7 @@ SOFTWARE.
 
 This licence covers the source code only. Files in public/data/ are derived
 from third-party datasets and remain under their own licences — see README.md
-("Data sources & licences"). In particular, public/data/osm.geojson and the
-OSM-derived layers in public/data/grids.bin are © OpenStreetMap contributors
-and available under the Open Database License (ODbL) 1.0.
+("Data sources & licences"). In particular, each pack's osm.geojson(.gz) and
+the OSM-derived layers in its grids.bin (public/data/pins/<code>/) are
+© OpenStreetMap contributors and available under the Open Database License
+(ODbL) 1.0.
