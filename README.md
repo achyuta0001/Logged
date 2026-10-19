@@ -61,26 +61,26 @@ Requires Node 22.18+ or 24+. The tests and data scripts import TypeScript direct
 |---|---|
 | `npm run data:osm` | Streams the OSM planet from the public AWS bucket `osm-pds` (≈95 GB, nothing stored) through `osmium extract`. The result is `.cache/osm/blr-region.osm.pbf`, about 60 MB, covering the bbox 77.15–78.05 E and 12.45–13.45 N. It takes 20–40 min, once. Needs `osmium-tool` (`apt install osmium-tool`). A Geofabrik extract works too: see `scripts/osm-extract.sh`. |
 | `npm run data:city` | Builds the pincode index, the district outline, the pincode polygons and the susceptibility index (≈40 s). Writes `public/data/pins/index.json`, `public/data/city/city.geojson` and `.cache/pins/catalog.json`. |
-| `npm run data -- --pin <code>` | Builds one pincode's pack into `public/data/pins/<code>/` (5–25 s; 560098 builds into `public/data/`). |
+| `npm run data -- --pin <code>` | Builds one pincode's pack into `public/data/pins/<code>/` (5–25 s). Add `--hotspots-only` to refresh just an existing pack's `hotspots.json` from `public/data/hotspots-city.json`. |
 | `npm run data:all [-- --pins a,b] [--jobs 2] [--force]` | Builds every pack (or the listed ones), then refreshes the index. It is resumable: packs that already exist are skipped. It is polite to public servers: OSM comes from the local extract and Copernicus windows are cached, and failures back off exponentially. |
-| `node scripts/calibrate.mjs --pin <code> --impact` | Runs the scenarios headlessly. Reports peak flooded area, recession time, buildings with water over plinth, road closed, and model depth near the pack's reported flood spots. Add `--event all` (or a comma list of ids) to also run the real storms on archive rain at the pin centroid. |
+| `node scripts/calibrate.mjs --pin <code> --impact` | Runs the scenarios headlessly. Reports peak flooded area, recession time, buildings with water over plinth, road closed, and model depth near the reported flood spots inside the pack's grid (the same list the app shows). Add `--event all` (or a comma list of ids) to also run the real storms on archive rain at the pin centroid. |
 
 Without the local extract, `npm run data -- --pin <code>` falls back to one Overpass query per pack (cached).
 
-Reported flood spots outside 560098 live in `scripts/data/hotspots-blr.json`. Each event there has a source URL, and each place is located from a named OSM object, never a geocoder or memory. The pack build copies the spots inside a pack's grid into that pack's `hotspots.json`.
+Reported flood spots for the whole district live in `public/data/hotspots-city.json` (73 spots, 93 reports, 2015–2025). Each report names a road, layout, junction or underpass and links its article, and the summary keeps to what the article says. The 12 original RR Nagar spots carry no `osm` id. Every other spot is pinned to a named OSM object (`osm` field), found in the OSM data or by Nominatim search (1 request/s), never placed from memory. The pack build copies the spots inside a pack's grid into that pack's `hotspots.json`, and the app adds any city spots inside the grid that a pack built earlier does not list yet.
 
 ### Pack format
 
 `CONTRACT.md` ("Multi-region") documents the format, and `src/types.ts` (`PinIndex`, `PackInfo`, `LayerInfo`) holds the types.
 
-- **Format 2** is used by every pack except 560098:
+- **Format 2** is used by every pack:
   - grids are quantised to u16/u8, and smooth surfaces are row-delta coded and byte-shuffled
   - `filled` is derived on load
   - `osm.geojson` coordinates are rounded to 1e-5° (≈1 m)
   - `osm.geojson` and `depressions.json` are stored gzipped, as `osm.geojson.gz` and `depressions.json.gz` only. GitHub Pages serves files as they are, so the app inflates them with the browser's `DecompressionStream`, and still loads a plain file where no `.gz` exists. A pack takes about a fifth of the disk space (560034: 8.6 → 1.95 MB); all 117 come to roughly 210 MB instead of 968 MB, under Pages' 1 GB limit. The Pages workflow fails when `dist` passes 950 MB.
   - per-feature grid cells are rebuilt on load (`src/pack/osm.ts`)
 - **Grid cell size:** 15 m like 560098. Large pincodes use a coarser cell, so a pack stays near 140k cells (Yelahanka 560064: 50 m).
-- **Format 1:** the 560098 reference pack keeps format 1 and stays in `public/data/` (`pack.path: "."`), so old links and the calibration baseline are unchanged.
+- **560098:** the reference pack moved to format 2 on 2026-10-19 and lives in `public/data/pins/560098/` (1.20 MB gzipped, was 2.64 MB as format 1). An index entry with `pack.path: "."` still opens it.
 
 ### Hosting the packs
 
@@ -95,9 +95,9 @@ To publish them:
 | Budget | Target | Measured |
 |---|---|---|
 | City overview transfer | ≤ 5 MB | **1.8 MB** without basemap tiles: app 0.37 MB, city.geojson 0.17 MB raw (≈0.05 MB gzipped), index 0.01 MB, z10 terrain 1.2 MB. Basemap tiles were blocked in the test environment and are not counted. |
-| Pincode pack | ≤ 4 MB gzipped | All 117 packs: **max 3.2 MB** (Yelahanka 560064), median 1.1 MB, total 138 MB. 560098 is 2.6 MB. |
+| Pincode pack | ≤ 4 MB gzipped | All 117 packs: **max 3.2 MB** (Yelahanka 560064), median 1.1 MB, total 138 MB. 560098 is 1.2 MB (2.6 MB as format 1). |
 | 9-day forecast simulation | ≤ 3 s on a laptop | Every sample pack runs 216 h faster than 560098 on the same machine. In a slow cloud container that was 2.2–3.8 s vs 4.0 s; on a laptop 560098 takes about 2 s. Big pincodes get coarser cells, so cells stay ≤ ~140k. |
-| 560098 | no slower than before | Same pack (format 1), same engine. Opening it adds two small fetches: index.json and city.geojson. |
+| 560098 | no slower than before | Format 2 since 2026-10-19, same grid. The 216-hour run took 1.3 s vs 2.0 s for the old format-1 pack (same engine, same machine, one run each). Opening it adds two small fetches: index.json and city.geojson. |
 
 Switching regions is checked in headless Chromium, over five city ↔ 560098 round trips. JS heap, workers, canvases, markers and window/document listeners all return to the same level after each one.
 
@@ -132,10 +132,36 @@ What the reports show:
 - **Missed:** the **Marathahalli Bridge**, **Kendriya Vihar** and the **Electronic City flyover**. The flyovers are probably a resolution problem: the elevation model measures the deck, not the road under it. Kendriya Vihar flooded because the lakes upstream overflowed, which needs inflow from outside the pack (see Limitations). Yelahanka's 50 m grid is also coarse.
 - **Rainfall:** every pincode gets the same storm. Real rainfall varies across the city, so compare pincodes with care.
 
+### Sourced reports vs the model (2026-10-19)
+
+`node scripts/calibrate.mjs --pin <code>` on every pack built locally, Oct 2024 storm, current engine and packs. A report counts as wet when the model has at least 0.15 m of street water within 300 m. The table above is from 2026-10-17, so its peak areas differ from these runs.
+
+| Pincode | Reports in grid | Wet | Not wet (street water within 300 m) |
+|---|---|---|---|
+| 560098 Rajarajeshwarinagar | 12 | 10 | Ideal Homes Township 0.12 m, RR Nagar (central) 0.09 m |
+| 560024 HA Farm | 7 | 7 | – |
+| 560034 Koramangala I Block | 5 | 5 | – |
+| 560102 HSR Layout | 4 | 4 | – |
+| 560103 Bellandur | 8 | 5 | Epsilon villas 0.08 m, Kadubeesanahalli underpass 0.12 m, Shanthiniketan Colony 0.07 m |
+| 560037 Rameshnagar | 8 | 2 | Marathahalli Bridge 0.07 m, Balagere-Panathur Road 0.09 m, Kadubeesanahalli underpass 0.13 m, Shanthiniketan Colony 0.06 m, Thubarahalli Palya 0.10 m, Kariyammana Agrahara 0.07 m |
+| 560064 Yelahanka Satellite Town | 6 | 1 | Kendriya Vihar 0.06 m, Kuvempu Nagar / Basava Samithi Layout 0.08 m, Ramanashree California 0.10 m, Sahakar Nagar underpass 0.07 m, Kogilu Cross 0.07 m |
+| 560071 Domlur | 2 | 1 | HAL 2nd Stage 0.05 m |
+| 560100 Wipro Limited | 2 | 1 | Neeladri Nagar 0.11 m |
+
+That is 36 of 54 report-pack pairs. They cover 44 distinct spots, because 9 spots lie in two or three overlapping grids. The other 29 of the 73 spots lie outside every pack built here.
+- **Water kept in the channel:** at Kendriya Vihar, Ramanashree California, Kogilu Cross and Balagere-Panathur Road the model has 1.1–1.4 m of water within 300 m, but only in drain or lake cells. The reports there describe a lake or storm drain overflowing onto the street. In the model that water stays in the channel, probably because drains are sized for their whole upstream catchment (as in 560098 below).
+- **Underpasses:** Kadubeesanahalli and Sahakar Nagar are dips under a road or rail embankment. A 30 m surface model, resampled to 15–50 m, cannot resolve them.
+- **Grid edges:** the same spot can differ between overlapping grids. Epsilon gets 1.52 m in 560037 but 0.08 m in 560103, and Kariyammana Agrahara gets 0.38 m in 560103 but 0.07 m in 560037. Each is wet in the grid where it lies farther from the edge: 1.3 km vs 0.7 km for Epsilon, 1.6 km vs 0.4 km for Kariyammana Agrahara. Results near a grid edge are less reliable. Yelahanka's 50 m cells are coarse too.
+- **560098 after the move to format 2:** on the 11 spots the old pack had on its grid, 9 are now wet instead of 8. Peak flooded area went from 0.70 to 0.58 km² and recession from 3 to 2 h. Quantising the grids changes nothing (the old grids re-encoded as format 2 give the same numbers). The difference comes from two things:
+  - the 12 upstream inflow points (101 km²) the old pack lacked
+  - one storm drain mapped in OSM since the old Overpass fetch (way/1569181339, Vrishabhavathi valley)
+
+  The inflow enters through the Vrishabhavathi valley. It wets Mysuru Road at Nayandahalli (0.03 → 4.0 m), and the deepest water (6.1 m) is now in that channel. The trunk drain is sized for the whole upstream catchment, so streets more than 1 m deep inside the boundary shrink from 0.14 to 0.10 km². Gurudatta Layout lies 236 m east of the grid. It was "outside the model" before and is no longer listed for 560098.
+
 ## How it works
 
 ```
-scripts/build-data.mjs   DEM + OSM  →  public/data/{meta.json, grids.bin, osm.geojson, depressions.json}
+scripts/build-data.mjs   DEM + OSM  →  public/data/pins/<code>/{meta.json, grids.bin, osm.geojson.gz, depressions.json.gz, hotspots.json, pack.json}
 src/terrain.ts           load grids
 src/weather.ts           Open-Meteo forecast + scenarios
 src/sim/                 flood engine (worker)  →  hourly depth snapshots
@@ -201,6 +227,6 @@ Captured water enters the nearest mapped drain (OSM `waterway` lines) instead of
 | Weather | [Open-Meteo](https://open-meteo.com/) | CC BY 4.0 |
 | Past rain (real storms) | [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) (reanalysis); event dates and gauge totals from the news reports linked in `src/weather.ts` | CC BY 4.0; reports cited, facts only |
 | Basemap | [OpenFreeMap](https://openfreemap.org/) | OSM data, ODbL; OpenMapTiles schema |
-| Flood reports | Deccan Herald, The News Minute, Citizen Matters, Gulf News, OneIndia, South First (links in `public/data/hotspots.json` and `scripts/data/hotspots-blr.json`) | cited, facts only |
+| Flood reports | Deccan Herald, The News Minute, Scroll, ThePrint, Citizen Matters, Gulf News, OneIndia, South First (links in `public/data/hotspots-city.json`) | cited, facts only |
 
 **Code**: MIT, see [LICENSE](LICENSE). **Derived data** in `public/data/` remains under the source licences above. OSM-derived files are ODbL.
