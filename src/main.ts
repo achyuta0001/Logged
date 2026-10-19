@@ -1,4 +1,4 @@
-import './style.css';
+// The pincode view: its own chunk, which src/boot.ts loads with import() the first time a pincode opens.
 import type { Map as MLMap, PaddingOptions } from 'maplibre-gl';
 import type { ImpactReport, RainSeries, Severity, SimParams, Terrain } from './types';
 import { loadDataset, type Dataset } from './ui/api';
@@ -38,12 +38,10 @@ import { Tooltip } from './ui/tooltip';
 import { esc, fmtArea, fmtDepth, fmtHour, fmtWeekday, relHours } from './ui/format';
 import { iconSvg } from './ui/icons';
 import type { PinEntry, PinIndex } from './types';
-import { LEGACY_PIN, inflowCaveat, loadPinIndex, packBase, packsRoot } from './region/packs';
-import { loadCity, openCity } from './region/city';
+import { LEGACY_PIN, inflowCaveat } from './region/packs';
+import { offlineForecastTime } from './sw-register';
 
 const DEMO_SCENARIO = 'rrnagar-2024-10-20';
-/** ?pin=<code>&scenario=<id>&basemap=satellite&view=lng,lat,zoom[,pitch,bearing] (scenario/basemap/view apply to the first region opened) */
-let url = new URLSearchParams(location.search);
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** below this flooded area (m², cells deeper than 10 cm) the outlook reads "no flooding" */
 const DRY_AREA_M2 = 1000;
@@ -87,6 +85,8 @@ export interface Shell {
   hasCity: boolean;
   /** switch region: a pincode, or the city overview (null) */
   go(pin: string | null): void;
+  /** ?scenario=, &basemap=, &view= for the region being opened: the page's own for the first region, none after */
+  url: URLSearchParams;
 }
 
 /** What is on screen: the city overview or one pincode. Everything it creates goes in destroy(). */
@@ -104,89 +104,8 @@ export interface Region {
   busy?(): boolean;
 }
 
-async function boot() {
-  const loader = new Loader();
-  let region: Region | null = null;
-  const sidebar = new Sidebar(document.getElementById('sidebar')!, document.getElementById('rail')!, {
-    onTour: () => region?.onTour?.(),
-    onFocus: () => layout.toggleFocus(),
-    onStatus: () => region?.onStatus?.(),
-    onFootprint: () => region?.reframe(),
-    onBack: () => go(null),
-  });
-  const timelineEl = document.getElementById('timeline')!;
-  const timeline = new Timeline(timelineEl, {
-    onHour: (h) => region?.setHour?.(h),
-    onPlay: (p) => region?.setPlaying?.(p),
-    onSpeed: (s) => region?.setSpeed?.(s),
-    onCompact: () => region?.reframe(),
-  });
-  const layout = new Layout(sidebar, timeline, timelineEl, document.getElementById('focus-bar')!, {
-    onFrame: () => region?.reframe(),
-    onPlay: () => region?.togglePlay?.(),
-    busy: () => !!region?.busy?.(),
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.code !== 'Space' || e.defaultPrevented || region?.busy?.() || !region?.togglePlay) return; // Space pauses the tour instead
-    const t = e.target;
-    if (t instanceof HTMLElement && (t.isContentEditable || t.closest('input, textarea, select, button, a, [role="slider"]'))) return;
-    e.preventDefault();
-    region.togglePlay();
-  });
-
-  loader.set(0.02, 'Loading the pincode index');
-  const root = packsRoot();
-  const [index, city] = await Promise.all([loadPinIndex(root), loadCity()]);
-  const shell: Shell = { loader, sidebar, timeline, timelineEl, layout, index, hasCity: !!city, go };
-
-  // navigation is serialised: a region is fully torn down before the next one loads
-  let nav = Promise.resolve();
-  let first = true;
-  function go(pin: string | null, push = true) {
-    nav = nav.then(async () => {
-      if (!pin && !city) pin = LEGACY_PIN;
-      const entry = pin ? index.pins.find((p) => p.code === pin) : undefined;
-      if (pin && !entry?.pack) {
-        // unknown pincode, or one without a data pack: fall back to the overview (or 560098 without one)
-        console.warn(`[app] no data pack for ${pin}`);
-        if (!city) pin = LEGACY_PIN;
-        else pin = null;
-      }
-      if (push) {
-        const q = new URLSearchParams(location.search);
-        if (pin) q.set('pin', pin);
-        else q.delete('pin');
-        if (!first) for (const k of ['scenario', 'view']) q.delete(k);
-        const next = `${location.pathname}${q.toString() ? `?${q}` : ''}${location.hash}`;
-        if (next !== `${location.pathname}${location.search}${location.hash}`) history[first ? 'replaceState' : 'pushState']({ pin }, '', next);
-      }
-      if (!first) url = new URLSearchParams();
-      first = false;
-      try {
-        region?.destroy();
-      } catch (e) {
-        console.error('[app] teardown', e);
-      }
-      region = null;
-      layout.setFocus(false);
-      try {
-        const e = pin ? index.pins.find((p) => p.code === pin)! : undefined;
-        region = e ? await openPin(shell, e, packBase(root, e)) : await openCity(shell, city!);
-      } catch (err) {
-        console.error(err);
-        const back = !!pin && !!city;
-        loader.error(`Could not load ${pin ? `pincode ${pin}` : 'the city overview'}: ${err instanceof Error ? err.message : String(err)}${back ? '. Back to the overview in a moment.' : ''}`);
-        if (back) setTimeout(() => go(null), 3500);
-      }
-    });
-  }
-  window.addEventListener('popstate', () => go(new URLSearchParams(location.search).get('pin'), false));
-  const asked = url.get('pin');
-  go(asked ?? (city ? null : LEGACY_PIN));
-}
-
-async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Region> {
-  const { loader, sidebar, timeline, layout } = shell;
+export async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Region> {
+  const { loader, sidebar, timeline, layout, url } = shell;
   const timelineEl = shell.timelineEl;
   const ac = new AbortController();
   let disposed = false;
@@ -612,6 +531,8 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
     app.peak = peak;
     // the forecast could not be fetched, so the Oct 2024 storm stands in: say so instead of "Scenario: ..."
     const standIn = !fc && app.forecastDown ? 'Live forecast unavailable · showing the Oct 2024 storm' : '';
+    // no network: the forecast is the copy the service worker kept, so say how old it is
+    const off = fc ? offlineNote(app.forecast) : '';
     const r = (app.area[peak] ?? 0) >= DRY_AREA_M2 ? impactAt(peak) : undefined;
     const sev: Severity = r?.overall ?? 'none';
     if (!r || sev === 'none') {
@@ -619,13 +540,13 @@ async function openPin(shell: Shell, pin: PinEntry, base: string): Promise<Regio
       sidebar.setStatus(
         'none',
         fc ? '<b>No flooding expected</b> in the next 48\u00a0h' : '<b>No flooding</b> in this scenario',
-        fc ? `${fmtMm(rainMm)} of rain forecast${app.variant === 'worst' ? ' (worst case)' : ''}` : standIn || `Scenario: ${controls.sourceLabel}, ${fmtMm(rainMm)}`,
+        fc ? `${fmtMm(rainMm)} of rain forecast${app.variant === 'worst' ? ' (worst case)' : ''}${off ? ` · ${off}` : ''}` : standIn || `Scenario: ${controls.sourceLabel}, ${fmtMm(rainMm)}`,
       );
       return;
     }
     const t = s.times[peak];
     const area = (r.floodedAreaKm2 >= 0.01 ? `${r.floodedAreaKm2.toFixed(2)} km²` : fmtArea(r.floodedAreaKm2 * 1e6)).replace(' ', '\u00a0');
-    const ctx = fc ? `Live forecast${app.variant === 'worst' ? ', worst case' : ''} · peak ${relHours(peak, s.nowIndex)}` : standIn || `Scenario: ${controls.sourceLabel}`;
+    const ctx = fc ? `${off || 'Live forecast'}${app.variant === 'worst' ? ', worst case' : ''} · peak ${relHours(peak, s.nowIndex)}` : standIn || `Scenario: ${controls.sourceLabel}`;
     sidebar.setStatus(sev, `<b>${SEV_PHRASE[sev]}</b> at ${fmtHour(t)}\u00a0${fmtWeekday(t)} — ${area} under water`, ctx, 'Show that hour');
   }
 
@@ -751,6 +672,14 @@ function forecastSummary(f: ForecastVariants) {
   const b = rainAhead(f.best, 48);
   const w = rainAhead(f.worst, 48);
   return `Next 48 h: ${b.toFixed(0)} mm best estimate, ${w.toFixed(0)} mm worst case`;
+}
+
+/** "Offline · forecast from 18:05" when the forecast on screen is a saved copy, not live; '' otherwise */
+function offlineNote(f: ForecastVariants | null): string {
+  const t = offlineForecastTime(f?.fetchedAt);
+  if (t === null) return '';
+  const day = fmtWeekday(t) === fmtWeekday(Date.now()) ? '' : `${fmtWeekday(t)} `;
+  return `Offline · forecast from ${day}${fmtHour(t)}`;
 }
 
 function sourcesHtml(sources: string[]) {
@@ -897,8 +826,3 @@ function intro(map: MLMap) {
   map.once('moveend', () => void reground(map));
   map.easeTo({ ...end, duration: 4200, easing: (t) => 1 - Math.pow(1 - t, 3), essential: true });
 }
-
-boot().catch((e) => {
-  console.error(e);
-  new Loader().error(`Could not start: ${e instanceof Error ? e.message : String(e)}`);
-});
