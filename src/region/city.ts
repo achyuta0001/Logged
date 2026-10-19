@@ -248,15 +248,15 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     setHover(b ? (idOf.get(b.dataset.code!) ?? -1) : -1);
   });
   root.addEventListener('mouseleave', () => setHover(-1));
+  root.addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (t.classList.contains('city-news')) news.setVisible(t.checked);
+  });
 
   /** select a pincode: open it when its pack exists, otherwise frame it and say so */
   function choose(code: string, fly: boolean) {
     const p = byCode.get(code);
     const id = idOf.get(code) ?? -1;
-  root.addEventListener('change', (e) => {
-    const t = e.target as HTMLInputElement;
-    if (t.classList.contains('city-news')) news.setVisible(t.checked);
-  });
     setSel(id);
     if (p?.pack) {
       shell.go(code);
