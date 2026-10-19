@@ -435,13 +435,19 @@ body.tour-on .maplibregl-ctrl-top-right {
 .tour-dots {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0;
   min-width: 0;
 }
+/* each dot sits in a 24 px target (WCAG 2.5.8); the dot itself stays small */
 .tour-dots button {
+  min-width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
   border: 0;
+  border-radius: 8px;
   background: transparent;
-  padding: 8px 2px;
+  padding: 0 2px;
   cursor: pointer;
 }
 .tour-dots i {
