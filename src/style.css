@@ -2393,3 +2393,138 @@ body.mode-phone .tour-btn {
   flex: none;
   margin-top: 1px;
 }
+
+/* ---------- prediction range across weather models (live forecast only) ---------- */
+.sb-range {
+  margin: 3px 2px 0 1px;
+  font-size: 13px;
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+  text-wrap: pretty;
+}
+.kpi-r {
+  margin-top: 1px;
+  color: var(--label-3);
+  font-size: 11px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kpi-r small {
+  color: inherit;
+  font-size: 0.92em;
+  font-weight: 400;
+}
+.ens-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.ens {
+  margin-top: 8px;
+}
+.ens-note,
+.ens-worst {
+  margin: 0;
+  font-size: 13px;
+  color: var(--label-2);
+}
+.ens-worst {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  margin-top: 5px;
+}
+.ens-worst b {
+  color: var(--label-1);
+  font-weight: 600;
+}
+.ens .more {
+  margin-top: 4px;
+  font-size: 13px;
+}
+.ens-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+.ens-row {
+  --c: var(--label-3);
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 10px;
+  row-gap: 1px;
+  padding: 8px 12px;
+}
+.ens-row + .ens-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 0;
+  height: 0.5px;
+  background: var(--separator);
+}
+.ens-name {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ens-v {
+  text-align: right;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--water-pale);
+}
+.ens-meta {
+  font-size: 12px;
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.ens-sev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--c) 75%, white);
+}
+.ens-sev i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.ens-sev[data-sev='none'] {
+  color: var(--label-3);
+  font-weight: 500;
+}
+.ens-sev[data-sev='none'] i,
+.ens-row:has(.ens-sev[data-sev='none']) .ens-v {
+  opacity: 0.55;
+}
+.tl-band {
+  fill: rgba(143, 166, 255, 0.16);
+  stroke: rgba(143, 166, 255, 0.28);
+  stroke-width: 0.6;
+  stroke-dasharray: 2 2;
+  pointer-events: none;
+}
+.sp-band {
+  fill: rgba(143, 166, 255, 0.2);
+}
