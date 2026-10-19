@@ -54,6 +54,9 @@ class SpotLayer {
   private visible = false;
   private onStyle = () => this.ensure();
   private onClick = (e: MapLayerMouseEvent) => {
+    // a tap on an HTML marker drawn over this spot (a curated hotspot) opens that marker's own
+    // popup; opening ours as well would stack two cards on the same place
+    if ((e.originalEvent?.target as Element | null)?.closest?.('.maplibregl-marker')) return;
     const i = Number(e.features?.[0]?.properties?.i);
     const s = this.spots[i];
     if (!s) return;
