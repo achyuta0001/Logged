@@ -40,5 +40,43 @@
     "source": "https://www.deccanherald.com/india/karnataka/bengaluru/day-after-rain-deluge-bengaluru-residents-wade-through-trouble-3549914"
    }
   ]
+ },
+ {
+  "name": "Koramangala 6th Block",
+  "coord": [
+   77.62385,
+   12.93903
+  ],
+  "events": [
+   {
+    "date": "2021-10",
+    "summary": "A Koramangala 6th Block resident said roads flooded within 30 minutes of rain starting at 11 pm and water entered houses by midnight, forcing families to move out.",
+    "source": "https://www.deccanherald.com/amp/story/india%2Fkarnataka%2Fbengaluru%2Frain-floods-apartments-shops-in-parts-of-bengaluru-1037414.html"
+   }
+  ]
+ },
+ {
+  "name": "Hosur Road at Roopena Agrahara",
+  "coord": [
+   77.62604,
+   12.91199
+  ],
+  "events": [
+   {
+    "date": "2024-10-20",
+    "summary": "Waterlogging on Hosur Main Road near Roopena Agrahara caused traffic snarls in the early hours of Sunday after overnight thundershowers.",
+    "source": "https://www.deccanherald.com/india/karnataka/bengaluru/homes-flooded-roads-choked-yet-again-after-another-rain-spell-3240856"
+   },
+   {
+    "date": "2024-10-23",
+    "summary": "An overflowing stormwater drain in Roopena Agrahara left at least four feet of water on the road and badly hit city-bound traffic, police said.",
+    "source": "https://www.deccanherald.com/india/karnataka/bengaluru/north-east-done-rain-now-turns-to-cbd-south-3246059"
+   },
+   {
+    "date": "2025-05-19",
+    "summary": "After torrential overnight rain, traffic police closed the Electronics City flyover because of waterlogging at Roopena Agrahara.",
+    "source": "https://www.deccanherald.com/india/karnataka/bengaluru/flooding-in-many-parts-of-bengaluru-after-torrential-overnight-rain-3546886"
+   }
+  ]
  }
 ]
