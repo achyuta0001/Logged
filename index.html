@@ -4,12 +4,16 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2.5s7 7.4 7 12.3A7 7 0 0 1 5 14.8C5 9.9 12 2.5 12 2.5Z' fill='%231ec8ff'/%3E%3C/svg%3E" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#060b14" />
     <meta name="description" content="Flood explorer for Bengaluru Urban: every pincode ranked by flood susceptibility, and hour-by-hour 3D flood outlooks (low-lying areas, rain forecast, what flooding means for roads, schools, hospitals and homes)." />
     <title>Bengaluru Flood Explorer</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- SF on Apple devices via the system font stack; Inter (SIL OFL) elsewhere -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap" rel="stylesheet" />
+    <!-- SF on Apple devices via the system font stack; Inter (SIL OFL) elsewhere. crossorigin: the
+         service worker can keep a CORS copy of the CSS for offline use (an opaque one it cannot) -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..700&display=swap" rel="stylesheet" crossorigin />
   </head>
   <body>
     <div id="map" aria-label="3D flood map"></div>
@@ -27,8 +31,9 @@
         <div class="ld-name">Flood explorer</div>
         <div class="ld-bar"><i></i></div>
         <div class="ld-row"><span class="ld-msg">Starting</span><span class="ld-pct">0%</span></div>
+        <button type="button" class="btn primary ld-reload" style="margin-top: 16px" hidden>Reload</button>
       </div>
     </div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/boot.ts"></script>
   </body>
 </html>
