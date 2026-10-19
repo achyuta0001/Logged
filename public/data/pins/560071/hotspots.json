@@ -1,0 +1,30 @@
+[
+ {
+  "name": "Domlur Main Road",
+  "coord": [
+   77.6382,
+   12.96247
+  ],
+  "events": [
+   {
+    "date": "2024-10-20",
+    "summary": "Sunday evening rainfall caused waterlogging and traffic congestion on Domlur Main Road, among several spots across the city.",
+    "source": "https://www.deccanherald.com/india/karnataka/bengaluru/homes-flooded-roads-choked-yet-again-after-another-rain-spell-3240856"
+   }
+  ]
+ },
+ {
+  "name": "HAL 2nd Stage, Indiranagar",
+  "coord": [
+   77.64371,
+   12.96894
+  ],
+  "events": [
+   {
+    "date": "2017-08-15",
+    "summary": "A heavy downpour in the early hours of Tuesday flooded houses in HAL 2nd Stage, Indiranagar, with drain water entering homes and damaging furniture.",
+    "source": "https://www.deccanherald.com/india/karnataka/bengaluru/flooded-homes-choked-toilets-ruin-2019989"
+   }
+  ]
+ }
+]
