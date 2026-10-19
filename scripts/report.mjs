@@ -22,7 +22,7 @@ const arg = (n, d) => {
 const pins = arg('pins', '560098').split(',').map((s) => s.trim()).filter(Boolean);
 const perf = process.argv.includes('--perf');
 const index = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/data/pins/index.json'), 'utf8'));
-const dirOf = (c) => (c === '560098' ? 'public/data' : `public/data/pins/${c}`);
+const dirOf = (c) => `public/data/pins/${c}`;
 const MATCH = 0.15;
 
 const rows = [];
