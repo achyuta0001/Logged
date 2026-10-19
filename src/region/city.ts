@@ -298,6 +298,7 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
       if (disposed) return;
       disposed = true;
       tip.hide();
+      news.destroy();
       map.remove();
       sidebar.clearBodies();
       shell.timelineEl.hidden = false;
@@ -312,7 +313,6 @@ function color(s: number): string {
     if (s <= v1) {
       const t = (s - v0) / (v1 - v0 || 1);
       const a = parseInt(c0.slice(1), 16);
-      news.destroy();
       const b = parseInt(c1.slice(1), 16);
       const ch = (sh: number) => Math.round(((a >> sh) & 255) * (1 - t) + ((b >> sh) & 255) * t);
       return `rgb(${ch(16)}, ${ch(8)}, ${ch(0)})`;
