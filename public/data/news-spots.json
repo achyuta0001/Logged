@@ -2277,6 +2277,23 @@
    "lastYear": 2023
   },
   {
+   "id": "ramanashree-california-gardens-77.573-13.113",
+   "name": "Ramanashree California Gardens",
+   "coord": [77.57325, 13.11281],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2024-10-22",
+     "url": "https://theprint.in/india/as-rain-woes-continue-north-bengaluru-bears-the-brunt/2323472/",
+     "outlet": "theprint.in",
+     "summary": "Flooding reported at Ramanashree California Gardens."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
    "id": "rr-nagar-arch-junction-77.519-12.936",
    "name": "RR Nagar Arch Junction",
    "coord": [77.5185, 12.9363],
