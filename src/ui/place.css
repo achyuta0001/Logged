@@ -603,7 +603,7 @@
 }
 .pl-cap[aria-pressed='true'] {
   background: var(--pl-accent);
-  color: #fff;
+  color: #00202e;
 }
 
 .pl-ans {
