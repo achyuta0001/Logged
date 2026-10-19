@@ -89,6 +89,7 @@ export class Sidebar {
           <i class="sb-dot" aria-hidden="true"></i><span class="sb-answer">Working out the flood outlook</span>
         </button>
         <div class="sb-context" id="sb-context"></div>
+        <div class="sb-range" id="sb-range" hidden></div>
         <p class="sb-caveat" id="sb-caveat" hidden></p>
       </header>
       <div class="sb-scroll" id="sb-scroll">
@@ -176,6 +177,15 @@ export class Sidebar {
 
   get currentScope(): Scope {
     return this.scope;
+  }
+
+  /** The prediction range across weather models, one secondary line under the status context; empty hides it. */
+  setRange(text: string) {
+    const el = this.panel.querySelector('#sb-range') as HTMLElement;
+    if (el.textContent === text && el.hidden === !text) return;
+    el.textContent = text;
+    el.hidden = !text;
+    this.measurePeek();
   }
 
   /** One quiet line under the status (e.g. inflow from outside the modelled area); null hides it. */
