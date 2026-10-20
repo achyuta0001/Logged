@@ -66,6 +66,18 @@ jobs:
             .cache/pins/catalog.json
           key: ${{ steps.packs-key.outputs.prefix }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: ${{ steps.packs-key.outputs.prefix }}-
+      # City road graph for commute routing (public/data/roads, ~6.5 MB gzipped, not in git): cached per
+      # UTC month and builder like the packs; a miss rebuilds it from the OSM extract below in ~5 s.
+      - name: Road graph cache key
+        id: roads-key
+        run: echo "key=roads-v1-$(date -u +%Y-%m)-${{ hashFiles('scripts/route/build-graph.mjs', 'src/route/config.ts', 'src/route/format.ts') }}" >> "$GITHUB_OUTPUT"
+      - name: Restore road graph
+        id: roads-cache
+        if: ${{ !inputs.rebuild }}
+        uses: actions/cache/restore@v4
+        with:
+          path: public/data/roads
+          key: ${{ steps.roads-key.outputs.key }}
       # the committed sample packs win over their cached copies; index.json then lists what is on disk
       - name: Committed packs, then refresh index.json
         if: steps.packs-cache.outputs.cache-matched-key != ''
@@ -74,11 +86,11 @@ jobs:
           git checkout -- public/data/pins ':!public/data/pins/index.json'
           node scripts/build-city.mjs --index-only
       - name: osmium-tool
-        if: steps.packs-cache.outputs.cache-matched-key == ''
+        if: steps.packs-cache.outputs.cache-matched-key == '' || steps.roads-cache.outputs.cache-hit != 'true'
         run: sudo apt-get update && sudo apt-get install -y osmium-tool
       # Geofabrik's India southern zone (~560 MB, ODbL) is far quicker than streaming the planet.
       - name: OSM extract for Bengaluru Urban
-        if: steps.packs-cache.outputs.cache-matched-key == ''
+        if: steps.packs-cache.outputs.cache-matched-key == '' || steps.roads-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p .cache/osm
           curl -sSfL -A "Logged flood explorer (github.com/achyuta0001/Logged)" -o .cache/osm/southern-zone.osm.pbf \
@@ -87,6 +99,9 @@ jobs:
           rm .cache/osm/southern-zone.osm.pbf
           printf '{"source":"%s","bbox":"%s","built":"%s","licence":"ODbL 1.0, (c) OpenStreetMap contributors"}\n' \
             "https://download.geofabrik.de/asia/india/southern-zone-latest.osm.pbf" "77.15,12.45,78.05,13.45" "$(date -u +%FT%TZ)" > .cache/osm/blr-region.json
+      - name: Road graph
+        if: steps.roads-cache.outputs.cache-hit != 'true'
+        run: npm run data:roads
       - if: steps.packs-cache.outputs.cache-matched-key == ''
         run: npm run data:city
       - if: steps.packs-cache.outputs.cache-matched-key == ''
@@ -101,6 +116,12 @@ jobs:
             public/data/city
             .cache/pins/catalog.json
           key: ${{ steps.packs-key.outputs.prefix }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Save road graph
+        if: steps.roads-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: public/data/roads
+          key: ${{ steps.roads-key.outputs.key }}
       - run: npx vite build --base /Logged/
       # du counts a file once per call, so the nested folders get their own call
       - name: Site size
