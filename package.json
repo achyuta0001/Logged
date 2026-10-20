@@ -15,11 +15,13 @@
     "test": "node --test 'src/**/__tests__/*.test.ts'",
     "a11y": "node scripts/a11y.mjs",
     "smoke": "node scripts/smoke.mjs",
-    "calibrate": "node scripts/calibrate.mjs"
+    "calibrate": "node scripts/calibrate.mjs",
+    "wasm": "node scripts/build-wasm.mjs"
   },
   "devDependencies": {
     "@turf/turf": "^7.4.0",
     "@types/geojson": "^7946.0.16",
+    "assemblyscript": "0.28.20",
     "axe-core": "^4.14.0",
     "geotiff": "^3.0.5",
     "osmtogeojson": "^3.0.0-beta.5",
