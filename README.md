@@ -241,5 +241,9 @@ Captured water enters the nearest mapped drain (OSM `waterway` lines) instead of
 | Past rain (real storms) | [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) (reanalysis); event dates and gauge totals from the news reports linked in `src/weather.ts` | CC BY 4.0; reports cited, facts only |
 | Basemap | [OpenFreeMap](https://openfreemap.org/) | OSM data, ODbL; OpenMapTiles schema |
 | Flood reports | Deccan Herald, The News Minute, Scroll, ThePrint, Citizen Matters, Gulf News, OneIndia, South First (links in `public/data/hotspots-city.json`) | cited, facts only |
+| Satellite imagery | [EOX Sentinel-2 cloudless](https://s2maps.eu) 2020 | CC BY-NC-SA 4.0 (non-commercial; only the 2016 layer is CC BY 4.0) |
+| Commute hotspots | `public/data/commute/hotspots.geojson`: the reports above plus six Deccan Herald reports, OSM ways, Copernicus DEM lowness | ODbL 1.0; reports cited, facts only |
+
+Every source with its attribution string, including the build-only ones (Nominatim, GDELT, Geofabrik, Overpass) and the web font, is in [DATA_SOURCES.md](DATA_SOURCES.md). Open-Meteo's free API is for non-commercial use.
 
 **Code**: MIT, see [LICENSE](LICENSE). **Derived data** in `public/data/` remains under the source licences above. OSM-derived files are ODbL.
