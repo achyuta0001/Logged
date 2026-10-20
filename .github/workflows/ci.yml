@@ -8,9 +8,11 @@ on:
     branches-ignore: [main]
 permissions:
   contents: read
+# A running check finishes; only the newest waiting one is kept. Several agents push to one branch
+# every few minutes, and cancelling in progress meant hardly any run ever reached the end.
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -27,7 +29,9 @@ jobs:
       - run: npx vite build
       # Playwright's headless Chromium shell and the system libraries it needs
       - run: npx playwright-core install --with-deps --only-shell chromium
-      - run: npm run smoke -- --out "$RUNNER_TEMP/smoke"
+      # --no-tiles: the runner draws WebGL in software, and third-party basemap and terrain tiles were
+      # most of that work (the predictions, the app's own layers and the fallback style still run)
+      - run: npm run smoke -- --no-tiles --out "$RUNNER_TEMP/smoke"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
