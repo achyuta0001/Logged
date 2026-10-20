@@ -5,9 +5,10 @@
 #
 # Pack cache. Building the packs (OSM extract, data:city, data:all) takes most of the run, so the
 # result is cached (actions/cache) under "packs-v1-<UTC month>-<hash>". The hash covers what shapes a
-# pack: scripts/build-*.mjs, scripts/lib/**, scripts/data/** (sourced flood spots), the src modules
-# the builders import (src/pack/**, src/terrain.ts, src/sim/core.ts for lakeFreeboardM) and
-# package-lock.json. The month makes OSM data refresh at least monthly.
+# pack: scripts/build-*.mjs, scripts/lib/**, public/data/hotspots-city.json (the sourced flood spots
+# copied into each pack), the src modules the builders import (src/pack/**, src/terrain.ts,
+# src/region/packs.ts for hotspotsInBBox, src/sim/core.ts for lakeFreeboardM) and package-lock.json.
+# The month makes OSM data refresh at least monthly.
 #   - Same month and inputs: the packs, index.json and city.geojson come from the cache, and the OSM
 #     download and every pack build are skipped. A copy or app change deploys in a few minutes.
 #   - Otherwise (new month, a builder or its inputs changed, or no entry yet): the full build runs, and
@@ -51,7 +52,7 @@ jobs:
       - run: npm ci
       - name: Pack cache key
         id: packs-key
-        run: echo "prefix=packs-v1-$(date -u +%Y-%m)-${{ hashFiles('scripts/build-*.mjs', 'scripts/lib/**', 'scripts/data/**', 'src/pack/**', '!src/pack/__tests__/**', 'src/terrain.ts', 'src/sim/core.ts', 'package-lock.json') }}" >> "$GITHUB_OUTPUT"
+        run: echo "prefix=packs-v1-$(date -u +%Y-%m)-${{ hashFiles('scripts/build-*.mjs', 'scripts/lib/**', 'public/data/hotspots-city.json', 'src/pack/**', '!src/pack/__tests__/**', 'src/terrain.ts', 'src/region/packs.ts', 'src/sim/core.ts', 'package-lock.json') }}" >> "$GITHUB_OUTPUT"
       # Every entry gets a unique key (prefix + run), so the newest entry for this prefix is restored
       # and a forced rebuild can replace an older one.
       - name: Restore built packs
