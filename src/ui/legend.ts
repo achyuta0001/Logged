@@ -12,8 +12,8 @@ export class Legend implements IControl {
     const el = document.createElement('div');
     el.className = 'maplibregl-ctrl legend';
     el.innerHTML = `
-      <button type="button" class="lg-toggle" aria-expanded="false" aria-controls="lg-key" aria-label="Map key: water depth from 2 centimetres to over 1 metre. Show the full key">
-        <span class="lg-cap">Water</span><span class="lg-s">2 cm</span><i class="lg-ramp" style="background:linear-gradient(90deg,${DEPTH_LEGEND.map((l) => l.color).join(',')})"></i><span class="lg-s">1 m+</span>${iconSvg('chevron', 12, 1.8)}
+      <button type="button" class="lg-toggle" aria-expanded="false" aria-controls="lg-key">
+        <span class="lg-cap">Water</span><span class="sr-only"> depth key:</span><span class="lg-s">2 cm</span><i class="lg-ramp" style="background:linear-gradient(90deg,${DEPTH_LEGEND.map((l) => l.color).join(',')})"></i><span class="lg-s">1 m+</span>${iconSvg('chevron', 12, 1.8)}
       </button>
       <div class="lg-key" id="lg-key" hidden>
         <ul class="lg-depth">${DEPTH_LEGEND.map((l) => `<li><i style="background:${l.color}"></i>${l.label}</li>`).join('')}</ul>
@@ -38,6 +38,14 @@ export class Legend implements IControl {
       const open = btn.getAttribute('aria-expanded') !== 'true';
       set(open);
       save('legend.open', open);
+    });
+    // Esc closes the open key and leaves focus on its toggle
+    el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || btn.getAttribute('aria-expanded') !== 'true') return;
+      e.preventDefault();
+      set(false);
+      save('legend.open', false);
+      btn.focus();
     });
   }
 
