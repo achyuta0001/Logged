@@ -138,6 +138,9 @@ a:hover {
   transform: none;
   text-decoration: none;
 }
+body.tour-on .skip-link {
+  display: none;
+}
 .sr-only {
   position: absolute !important;
   width: 1px;
@@ -805,7 +808,8 @@ body.sb-rail .sidebar {
   border-radius: 999px;
   font-weight: 600;
   font-size: 12px;
-  color: color-mix(in srgb, var(--c) 75%, white);
+  /* 60 % keeps every severity's text at 4.5:1 on its own tint */
+  color: color-mix(in srgb, var(--c) 60%, white);
   background: color-mix(in srgb, var(--c) 20%, transparent);
   white-space: nowrap;
 }
@@ -2491,15 +2495,6 @@ body.mode-phone .tour-btn {
   color: inherit;
   font-size: 0.92em;
   font-weight: 400;
-}
-.ens-sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 .ens {
   margin-top: 8px;
