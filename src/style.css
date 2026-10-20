@@ -2613,3 +2613,65 @@ body.mode-phone .tour-btn {
 .sp-band {
   fill: rgba(143, 166, 255, 0.2);
 }
+
+/* ---------- "Add to Home Screen" hint on phones (src/ui/installHint.ts) ---------- */
+.install-hint {
+  z-index: 60;
+  top: calc(10px + env(safe-area-inset-top));
+  left: 16px;
+  right: 16px;
+  max-width: 420px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 14px;
+  border-radius: 20px;
+  font-size: 14px;
+  line-height: 1.35;
+  animation: ih-in 0.4s var(--ease-spring) both;
+}
+.install-hint p {
+  flex: 1;
+  margin: 0;
+  color: var(--label-2);
+}
+.install-hint b {
+  color: var(--label-1);
+  font-weight: 600;
+}
+.ih-how {
+  display: block;
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--label-3);
+}
+.ih-share {
+  margin: 0 1px;
+  vertical-align: -3px;
+  color: var(--accent);
+}
+.install-hint .ih-install {
+  flex: none;
+  width: auto;
+  height: 34px;
+  font-size: 14px;
+}
+.ih-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fill-2);
+  color: var(--label-2);
+  cursor: pointer;
+}
+@keyframes ih-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}
