@@ -5,7 +5,8 @@
 //
 //   npm run a11y                               start Vite on :5176, audit every view, stop Vite
 //   npm run a11y -- --url http://localhost:5173 audit a server that is already running
-//   npm run a11y -- --views city,search        only some views (city, search, pin, place, tour, phone)
+//   npm run a11y -- --views city,search        only some views (city, search, pin, place, commute, news,
+//                                              tour, toast, phone)
 //   npm run a11y -- --tab                      also walk the page with Tab and screenshot each focus
 //   npm run a11y -- --json report.json         write the full axe results
 //   npm run a11y -- --no-fail                  exit 0 even when violations are found
@@ -67,6 +68,56 @@ const VIEWS = {
       await p.waitForTimeout(1500);
     },
   },
+  commute: {
+    // a shared commute link: Your place -> destination at a departure time (src/ui/place.ts)
+    path: `/?pin=${PIN}&from=77.6205,12.9285&to=77.6420,12.9330&dep=08:30`,
+    note: `pincode ${PIN}, Your place with the commute check from a shared link`,
+    async setup(p) {
+      const open = await p.$('#sec-place-btn[aria-expanded="false"]');
+      if (open) await open.click();
+      await p.waitForSelector('#sec-place .pl-commute:not([hidden])', { timeout: 20000 });
+      await p.waitForTimeout(2500);
+    },
+  },
+  news: {
+    path: `/?pin=${PIN}`,
+    note: `pincode ${PIN}, news flood reports layer on and one report card open`,
+    async setup(p) {
+      await expandAll(p);
+      const sw = p.locator('input[data-layer="news"]');
+      if (!(await sw.isChecked())) await sw.check();
+      await p.waitForTimeout(1500);
+      // dev builds expose the app (src/main.ts): click the first news circle on screen
+      const pt = await p.evaluate(() => {
+        const map = window.__app?.map;
+        const ids = (map?.getStyle().layers ?? []).map((l) => l.id).filter((id) => /^news/.test(id));
+        const f = ids.length ? map.queryRenderedFeatures({ layers: ids })[0] : null;
+        if (!f) return null;
+        const c = map.project(f.geometry.coordinates);
+        const r = map.getCanvas().getBoundingClientRect();
+        return { x: r.left + c.x, y: r.top + c.y };
+      });
+      if (!pt) throw new Error('no news report on screen');
+      await p.mouse.click(pt.x, pt.y);
+      await p.waitForSelector('.maplibregl-popup', { timeout: 5000 });
+    },
+  },
+  toast: {
+    path: '/',
+    note: 'overview with the "Updated" toast (built like src/sw-register.ts showUpdated(); production only)',
+    async setup(p) {
+      await p.evaluate(() => {
+        const el = document.createElement('div');
+        el.id = 'sw-updated';
+        el.className = 'glass';
+        el.setAttribute('role', 'status');
+        el.style.cssText =
+          'position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;padding:6px 6px 6px 16px;border-radius:999px;font-size:13px;';
+        el.innerHTML = '<span>Updated</span><button type="button" class="btn primary" style="width:auto;height:30px;font-size:13px">Reload</button>';
+        document.body.append(el);
+      });
+    },
+  },
   tour: {
     path: `/?pin=${PIN}`,
     note: `pincode ${PIN}, guided tour running`,
@@ -89,10 +140,12 @@ const VIEWS = {
 const wanted = (opt('views', '') || Object.keys(VIEWS).join(',')).split(',').filter((v) => VIEWS[v]);
 
 async function expandAll(p) {
+  // the per-model ranges arrive from a second worker after the first prediction
+  await p.waitForSelector('#ens-more:not([hidden])', { timeout: 30000 }).catch(() => {});
   await p.evaluate(() => {
     const vis = (el) => !el.closest('[hidden], .off-scope, .empty');
     document.querySelectorAll('.sb-toggle[aria-expanded="false"]').forEach((b) => vis(b) && b.click());
-    document.querySelectorAll('.sub-toggle[aria-expanded="false"], .lg-toggle[aria-expanded="false"], #life-more[aria-expanded="false"]').forEach((b) => vis(b) && b.click());
+    document.querySelectorAll('.sub-toggle[aria-expanded="false"], .lg-toggle[aria-expanded="false"], #life-more[aria-expanded="false"], #ens-more[aria-expanded="false"]').forEach((b) => vis(b) && b.click());
     document.querySelectorAll('details:not([open])').forEach((d) => (d.open = true));
   });
   await p.waitForTimeout(800);
@@ -161,11 +214,8 @@ function summarise(name, label, res) {
 // ---------------------------------------------------------------- keyboard pass
 async function tabWalk(page, name, steps = 70) {
   mkdirSync(OUT, { recursive: true });
-  await page.evaluate(() => {
-    document.activeElement?.blur?.();
-    window.scrollTo(0, 0);
-  });
-  await page.mouse.click(2, 2); // neutral start; the skip link must be the first stop
+  // start from the top of the document: the skip link must be the first stop
+  await page.evaluate(() => document.activeElement?.blur?.());
   const seen = [];
   for (let i = 0; i < steps; i++) {
     await page.keyboard.press('Tab');
@@ -174,8 +224,11 @@ async function tabWalk(page, name, steps = 70) {
       if (!el || el === document.body) return null;
       const r = el.getBoundingClientRect();
       const cs = getComputedStyle(el);
-      const ring = (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0) || cs.boxShadow !== 'none';
-      const name = (el.getAttribute('aria-label') || el.textContent || el.getAttribute('placeholder') || el.getAttribute('title') || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+      // a ring on the element, or on the field wrapping it (inputs drawn inside a :focus-within box)
+      const wrap = el.parentElement && getComputedStyle(el.parentElement);
+      const ring = (cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) > 0) || cs.boxShadow !== 'none' || (!!wrap && wrap.boxShadow !== 'none' && el.matches('input'));
+      const label = el.labels?.[0]?.textContent;
+      const name = (el.getAttribute('aria-label') || label || el.textContent || el.getAttribute('placeholder') || el.getAttribute('title') || '').trim().replace(/\s+/g, ' ').slice(0, 60);
       const onScreen = r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
       return { tag: el.tagName.toLowerCase(), id: el.id, cls: String(el.className?.baseVal ?? el.className).split(' ')[0], role: el.getAttribute('role') ?? '', name, ring, onScreen, x: r.x, y: r.y, w: r.width, h: r.height };
     });
