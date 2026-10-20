@@ -42,10 +42,12 @@ export const TYPE_THRESHOLD_MMHR: Record<HotspotType, number> = {
 };
 
 /**
- * Multiplies every threshold (type default or per hotspot). Chosen on the backtest's training days
- * only, by the best critical success index; backtest/REPORT.md gives the held-out scores.
+ * Multiplies every threshold (type default or per hotspot). 1.4 was chosen on the backtest's training
+ * days only (half of the 63 report days and their control days; best critical success index among
+ * 0.25-2), so an underpass is flagged from 7 mm/h of model rain and a road from 11.2 mm/h before the
+ * other terms. backtest/REPORT.md gives the scores on the held-out days.
  */
-export const THRESHOLD_SCALE = 1;
+export const THRESHOLD_SCALE = 1.4;
 
 // ------------------------------------------------------------------ score
 
