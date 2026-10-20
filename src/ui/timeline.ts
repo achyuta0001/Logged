@@ -54,7 +54,7 @@ export class Timeline {
           <div class="segmented small" id="tl-speed" role="group" aria-label="Playback speed">
             ${SPEEDS.map((s, i) => `<button type="button" data-s="${s}" aria-pressed="${i === 1}" title="${s} predicted hours per second">${s}×</button>`).join('')}
           </div>
-          <button type="button" class="icon-btn tl-min" aria-label="Minimise the timeline" data-tip="Minimise">${iconSvg('chevron', 15, 1.8)}</button>
+          <button type="button" class="icon-btn tl-min" aria-label="Minimise the timeline" aria-expanded="true" aria-controls="timeline" data-tip="Minimise">${iconSvg('chevron', 15, 1.8)}</button>
         </div>
         <div class="tl-chart" id="tl-chart"><svg id="tl-svg" role="slider" tabindex="0" aria-label="Prediction hour" aria-valuemin="0"></svg></div>
       </div>
@@ -62,7 +62,7 @@ export class Timeline {
         <button type="button" class="tl-play" data-play aria-label="Play">${iconSvg('play', 14)}</button>
         <div class="tl-mtime"><b class="tl-clock">--:--</b><span class="tl-mday"></span></div>
         <svg class="tl-spark" width="${SPARK_W}" height="${SPARK_H}" viewBox="0 0 ${SPARK_W} ${SPARK_H}" role="slider" tabindex="0" aria-label="Prediction hour (flooded area over time)" aria-valuemin="0"></svg>
-        <button type="button" class="icon-btn tl-exp" aria-label="Expand the timeline" data-tip="Expand">${iconSvg('chevron', 15, 1.8)}</button>
+        <button type="button" class="icon-btn tl-exp" aria-label="Expand the timeline" aria-expanded="false" aria-controls="timeline" data-tip="Expand">${iconSvg('chevron', 15, 1.8)}</button>
       </div>
     `;
     this.svg = el.querySelector('#tl-svg') as unknown as SVGSVGElement;
@@ -103,8 +103,10 @@ export class Timeline {
     svg.addEventListener('keydown', (e) => {
       if (!this.series) return;
       const n = this.series.mm.length;
-      if (e.key === 'ArrowRight') this.h.onHour(Math.min(n - 1, this.hour + (e.shiftKey ? 6 : 1)));
-      else if (e.key === 'ArrowLeft') this.h.onHour(Math.max(0, this.hour - (e.shiftKey ? 6 : 1)));
+      // slider keys (WAI-ARIA APG): arrows step an hour (Shift: 6), Page Up/Down a day, Home/End the ends
+      const step = e.key === 'PageUp' || e.key === 'PageDown' ? 24 : e.shiftKey ? 6 : 1;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'PageUp') this.h.onHour(Math.min(n - 1, this.hour + step));
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'PageDown') this.h.onHour(Math.max(0, this.hour - step));
       else if (e.key === 'Home') this.h.onHour(0);
       else if (e.key === 'End') this.h.onHour(n - 1);
       else return;
@@ -182,7 +184,8 @@ export class Timeline {
     (this.el.querySelector('#tl-area') as HTMLElement).textContent = this.area.length ? fmtArea(this.area[h] ?? 0) : '–';
     for (const svg of [this.svg, this.spark]) {
       svg.setAttribute('aria-valuenow', String(h));
-      svg.setAttribute('aria-valuetext', `${fmtDay(t)} ${fmtHour(t)}`);
+      // read as "Mon 21 Oct 06:00, 0.60 km² flooded"
+      svg.setAttribute('aria-valuetext', `${fmtDay(t)} ${fmtHour(t)}${this.area.length ? `, ${fmtArea(this.area[h] ?? 0)} flooded` : ''}`);
     }
     const n = s.mm.length;
     if (this.head) {
