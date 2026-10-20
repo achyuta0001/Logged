@@ -8,7 +8,7 @@ import { fmtHHMM } from '../../commute/verdict';
 import { esc } from '../format';
 import { iconSvg } from '../icons';
 import { LEVEL_COLOR, LEVEL_SHORT, LEVEL_TEXT, TYPE_LABEL, explainRows, pill, rank } from './levels';
-import { EVENING, cleanHHMM, type CommuteState, type Leg } from './state';
+import { EVENING, cleanDays, cleanHHMM, type CommuteState, type Leg } from './state';
 
 export type End = 'home' | 'office';
 export interface PlaceHit {
@@ -34,6 +34,8 @@ const END_TEXT: Record<End, { name: string; ph: string }> = {
   home: { name: 'Home', ph: 'Area or pincode, e.g. Indiranagar' },
   office: { name: 'Office', ph: 'Area or pincode, e.g. Bellandur' },
 };
+/** the week, Monday first: [ISO digit, letter, name] */
+const DAYS: [string, string, string][] = [['1', 'M', 'Monday'], ['2', 'T', 'Tuesday'], ['3', 'W', 'Wednesday'], ['4', 'T', 'Thursday'], ['5', 'F', 'Friday'], ['6', 'S', 'Saturday'], ['7', 'S', 'Sunday']];
 const fmtMin = (s: number) => {
   const m = Math.max(1, Math.round(s / 60));
   return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`;
@@ -78,6 +80,10 @@ export class CommutePanel {
             <label class="cm-row-lbl" for="cm-ret">Back home<small>leave the office at</small></label>
             <input id="cm-ret" type="time" class="cm-time cm-ret" step="300" />
             <input id="cm-ret-on" type="checkbox" class="switch" role="switch" aria-label="Check the trip back home too" />
+          </div>
+          <div class="cm-row">
+            <span class="cm-row-lbl" id="cm-days-l">Days<small>you commute</small></span>
+            <div class="cm-days" role="group" aria-labelledby="cm-days-l">${DAYS.map(([d, l, name]) => `<button type="button" data-day="${d}" aria-pressed="false"><span aria-hidden="true">${l}</span><span class="sr-only">${name}</span></button>`).join('')}</div>
           </div>
         </form>
         <p class="cm-msg" role="status"></p>
@@ -140,6 +146,13 @@ export class CommutePanel {
       if (route) return this.h.route(route.dataset.route as RouteCandidate['id']);
       const at = t.closest<HTMLButtonElement>('.cm-leave button');
       if (at) return this.update(at.dataset.leg === 'back' ? { ret: at.dataset.at! } : { dep: at.dataset.at! });
+      const day = t.closest<HTMLButtonElement>('.cm-days button');
+      if (day) {
+        const d = day.dataset.day!;
+        // the check is for the next commute day, so at least one stays on
+        if (this.s.days === d) return this.say('Keep at least one commute day.');
+        return this.update({ days: this.s.days.includes(d) ? this.s.days.replace(d, '') : cleanDays(this.s.days + d) });
+      }
       const leg = t.closest<HTMLButtonElement>('.cm-legs button');
       if (leg) return this.h.leg(leg.dataset.leg as Leg['id']);
       const spot = t.closest<HTMLButtonElement>('[data-spot]');
@@ -198,6 +211,7 @@ export class CommutePanel {
     ret.classList.toggle('off', !this.s.ret);
     if (document.activeElement !== ret) ret.value = this.s.ret ?? (this.lastRet ?? EVENING);
     if (this.s.ret) this.lastRet = this.s.ret;
+    this.root.querySelectorAll<HTMLButtonElement>('.cm-days button').forEach((b) => b.setAttribute('aria-pressed', String(this.s.days.includes(b.dataset.day!))));
     this.$<HTMLElement>('.cm-share').hidden = !(this.s.home && this.s.office);
   }
 
