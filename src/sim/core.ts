@@ -21,9 +21,15 @@
  *    basin's pond (removed in proportion to depth, booked as `drained`). While it rains hard, the same
  *    drains are busy with direct runoff and the term is off.
  * All storage in Float64 so the volume budget closes to round-off.
+ *
+ * Engines: the per-cell passes of step() (vertical losses and inlet capture, wet extents, pond drainage,
+ * routing) also exist as a WebAssembly kernel (src/sim/wasm/surface.as.ts, loaded by src/sim/kernel.ts)
+ * that works in place on these arrays, kept in its memory. It runs the same operations in the same
+ * order on f64, so results are bit-identical; the JS below is the reference and the fallback.
  */
 import type { SimParams } from '../types.ts';
 import { DrainNetwork, type NetworkTotals } from './network.ts';
+import { SurfaceKernel, defaultEngine, wasmError, type EngineChoice, type EngineKind } from './kernel.ts';
 
 export interface CoreGrids {
   width: number;
@@ -37,6 +43,11 @@ export interface CoreGrids {
 }
 
 export const DEFAULT_PARAMS: SimParams = { drainCapacityMmHr: 50, infiltrationMmHr: 10, drainBlockage: 0.4 };
+
+export interface CoreOptions {
+  /** engine of the per-cell passes (default 'auto': WebAssembly when it loads, else JS; results are identical; node: FLOOD_ENGINE) */
+  engine?: EngineChoice;
+}
 
 export interface HourStats {
   /** m3 of surface water at end of hour */
@@ -117,6 +128,9 @@ export class SimCore {
   /** model time, s */
   time = 0;
   params: SimParams;
+  /** engine running the per-cell passes ('wasm': src/sim/kernel.ts) */
+  readonly engine: EngineKind = 'js';
+  private kern: SurfaceKernel | null = null;
 
   private invN: Float64Array; // 1/n per cell
   /** mean 1/n of each cell's east and south face (0.5 x the sum: the same product as in the face formula) */
@@ -157,7 +171,7 @@ export class SimCore {
   private basinWetImp: Float64Array; // per-step scratch
   private basinPond: Float64Array; // per-step scratch: sum of pond depth (m*cells)
 
-  constructor(g: CoreGrids, params: Partial<SimParams> = {}) {
+  constructor(g: CoreGrids, params: Partial<SimParams> = {}, opts: CoreOptions = {}) {
     this.params = { ...DEFAULT_PARAMS, ...params };
     const w = (this.w = g.width);
     const H = (this.hgt = g.height);
@@ -339,6 +353,51 @@ export class SimCore {
     for (let i = 0; i < n; i++) if (this.lakeComp[i] < 0) this.basinImp[basin[i]] += this.imp[i];
     this.basinWetImp = new Float64Array(nb);
     this.basinPond = new Float64Array(nb);
+
+    // ---- engine: move the arrays the kernel works on into its memory (copied once; views from now on) ----
+    const choice = opts.engine ?? defaultEngine();
+    if (choice !== 'js') {
+      const net = this.net;
+      const k = SurfaceKernel.create(
+        [
+          this.h, this.z, this.invN, this.nEast, this.nSouth, this.pervious, this.soil, this.inletRate, this.fx, this.fy,
+          this.out, this.edgeSlopeSqrt, this.edgeOut, this.wetRowMin, this.wetRowMax, this.chan, this.imp, this.basin,
+          this.lakeComp, this.basinImp, this.basinWetImp, this.basinPond,
+          net ? net.cellNode : new Int32Array(0), net ? net.tankCell : new Uint8Array(0),
+          net ? net.want : new Float64Array(0), net ? net.rcell : new Float64Array(0),
+          LUT23, new Float64Array(8),
+        ],
+        w, H, nb,
+      );
+      if (k) {
+        const v = k.views;
+        this.h = v[0] as Float64Array;
+        this.z = v[1] as Float64Array;
+        this.invN = v[2] as Float64Array;
+        this.nEast = v[3] as Float64Array;
+        this.nSouth = v[4] as Float64Array;
+        this.pervious = v[5] as Float64Array;
+        this.soil = v[6] as Float64Array;
+        this.inletRate = v[7] as Float64Array;
+        this.fx = v[8] as Float64Array;
+        this.fy = v[9] as Float64Array;
+        this.out = v[10] as Float64Array;
+        this.edgeSlopeSqrt = v[11] as Float64Array;
+        this.edgeOut = v[12] as Float64Array;
+        this.wetRowMin = v[13] as Int32Array;
+        this.wetRowMax = v[14] as Int32Array;
+        this.chan = v[15] as Uint8Array;
+        this.imp = v[16] as Float64Array;
+        this.basin = v[17] as Int32Array;
+        this.lakeComp = v[18] as Int32Array;
+        this.basinImp = v[19] as Float64Array;
+        this.basinWetImp = v[20] as Float64Array;
+        this.basinPond = v[21] as Float64Array;
+        net?.rebind({ cellNode: v[22] as Int32Array, tankCell: v[23] as Uint8Array, want: v[24] as Float64Array, rcell: v[25] as Float64Array });
+        this.kern = k.kernel;
+        this.engine = 'wasm';
+      } else if (choice === 'wasm') throw new Error(`WebAssembly engine unavailable: ${wasmError()}`);
+    }
   }
 
   /** per-lake storage capacity and what is still free, m3 (diagnostics) */
@@ -478,6 +537,7 @@ export class SimCore {
 
   /** wet extent per row (cells deeper than H_MIN_FLOW), by a pass over the grid */
   private wetExtents(): void {
+    if (this.kern) return this.kern.x.wetExtents();
     const { w, hgt: H, h } = this;
     const rowMin = this.wetRowMin, rowMax = this.wetRowMax;
     for (let r = 0; r < H; r++) {
@@ -494,6 +554,7 @@ export class SimCore {
    * per fully sealed cell this step (m). Returns the removed depth summed over cells (m*cells).
    */
   private drainPonds(capDepth: number): number {
+    if (this.kern) return this.kern.x.drainPonds(capDepth);
     const { w, hgt: H, h, basin, imp, lakeComp } = this;
     const wetImp = this.basinWetImp, pond = this.basinPond, bImp = this.basinImp;
     // ponds are deeper than H_MIN_FLOW: only the wet extents hold any (same cells, same order)
@@ -566,7 +627,12 @@ export class SimCore {
     const cellNode = net ? net.cellNode : null, tankCell = net ? net.tankCell : null;
     const want = net ? net.want : null, rcell = net ? net.rcell : null, rate = this.inletRate;
     let capRemoved = 0, capSink = 0;
-    for (let i = 0; i < n; i++) {
+    const kern = this.kern;
+    if (kern) {
+      infTot = kern.x.vertical(rainDepth, infBase, soilRec, cap, fold ? 1 : 0, A);
+      capRemoved = kern.ret[1];
+      capSink = kern.ret[2];
+    } else for (let i = 0; i < n; i++) {
       let d = h[i] + rainDepth;
       const pv = perv[i];
       let s = soil[i];
@@ -655,6 +721,14 @@ export class SimCore {
 
     // ---- horizontal routing ----
     if (!(cap > 0 || net)) this.wetExtents();
+    if (kern) {
+      // the kernel's route() is the rest of this method, from here to the clamp
+      const vmax = kern.x.route(dt, dx, A, K_LIMIT * A, 1 / dx, 1 / A);
+      this.budget.outflow += kern.ret[3];
+      this.budget.outflow += kern.ret[4] * A; // tiny negative correction
+      this.lastVmax = vmax;
+      return;
+    }
     const rowMin = this.wetRowMin, rowMax = this.wetRowMax;
     const fx = this.fx, fy = this.fy, out = this.out, chan = this.chan, nE = this.nEast, nS = this.nSouth;
     out.fill(0);
