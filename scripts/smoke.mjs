@@ -38,7 +38,8 @@ const TIMEOUT = Number(arg('timeout', '120000'));
 /** after the loader closes: keep listening for late errors (background runs, tiles) before the screenshot */
 const SETTLE_MS = Number(arg('settle', '3000'));
 const PINS = arg('pins', '560034,560071,560098').split(',').map((s) => s.trim()).filter(Boolean);
-const VIEWS = [...(process.argv.includes('--no-city') ? [] : [{ name: 'city', query: '' }]), ...PINS.map((p) => ({ name: p, query: `?pin=${p}`, pin: true }))];
+// commute: the tab's empty state (fresh context, no saved trip), so it needs no road graph in CI
+const VIEWS = [...(process.argv.includes('--no-city') ? [] : [{ name: 'city', query: '' }, { name: 'commute', query: '?commute=1' }]), ...PINS.map((p) => ({ name: p, query: `?pin=${p}`, pin: true }))];
 // SwiftShader WebGL where there is no GPU (CI); SMOKE_GL=gpu keeps Chromium's own choice
 const GL = process.env.SMOKE_GL ?? (process.platform === 'linux' ? 'swiftshader' : 'gpu');
 const GL_ARGS = GL === 'swiftshader' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--ignore-gpu-blocklist'];
