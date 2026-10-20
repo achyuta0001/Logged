@@ -279,7 +279,7 @@ export class CommutePanel {
     el.innerHTML = ls
       .map((l) => {
         const day = dayWord(l.departure, now);
-        return `<button type="button" data-leg="${l.id}" aria-pressed="${l.id === current}" aria-label="${l.id === 'out' ? 'To the office' : 'Back home'}, ${day} ${l.hhmm}">${l.id === 'out' ? 'To office' : 'Back home'} ${l.hhmm}</button>`;
+        return `<button type="button" data-leg="${l.id}" aria-pressed="${l.id === current}">${l.id === 'out' ? 'To office' : 'Back home'} ${l.hhmm}<span class="sr-only">, ${day}</span></button>`;
       })
       .join('');
   }
