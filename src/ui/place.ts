@@ -268,21 +268,9 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
   // ---- lazy data structures
   let graph: RoadGraph | null = null;
   const G = () => (graph ??= buildRoadGraph(osm, meta));
-  let extras: { depressions?: Depression[]; hotspots?: Hotspot[] } = { depressions: opts.depressions, hotspots: opts.hotspots };
+  const extras: { depressions?: Depression[]; hotspots?: Hotspot[] } = { depressions: opts.depressions, hotspots: opts.hotspots };
   let index: SearchIndex | null = null;
   const I = () => (index ??= buildSearchIndex(osm, meta, extras));
-  if (!opts.depressions || !opts.hotspots) {
-    const base = `${import.meta.env?.BASE_URL ?? '/'}data/`;
-    const get = <T,>(f: string) =>
-      fetch(base + f)
-        .then((r) => (r.ok && !(r.headers.get('content-type') ?? '').includes('text/html') ? (r.json() as Promise<T>) : undefined))
-        .catch(() => undefined);
-    void Promise.all([opts.depressions ? undefined : get<Depression[]>('depressions.json'), opts.hotspots ? undefined : get<Hotspot[]>('hotspots.json')]).then(([d, h]) => {
-      extras = { depressions: opts.depressions ?? d, hotspots: opts.hotspots ?? h };
-      index = null; // rebuild with the extra entries on next use
-      if (place && !place.labelFixed) relabel();
-    });
-  }
 
   // ---- state
   const saved = load();
@@ -615,16 +603,6 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
     if (road) return { label: road.name, sub: ['Street', area].filter(Boolean).join(' · '), kind: 'road' };
     return { label: 'Dropped pin', sub: [area, `${p[1].toFixed(5)}, ${p[0].toFixed(5)}`].filter(Boolean).join(' · '), kind: 'pin' };
   }
-  function relabel() {
-    if (!place || place.labelFixed) return;
-    const d = describePoint(place.coord);
-    place.label = d.label;
-    place.sub = d.sub;
-    place.kind = d.kind;
-    renderHead();
-    save();
-  }
-
   function pinAt(p: LngLat, info?: { label: string; sub: string; kind: string }) {
     if (!inBBox(meta, p)) {
       flash(`That spot is outside the modelled area around ${pinLabel}.`);
