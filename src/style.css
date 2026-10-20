@@ -2105,6 +2105,10 @@ body.focus #map .maplibregl-ctrl-bottom-right {
 }
 .loader.error .ld-msg {
   color: var(--danger);
+  /* raw errors (e.g. a WebGL failure) can be long unbroken strings: wrap and scroll inside the card */
+  overflow-wrap: anywhere;
+  max-height: 8.5em;
+  overflow-y: auto;
 }
 
 /* =====================================================================
