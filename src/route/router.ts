@@ -28,6 +28,9 @@ const SNAP_BIAS_LINK = 25;
 export const MAX_SHARED = 0.75;
 /** ... and it may take at most this multiple of the fastest route's time */
 export const MAX_STRETCH = 1.4;
+/** ... and be at most this multiple of the fastest route's length: a fast ring road (NICE Road) can
+ *  make a 2x-longer loop pass the time test, but nobody would take it as an everyday alternative */
+export const MAX_LENGTH_STRETCH = 1.5;
 /** weight factor added per round to edges on routes found so far */
 const PENALTY = 0.5;
 const MAX_ROUNDS = 7;
@@ -523,6 +526,7 @@ export class Router {
           for (const [e, l] of mine) if (k.edges.has(e)) sh += Math.min(l, k.edges.get(e)!);
           shared = Math.max(shared, sh);
         }
+        if (len > MAX_LENGTH_STRETCH * kept[0].cand.lengthM) continue;
         if (len > 0 && shared / len <= MAX_SHARED) add(r.pieces);
       }
     }
