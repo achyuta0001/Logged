@@ -100,6 +100,12 @@ async function boot() {
             : await openCity(shell, city!);
       } catch (err) {
         console.error(err);
+        // a tab opened before a deploy runs old code against the new packs: reload into the new build
+        if (await staleBuild()) {
+          loader.error('This page is out of date after a site update. Reloading…');
+          location.reload();
+          return;
+        }
         const back = (!!pin || commute) && !!city;
         loader.error(`Could not load ${commute ? 'the commute view' : pin ? `pincode ${pin}` : 'the city overview'}: ${err instanceof Error ? err.message : String(err)}${back ? '. Back to the overview in a moment.' : ''}`);
         if (back) setTimeout(() => go(null), 3500);
@@ -119,3 +125,22 @@ boot().catch((e) => {
   new Loader().error(`Could not start: ${e instanceof Error ? e.message : String(e)}`);
 });
 registerServiceWorker();
+
+/**
+ * True when the site now serves a different build than the one running (its index.html points at
+ * another entry script). At most one reload a minute, so a broken deploy cannot loop.
+ */
+async function staleBuild(): Promise<boolean> {
+  const KEY = 'logged:stale-reload';
+  try {
+    if (Date.now() - Number(sessionStorage.getItem(KEY) ?? 0) < 60_000) return false;
+    const r = await fetch(`${import.meta.env.BASE_URL}index.html`, { cache: 'no-store' });
+    if (!r.ok) return false;
+    const src = (await r.text()).match(/<script[^>]*type="module"[^>]*src="([^"]+)"/)?.[1];
+    if (!src || new URL(src, location.href).pathname === new URL(import.meta.url).pathname) return false;
+    sessionStorage.setItem(KEY, String(Date.now()));
+    return true;
+  } catch {
+    return false;
+  }
+}
