@@ -83,15 +83,15 @@ export interface Shell {
   index: PinIndex;
   /** the city overview data loaded (otherwise the app is pincode-only) */
   hasCity: boolean;
-  /** switch region: a pincode, or the city overview (null) */
+  /** switch region: a pincode, the city overview (null), or the Commute tab ('commute') */
   go(pin: string | null): void;
   /** ?scenario=, &basemap=, &view= for the region being opened: the page's own for the first region, none after */
   url: URLSearchParams;
 }
 
-/** What is on screen: the city overview or one pincode. Everything it creates goes in destroy(). */
+/** What is on screen: the city overview, one pincode, or the Commute tab. Everything it creates goes in destroy(). */
 export interface Region {
-  kind: 'city' | 'pin';
+  kind: 'city' | 'pin' | 'commute';
   destroy(): void;
   reframe(): void;
   onTour?(): void;
