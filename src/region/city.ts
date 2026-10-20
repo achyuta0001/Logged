@@ -168,9 +168,9 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     <div class="city">
       <label class="city-search">
         ${iconSvg('target', 15)}
-        <input type="search" placeholder="Pincode or area, e.g. 560103 or Bellandur" aria-label="Find a pincode by number or area name" autocomplete="off" spellcheck="false" />
+        <input type="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="city-results" placeholder="Pincode or area, e.g. 560103 or Bellandur" aria-label="Find a pincode by number or area name" autocomplete="off" spellcheck="false" />
       </label>
-      <ul class="city-results" role="listbox" hidden></ul>
+      <ul class="city-results" id="city-results" role="listbox" aria-label="Matching pincodes" hidden></ul>
       <figure class="city-legend" aria-label="Legend: flood susceptibility, lower to higher">
         <div class="city-ramp" style="background: linear-gradient(90deg, ${grad})"></div>
         <figcaption><span>Lower</span><span>Flood susceptibility</span><span>Higher</span></figcaption>
@@ -193,14 +193,15 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
   const results = body.querySelector('.city-results') as HTMLUListElement;
   const list = body.querySelector('.city-list') as HTMLOListElement;
   const more = body.querySelector('.city-more') as HTMLButtonElement;
-  const row = (p: PinEntry, rank?: number) =>
-    `<li><button type="button" class="city-row" data-code="${p.code}">
-      ${rank !== undefined ? `<span class="city-rank">${rank}</span>` : ''}
+  const cells = (p: PinEntry, rank?: number) =>
+    `${rank !== undefined ? `<span class="city-rank">${rank}</span>` : ''}
       <span class="city-sw" style="background:${color(p.susceptibility ?? 0)}" aria-hidden="true"></span>
       <span class="city-name"><b>${p.code}</b><span>${esc(p.name)}</span></span>
       <span class="city-val">${p.susceptibility !== undefined ? `${suscBand(p.susceptibility)}` : ''}</span>
-      ${p.pack ? `<span class="city-3d" title="3D flood model ready">3D</span>` : ''}
-    </button></li>`;
+      ${p.pack ? `<span class="city-3d" title="3D flood model ready">3D</span>` : ''}`;
+  const row = (p: PinEntry, rank?: number) => `<li><button type="button" class="city-row" data-code="${p.code}">${cells(p, rank)}</button></li>`;
+  // search results are a listbox: focus stays in the input, the active option is announced (combobox pattern)
+  const option = (p: PinEntry, i: number) => `<li role="option" id="city-opt-${i}" class="city-row" data-code="${p.code}" aria-selected="false">${cells(p)}</li>`;
   let showAll = false;
   const renderList = () => {
     list.innerHTML = (showAll ? ranked : ranked.slice(0, 8)).map((p, i) => row(p, i + 1)).join('');
@@ -213,24 +214,37 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     renderList();
   });
   let active = -1;
+  const setActive = (i: number, scroll = false) => {
+    const rows = [...results.querySelectorAll<HTMLElement>('.city-row')];
+    rows.forEach((r, j) => {
+      r.classList.toggle('active', j === i);
+      r.setAttribute('aria-selected', String(j === i));
+    });
+    if (rows[i]) input.setAttribute('aria-activedescendant', rows[i].id);
+    else input.removeAttribute('aria-activedescendant');
+    if (scroll) rows[i]?.scrollIntoView({ block: 'nearest' });
+  };
   const renderResults = () => {
     const q = input.value.trim();
     const hits = q ? searchPins(index, q, 8) : [];
     results.hidden = !q;
+    input.setAttribute('aria-expanded', String(!!q));
     active = hits.length ? 0 : -1;
-    results.innerHTML = hits.length ? hits.map((p) => row(p)).join('') : q ? '<li class="city-none">No pincode or area by that name in Bengaluru Urban</li>' : '';
-    results.querySelector('.city-row')?.classList.add('active');
+    results.innerHTML = hits.length
+      ? hits.map(option).join('')
+      : q
+        ? '<li class="city-none" role="option" aria-disabled="true" aria-selected="false">No pincode or area by that name in Bengaluru Urban</li>'
+        : '';
+    setActive(active);
   };
   input.addEventListener('input', renderResults);
   input.addEventListener('keydown', (e) => {
-    const rows = [...results.querySelectorAll<HTMLButtonElement>('.city-row')];
+    const rows = [...results.querySelectorAll<HTMLElement>('.city-row')];
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       if (!rows.length) return;
       e.preventDefault();
-      rows[active]?.classList.remove('active');
       active = (active + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
-      rows[active].classList.add('active');
-      rows[active].scrollIntoView({ block: 'nearest' });
+      setActive(active, true);
     } else if (e.key === 'Enter' && rows[active]) {
       e.preventDefault();
       choose(rows[active].dataset.code!, true);
@@ -240,11 +254,11 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     }
   });
   root.addEventListener('click', (e) => {
-    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('.city-row');
+    const b = (e.target as HTMLElement).closest<HTMLElement>('.city-row');
     if (b) choose(b.dataset.code!, true);
   });
   root.addEventListener('mouseover', (e) => {
-    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('.city-row');
+    const b = (e.target as HTMLElement).closest<HTMLElement>('.city-row');
     setHover(b ? (idOf.get(b.dataset.code!) ?? -1) : -1);
   });
   root.addEventListener('mouseleave', () => setHover(-1));
