@@ -1,5 +1,5 @@
 // The "My commute" card in the sidebar: home and office (offline search over pincodes and areas,
-// "Use my location", or a tap on the map), the usual departure (Morning / Evening + time), an
+// "Use my location", or a tap on the map), the usual departure (time to the office and back), an
 // optional return trip; then the routes, the hotspots on the chosen one, the city's next three
 // hours, and the "Why" card for one hotspot. DOM only: src/ui/commute/view.ts does the work.
 import type { LngLat } from '../../commute/spots';
@@ -7,8 +7,8 @@ import type { CommuteHotspot, HotspotOutlook, RiskLevel, RouteCandidate, RouteRi
 import { fmtHHMM } from '../../commute/verdict';
 import { esc } from '../format';
 import { iconSvg } from '../icons';
-import { LEVEL_COLOR, LEVEL_TEXT, TYPE_LABEL, explainRows, pill, rank } from './levels';
-import { EVENING, MORNING, cleanHHMM, presetOf, type CommuteState, type Leg } from './state';
+import { LEVEL_COLOR, LEVEL_SHORT, LEVEL_TEXT, TYPE_LABEL, explainRows, pill, rank } from './levels';
+import { EVENING, cleanHHMM, type CommuteState, type Leg } from './state';
 
 export type End = 'home' | 'office';
 export interface PlaceHit {
@@ -47,6 +47,8 @@ const fmtDate = (d: string) => {
 export class CommutePanel {
   readonly root: HTMLElement;
   private s: CommuteState;
+  /** last time back home, kept while the return trip is off so switching it on restores it */
+  private lastRet: string | null = null;
   private h: PanelHandlers;
   private open: End | null = null;
   private active = -1;
@@ -69,21 +71,19 @@ export class CommutePanel {
         <form class="cm-trip" aria-label="My commute">
           <div class="cm-ends">${field('home')}${field('office')}</div>
           <div class="cm-row">
-            <span class="cm-row-lbl" id="cm-dep-lbl">Leave home</span>
-            <div class="segmented small cm-seg" role="group" aria-labelledby="cm-dep-lbl">
-              <button type="button" data-t="${MORNING}">Morning</button><button type="button" data-t="${EVENING}">Evening</button>
-            </div>
-            <input type="time" class="cm-time cm-dep" step="300" aria-labelledby="cm-dep-lbl" />
+            <label class="cm-row-lbl" for="cm-dep">To office<small>leave home at</small></label>
+            <input id="cm-dep" type="time" class="cm-time cm-dep" step="300" />
           </div>
           <div class="cm-row">
-            <label class="cm-row-lbl" for="cm-ret-on">Return trip</label>
-            <input type="time" class="cm-time cm-ret" step="300" aria-label="Leave the office at" />
-            <input id="cm-ret-on" type="checkbox" class="switch" role="switch" />
+            <label class="cm-row-lbl" for="cm-ret">Back home<small>leave the office at</small></label>
+            <input id="cm-ret" type="time" class="cm-time cm-ret" step="300" />
+            <input id="cm-ret-on" type="checkbox" class="switch" role="switch" aria-label="Check the trip back home too" />
           </div>
         </form>
         <p class="cm-msg" role="status"></p>
         <div class="cm-result" hidden>
           <div class="segmented cm-legs" role="group" aria-label="Which trip" hidden></div>
+          <div class="cm-leave-wrap" hidden><h3 class="cm-h" id="cm-leave-h">Best time to leave</h3><ol class="cm-leave" aria-labelledby="cm-leave-h"></ol></div>
           <h3 class="cm-h" id="cm-routes-h">Routes</h3>
           <ol class="cm-routes" aria-labelledby="cm-routes-h"></ol>
           <div class="cm-hits-wrap" hidden><h3 class="cm-h" id="cm-hits-h">On this route</h3><ol class="cm-hits" aria-labelledby="cm-hits-h"></ol></div>
@@ -136,10 +136,10 @@ export class CommutePanel {
       const t = e.target as HTMLElement;
       const opt = t.closest<HTMLElement>('.cm-opt');
       if (opt && this.open) return this.choose(this.open, Number(opt.dataset.i));
-      const seg = t.closest<HTMLButtonElement>('.cm-seg button');
-      if (seg) return this.update({ dep: seg.dataset.t! });
       const route = t.closest<HTMLButtonElement>('.cm-route');
       if (route) return this.h.route(route.dataset.route as RouteCandidate['id']);
+      const at = t.closest<HTMLButtonElement>('.cm-leave button');
+      if (at) return this.update(at.dataset.leg === 'back' ? { ret: at.dataset.at! } : { dep: at.dataset.at! });
       const leg = t.closest<HTMLButtonElement>('.cm-legs button');
       if (leg) return this.h.leg(leg.dataset.leg as Leg['id']);
       const spot = t.closest<HTMLButtonElement>('[data-spot]');
@@ -163,6 +163,7 @@ export class CommutePanel {
     on.addEventListener('change', () => this.update({ ret: on.checked ? (cleanHHMM(ret.value) ?? EVENING) : null }));
     ret.addEventListener('change', () => {
       const v = cleanHHMM(ret.value);
+      // setting a time back home is the clearest way to ask for that trip: switch it on too
       if (v) this.update({ ret: v });
     });
   }
@@ -188,15 +189,15 @@ export class CommutePanel {
       if (document.activeElement !== inp) inp.value = this.s[end]?.label ?? '';
       inp.closest('.cm-end')!.classList.toggle('set', !!this.s[end]);
     }
-    const p = presetOf(this.s.dep);
-    this.root.querySelectorAll<HTMLButtonElement>('.cm-seg button').forEach((b) => b.setAttribute('aria-pressed', String((b.dataset.t === MORNING ? 'am' : 'pm') === p)));
     const dep = this.$<HTMLInputElement>('.cm-dep');
     if (document.activeElement !== dep) dep.value = this.s.dep;
     const on = this.$<HTMLInputElement>('#cm-ret-on');
     const ret = this.$<HTMLInputElement>('.cm-ret');
     on.checked = !!this.s.ret;
-    ret.hidden = !this.s.ret;
-    if (this.s.ret && document.activeElement !== ret) ret.value = this.s.ret;
+    // the time back home stays visible (dimmed while the trip is off) so both times are easy to find
+    ret.classList.toggle('off', !this.s.ret);
+    if (document.activeElement !== ret) ret.value = this.s.ret ?? (this.lastRet ?? EVENING);
+    if (this.s.ret) this.lastRet = this.s.ret;
     this.$<HTMLElement>('.cm-share').hidden = !(this.s.home && this.s.office);
   }
 
@@ -270,6 +271,21 @@ export class CommutePanel {
     const m = this.$<HTMLElement>('.cm-msg');
     m.textContent = text;
     m.dataset.tone = tone;
+  }
+
+  /**
+   * Best time to leave: the least risky route's level for each 15-min departure around the chosen one.
+   * A tap moves that trip's time there (state, so it is saved and shared like a typed time).
+   */
+  showLeaveStrip(items: { hhmm: string; level: RiskLevel }[], current: string, leg: Leg['id']) {
+    const wrap = this.$<HTMLElement>('.cm-leave-wrap');
+    wrap.hidden = items.length < 2;
+    this.$<HTMLElement>('.cm-leave').innerHTML = items
+      .map(
+        (x) =>
+          `<li><button type="button" data-at="${x.hhmm}" data-leg="${leg}" data-level="${x.level}" aria-pressed="${x.hhmm === current}" style="--c:${LEVEL_COLOR[x.level]}"><time>${x.hhmm}</time><span class="sr-only">: ${LEVEL_SHORT[x.level]}</span></button></li>`,
+      )
+      .join('');
   }
 
   /** the trip switch (only with a return trip) */

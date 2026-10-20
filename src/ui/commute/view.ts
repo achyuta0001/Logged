@@ -225,6 +225,7 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
       onRoute = new Map();
       routes.set([], null, null);
       panel.showRoutes(null, [], null, 0, byId);
+      panel.showLeaveStrip([], '', 'out');
       panel.showLegs([], null, now, dayWord);
       drawPins();
       setIdleStatus();
@@ -246,6 +247,16 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
       tripOut = new Map(os.map((o) => [o.id, o]));
       plan = backend.plan(rs, hs, os, leg.departure, now);
       chosen = plan.advice.kind === 'use_route' ? plan.advice.route : (rs[0]?.id ?? null);
+      // best time to leave: every 15 min within 2 h either side, the least risky route at each
+      const strip: { hhmm: string; level: RiskLevel }[] = [];
+      for (let m = -120; m <= 120; m += 15) {
+        const d = leg.departure + m * 60e3;
+        if (d < now) continue;
+        const p = backend.plan(rs, hs, os, d, now);
+        const best = p.routes.reduce<RiskLevel | null>((acc, r) => (acc === null || rank(r.level) < rank(acc) ? r.level : acc), null);
+        if (best) strip.push({ hhmm: fmtHHMM(d), level: best });
+      }
+      panel.showLeaveStrip(strip, leg.hhmm, leg.id);
       panel.say('');
       render(fit);
     } catch (err) {

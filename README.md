@@ -36,7 +36,7 @@ The index is the weighted mean of the four percentile ranks, from 0 to 1. The le
 
 A switch at the top of the sidebar (the drawer on phones) moves between **Explore**, everything above and below, and **Commute**, for office commuters who plan around waterlogging (`src/ui/commute/`).
 
-- **My commute:** home and office (offline search over pincodes and area names, "Use my location", or "Pick on the map"; the markers can be dragged), the usual departure (Morning / Evening, or any time) and an optional return trip. Saved in the browser (`localStorage`); nothing leaves it.
+- **My commute:** home and office (offline search over pincodes and area names, "Use my location", or "Pick on the map"; the markers can be dragged), a "To office" time and an optional "Back home" time, each set directly. Saved in the browser (`localStorage`); nothing leaves it.
 - **The answer:** the sidebar's one line gives the planner's advice for the next weekday departure: "Leave by 17:45", "Use route B (via …)", "Consider working from home" or "Go — no waterlogging expected", with the reason under it. Advisory only; it never says a road is safe.
 - **Routes:** A, B and C with time, distance, the roads they follow and their worst level on the way. The chosen route is drawn on the map, coloured by level where it passes a hotspot, with the hotspots it meets listed by the time you reach them.
 - **Why:** tap a hotspot (on the map or in a list) for its level in each half hour of the next three hours, and the inputs in plain words: rain in the next hour and the last 24 hours, the rain at which it starts to waterlog, how low the ground is, and the days it was reported flooded, with the reports.

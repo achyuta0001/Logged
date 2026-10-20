@@ -199,13 +199,14 @@ body.mode-phone .sb-tabs {
   font-size: 14px;
   color: var(--label-1);
 }
-.cm-seg {
-  flex: none;
+.cm-row-lbl small {
+  display: block;
+  font-size: 12px;
+  color: var(--label-2);
 }
-/* each preset as wide as its word (the shared control splits the width evenly) */
-.cm-seg button {
-  flex: none;
-  padding: 3px 7px;
+/* the time back home while that trip is off: still there to find and edit, just quieter */
+.cm-time.off {
+  opacity: 0.5;
 }
 .cm-time {
   flex: none;
@@ -563,4 +564,33 @@ body.focus .cm-scrub {
 body.mode-phone.sheet-full .cm-scrub,
 body.mode-phone.sheet-half .cm-scrub {
   visibility: hidden;
+}
+
+/* ---------- best time to leave ---------- */
+.cm-leave {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 10px;
+  padding: 0 0 4px;
+  list-style: none;
+  overflow-x: auto;
+}
+.cm-leave button {
+  min-width: 44px;
+  min-height: 36px;
+  padding: 5px 4px 4px;
+  border: 0;
+  border-radius: 8px;
+  border-top: 3px solid var(--c);
+  background: var(--fill-1, rgba(255, 255, 255, 0.06));
+  color: var(--label-2);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.cm-leave button[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--c) 22%, transparent);
+  color: var(--label-1);
+  font-weight: 600;
 }
