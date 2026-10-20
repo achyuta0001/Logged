@@ -11,6 +11,10 @@ import { Timeline } from './ui/timeline';
 import { LEGACY_PIN, loadPinIndex, packBase, packsRoot } from './region/packs';
 import { loadCity, openCity } from './region/city';
 import { registerServiceWorker } from './sw-register';
+import { withoutCommute } from './ui/commute/state';
+
+/** go() target for the Commute tab (pincodes are six digits, so it never clashes) */
+const COMMUTE = 'commute';
 
 async function boot() {
   const loader = new Loader();
@@ -21,6 +25,8 @@ async function boot() {
     onStatus: () => region?.onStatus?.(),
     onFootprint: () => region?.reframe(),
     onBack: () => go(null),
+    // Explore returns to the pincode (or overview) the reader left for Commute
+    onTab: (t) => go(t === 'commute' ? COMMUTE : lastPin),
   });
   const timelineEl = document.getElementById('timeline')!;
   const timeline = new Timeline(timelineEl, {
@@ -51,9 +57,12 @@ async function boot() {
   // navigation is serialised: a region is fully torn down before the next one loads
   let nav = Promise.resolve();
   let first = true;
-  function go(pin: string | null, push = true) {
+  let lastPin: string | null = null;
+  function go(target: string | null, push = true) {
     nav = nav.then(async () => {
-      if (!pin && !city) pin = LEGACY_PIN;
+      const commute = target === COMMUTE;
+      let pin = commute ? null : target;
+      if (!commute && !pin && !city) pin = LEGACY_PIN;
       const entry = pin ? index.pins.find((p) => p.code === pin) : undefined;
       if (pin && !entry?.pack) {
         // unknown pincode, or one without a data pack: fall back to the overview (or 560098 without one)
@@ -62,7 +71,9 @@ async function boot() {
         else pin = null;
       }
       if (push) {
-        const q = new URLSearchParams(location.search);
+        // leaving Commute drops its parameters; ?from&to&dep alone still belong to a pincode's commute check
+        const q = new URLSearchParams(!commute && new URLSearchParams(location.search).has('commute') ? withoutCommute(location.search) : location.search);
+        if (commute) q.set('commute', '1');
         if (pin) q.set('pin', pin);
         else q.delete('pin');
         if (!first) for (const k of ['scenario', 'view']) q.delete(k);
@@ -80,18 +91,26 @@ async function boot() {
       layout.setFocus(false);
       try {
         const e = pin ? index.pins.find((p) => p.code === pin)! : undefined;
-        // the pincode view is its own chunk: fetched (or taken from the service worker's cache) on first use
-        region = e ? await (await import('./main')).openPin(shell, e, packBase(root, e)) : await openCity(shell, city!);
+        if (!commute) lastPin = pin;
+        // the pincode view and the Commute tab are chunks of their own: fetched (or taken from the service worker's cache) on first use
+        region = commute
+          ? await (await import('./ui/commute/view')).openCommute(shell, city)
+          : e
+            ? await (await import('./main')).openPin(shell, e, packBase(root, e))
+            : await openCity(shell, city!);
       } catch (err) {
         console.error(err);
-        const back = !!pin && !!city;
-        loader.error(`Could not load ${pin ? `pincode ${pin}` : 'the city overview'}: ${err instanceof Error ? err.message : String(err)}${back ? '. Back to the overview in a moment.' : ''}`);
+        const back = (!!pin || commute) && !!city;
+        loader.error(`Could not load ${commute ? 'the commute view' : pin ? `pincode ${pin}` : 'the city overview'}: ${err instanceof Error ? err.message : String(err)}${back ? '. Back to the overview in a moment.' : ''}`);
         if (back) setTimeout(() => go(null), 3500);
       }
     });
   }
-  window.addEventListener('popstate', () => go(new URLSearchParams(location.search).get('pin'), false));
-  const asked = shell.url.get('pin');
+  window.addEventListener('popstate', () => {
+    const q = new URLSearchParams(location.search);
+    go(q.has('commute') ? COMMUTE : q.get('pin'), false);
+  });
+  const asked = shell.url.has('commute') ? COMMUTE : shell.url.get('pin');
   go(asked ?? (city ? null : LEGACY_PIN));
 }
 
