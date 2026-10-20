@@ -21,6 +21,12 @@ const cssPx = (name: string) => parseFloat(getComputedStyle(document.documentEle
 
 const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || !!t.closest('input, textarea, select'));
 
+/** first control a keyboard user can reach inside `root` */
+const firstControl = (root: HTMLElement) =>
+  [...root.querySelectorAll<HTMLElement>('button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])')].find(
+    (x) => !(x as HTMLButtonElement).disabled && !x.closest('[hidden], [inert]') && x.getClientRects().length > 0 && getComputedStyle(x).visibility !== 'hidden',
+  );
+
 export class Layout {
   mode: Mode = 'desktop';
   private sb: Sidebar;
@@ -39,9 +45,28 @@ export class Layout {
     bar.inert = true;
     bar.innerHTML = `
       <button type="button" class="fb-btn fb-play" aria-label="Play">${iconSvg('play', 14)}</button>
-      <button type="button" class="fb-btn fb-restore" aria-label="Show the panels (H)">${iconSvg('panel_open', 17)}<span>Panels</span><kbd>H</kbd></button>`;
+      <button type="button" class="fb-btn fb-restore" aria-label="Show the panels (H)" aria-keyshortcuts="H">${iconSvg('panel_open', 17)}<span>Panels</span><kbd>H</kbd></button>`;
     bar.querySelector('.fb-play')!.addEventListener('click', () => h.onPlay());
     bar.querySelector('.fb-restore')!.addEventListener('click', () => this.setFocus(false));
+
+    // the map is a named landmark, and the first Tab stop skips past it to the controls
+    document.getElementById('map')?.setAttribute('role', 'region');
+    const skip = document.createElement('a');
+    skip.className = 'skip-link';
+    skip.href = '#sidebar';
+    skip.textContent = 'Skip to controls';
+    skip.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (this.focusOn) this.setFocus(false);
+      const root = this.mode !== 'phone' && this.sb.minimised ? this.sb.rail : this.sb.panel;
+      firstControl(root)?.focus();
+    });
+    document.body.prepend(skip);
+    // Esc hides hover/focus tooltips until the pointer or focus moves on (WCAG 1.4.13)
+    const tipsOn = () => document.body.classList.remove('tips-off');
+    document.addEventListener('pointermove', tipsOn, { passive: true });
+    document.addEventListener('focusin', tipsOn);
+    document.addEventListener('keydown', (e) => e.key === 'Escape' && document.body.classList.add('tips-off'), true);
 
     const onMode = () => this.applyMode();
     PHONE.addEventListener('change', onMode);
@@ -64,6 +89,14 @@ export class Layout {
         e.preventDefault();
         this.toggleFocus();
       } else if (e.key === 'Escape') {
+        const popup = document.querySelector<HTMLElement>('.maplibregl-popup .maplibregl-popup-close-button');
+        if (popup) {
+          // a map card (news report, reported flood) closes first, like any popover
+          const inside = popup.closest('.maplibregl-popup')!.contains(document.activeElement);
+          popup.click();
+          if (inside) document.querySelector<HTMLElement>('#map .maplibregl-canvas')?.focus({ preventScroll: true });
+          return;
+        }
         if (this.focusOn) this.setFocus(false);
         else if (this.mode !== 'desktop' && !this.sb.minimised) this.sb.setMinimised(true);
       }
