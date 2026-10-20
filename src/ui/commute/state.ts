@@ -1,9 +1,9 @@
 // My commute: what the commuter keeps (home, office, usual departure, an optional return trip), the
 // share link and the saved copy. The link extends the pincode view's ?from&to&dep (src/commute/verdict.ts):
-//   ?commute=1&from=lng,lat&to=lng,lat&dep=HH:MM[&ret=HH:MM][&fromName=..][&toName=..]
-// `commute` opens the Commute tab; the rest is the trip. No DOM here (node tests run it).
+//   ?commute=1&from=lng,lat&to=lng,lat&dep=HH:MM[&ret=HH:MM][&days=12345][&fromName=..][&toName=..]
+// `commute` opens the Commute tab; the rest is the trip (`days`: commute days, 1 = Monday ... 7 = Sunday). No DOM here (node tests run it).
 import type { LngLat } from '../../commute/spots.ts';
-import { commuteSearch, istParts, nextWeekdayAt, parseCommuteLink, parseHHMM } from '../../commute/verdict.ts';
+import { commuteSearch, istParts, parseCommuteLink, parseHHMM } from '../../commute/verdict.ts';
 import { load, save } from '../store.ts';
 
 export interface CommutePlace {
@@ -19,13 +19,17 @@ export interface CommuteState {
   dep: string;
   /** departure from the office for the way back, "HH:MM" IST; null = no return trip */
   ret: string | null;
+  /** the days the commute is made: ISO weekday digits in order, 1 = Monday ... 7 = Sunday, e.g. "12345" */
+  days: string;
 }
 
 export const MORNING = '09:00';
 export const EVENING = '18:00';
-export const DEFAULT_STATE: CommuteState = { home: null, office: null, dep: MORNING, ret: null };
+/** Monday to Friday */
+export const WEEKDAYS = '12345';
+export const DEFAULT_STATE: CommuteState = { home: null, office: null, dep: MORNING, ret: null, days: WEEKDAYS };
 /** every query parameter the Commute tab owns (dropped when the reader goes back to Explore) */
-export const COMMUTE_PARAMS = ['commute', 'from', 'to', 'dep', 'ret', 'fromName', 'toName'] as const;
+export const COMMUTE_PARAMS = ['commute', 'from', 'to', 'dep', 'ret', 'days', 'fromName', 'toName'] as const;
 const STORE_KEY = 'commute.v1';
 /** Bengaluru and its commuter belt, generously: [west, south, east, north] */
 const AREA: [number, number, number, number] = [76.9, 12.4, 78.3, 13.6];
@@ -34,6 +38,13 @@ const AREA: [number, number, number, number] = [76.9, 12.4, 78.3, 13.6];
 export function cleanHHMM(s: string | null | undefined): string | null {
   const p = parseHHMM(s);
   return p ? `${String(p[0]).padStart(2, '0')}:${String(p[1]).padStart(2, '0')}` : null;
+}
+
+/** "5,1,3" / [1, 3, 5] / "135" -> "135" (ISO weekday digits, each once, in order); none or nonsense -> Monday to Friday */
+export function cleanDays(x: unknown): string {
+  const raw = Array.isArray(x) ? x.join('') : typeof x === 'string' || typeof x === 'number' ? String(x) : '';
+  const out = [...'1234567'].filter((d) => raw.includes(d)).join('');
+  return out || WEEKDAYS;
 }
 
 /** the Morning / Evening preset a time matches, or null for any other time */
@@ -61,6 +72,7 @@ export function sanitize(x: unknown): CommuteState {
     office: cleanPlace(s.office, 'Office'),
     dep: cleanHHMM(typeof s.dep === 'string' ? s.dep : null) ?? DEFAULT_STATE.dep,
     ret: s.ret === null || s.ret === undefined ? null : cleanHHMM(String(s.ret)),
+    days: cleanDays(s.days),
   };
 }
 
@@ -74,6 +86,7 @@ export function stateFromSearch(search: string): CommuteState | null {
     office: link ? { label: q.get('toName'), coord: link.to } : null,
     dep: link?.dep ?? q.get('dep'),
     ret: q.get('ret'),
+    days: q.get('days'),
   });
 }
 
@@ -91,6 +104,7 @@ export function shareSearch(search: string, s: CommuteState): string {
   const extra = new URLSearchParams(out);
   if (!s.home || !s.office) extra.set('dep', s.dep);
   if (s.ret) extra.set('ret', s.ret);
+  if (s.days !== WEEKDAYS) extra.set('days', s.days);
   if (s.home && s.home.label !== 'Home') extra.set('fromName', s.home.label);
   if (s.office && s.office.label !== 'Office') extra.set('toName', s.office.label);
   return `?${extra.toString().replace(/%2C/g, ',').replace(/%3A/g, ':')}`;
@@ -112,7 +126,23 @@ export function saveState(s: CommuteState): void {
   save(STORE_KEY, s);
 }
 
-/** A trip leg: which way, and when it next leaves (the next Monday-Friday at that time, IST). */
+/**
+ * The first hh:mm IST at or after `now` on a commute day (`days` as in CommuteState: "12345" = Monday
+ * to Friday). Other days are skipped, so with Monday to Friday a Friday evening gives Monday.
+ */
+export function nextDayAt(now: number, h: number, m: number, days: string): number {
+  const D = 24 * 3600e3, IST = 5.5 * 3600e3;
+  const day0 = Math.floor((now + IST) / D) * D - IST; // IST midnight today
+  const at = (k: number) => day0 + k * D + h * 3600e3 + m * 60e3;
+  // eight days: today's time may have passed on the only commute day, which is then a week away
+  for (let k = 0; k < 8; k++) {
+    const t = at(k);
+    if (t >= now && days.includes(String(istParts(t).day || 7))) return t;
+  }
+  return at(now <= at(0) ? 0 : 1);
+}
+
+/** A trip leg: which way, and when it next leaves (the next commute day at that time, IST). */
 export interface Leg {
   id: 'out' | 'back';
   from: CommutePlace;
@@ -127,7 +157,7 @@ export function legs(s: CommuteState, now: number): Leg[] {
   const at = (hhmm: string) => {
     const [h, m] = parseHHMM(hhmm) ?? [9, 0];
     // a departure in the last 20 minutes is still "today's": the reader is probably on the way
-    return nextWeekdayAt(now - 20 * 60e3, h, m);
+    return nextDayAt(now - 20 * 60e3, h, m, s.days);
   };
   const out: Leg[] = [{ id: 'out', from: s.home, to: s.office, hhmm: s.dep, departure: at(s.dep) }];
   if (s.ret) out.push({ id: 'back', from: s.office, to: s.home, hhmm: s.ret, departure: at(s.ret) });
