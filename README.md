@@ -104,6 +104,7 @@ The repository commits the pipeline, the index and the city overview, plus the 5
 To publish them:
 - **Release asset or any static host:** upload `public/data/pins/`. Then open the app with `?packs=https://host/path/pins`, or build it with `VITE_PACKS_URL=https://host/path/pins`. The hosted folder needs its own `index.json` (written by `data:all`).
 - **GitHub Actions:** `.github/workflows/packs.yml` (manual `workflow_dispatch` only) builds everything and uploads `public/data/pins` and `public/data/city` as an artifact.
+- **GitHub Pages:** `.github/workflows/pages.yml` publishes the app and every pack on each push to `main`, and again at 02:17 UTC on the 1st of every month (cron `17 2 1 * *`, `main` only), so the OSM-derived packs and road graph are rebuilt from fresh data monthly.
 
 ## Budgets (measured 2026-10-17)
 
