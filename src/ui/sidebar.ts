@@ -5,9 +5,11 @@ import { SEVERITY_COLOR } from '../map/colors';
 import { iconSvg } from './icons';
 import { load, save } from './store';
 
-export type SectionId = 'city' | 'place' | 'impact' | 'rain' | 'map' | 'story' | 'drainage' | 'sources';
-/** what the sidebar is showing: the Bengaluru Urban overview or one pincode */
-export type Scope = 'city' | 'pin';
+export type SectionId = 'commute' | 'city' | 'place' | 'impact' | 'rain' | 'map' | 'story' | 'drainage' | 'sources';
+/** what the sidebar is showing: the Bengaluru Urban overview, one pincode, or the Commute tab */
+export type Scope = 'city' | 'pin' | 'commute';
+/** the two views at the top of the sidebar */
+export type Tab = 'explore' | 'commute';
 export type Mode = 'phone' | 'tablet' | 'desktop';
 /** phone bottom-sheet detents */
 export type Detent = 'peek' | 'half' | 'full';
@@ -23,6 +25,7 @@ interface SectionDef {
 }
 
 export const SECTIONS: SectionDef[] = [
+  { id: 'commute', title: 'My commute', icon: 'commute', open: true, scope: 'commute' },
   { id: 'city', title: 'Pincodes', icon: 'flood', open: true, scope: 'city' },
   { id: 'place', title: 'Your place', icon: 'pin', open: false },
   { id: 'impact', title: 'Impact', icon: 'alert', open: true },
@@ -42,6 +45,8 @@ export interface SidebarHandlers {
   onFootprint(): void;
   /** "Bengaluru Urban" back button in a pincode view */
   onBack?(): void;
+  /** the Explore | Commute switch at the top */
+  onTab?(tab: Tab): void;
 }
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -78,6 +83,7 @@ export class Sidebar {
     panel.innerHTML = `
       <div class="sb-grip" aria-hidden="true"><i></i></div>
       <header class="sb-head">
+        <nav class="sb-tabs" aria-label="View"><a href="?" data-tab="explore" aria-current="page">Explore</a><a href="?commute=1" data-tab="commute">Commute</a></nav>
         <button class="sb-back" id="sb-back" type="button" hidden aria-label="Back to the Bengaluru Urban overview">${iconSvg('chevron', 12, 2)}<span>Bengaluru Urban</span></button>
         <div class="sb-top">
           <div class="sb-pin" title="Pincode 560098">560098</div>
@@ -146,6 +152,12 @@ export class Sidebar {
     panel.querySelector('#sb-min')!.addEventListener('click', () => this.toggle());
     panel.querySelector('#sb-status')!.addEventListener('click', () => h.onStatus());
     panel.querySelector('#sb-back')!.addEventListener('click', () => h.onBack?.());
+    (panel.querySelector('.sb-tabs') as HTMLElement).addEventListener('click', (e) => {
+      const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-tab]');
+      if (!a || !h.onTab || e.metaKey || e.ctrlKey || e.shiftKey) return; // modified clicks open a new tab as usual
+      e.preventDefault();
+      if (a.getAttribute('aria-current') !== 'page') h.onTab(a.dataset.tab as Tab);
+    });
 
     // "Your place" stays hidden until something is mounted into it
     const mount = panel.querySelector('#place-mount') as HTMLElement;
@@ -181,7 +193,17 @@ export class Sidebar {
       rb.classList.toggle('off-scope', !on);
     }
     document.body.classList.toggle('scope-city', scope === 'city');
+    document.body.classList.toggle('scope-commute', scope === 'commute');
+    this.setTab(scope === 'commute' ? 'commute' : 'explore');
     this.measurePeek();
+  }
+
+  /** Mark the current view in the Explore | Commute switch. */
+  setTab(tab: Tab) {
+    this.panel.querySelectorAll<HTMLAnchorElement>('.sb-tabs a').forEach((a) => {
+      if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    });
   }
 
   get currentScope(): Scope {
