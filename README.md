@@ -1,5 +1,7 @@
 # Logged — flood explorer for Bengaluru Urban
 
+**Live site:** https://achyuta0001.github.io/Logged/ (the path is case-sensitive: `Logged`, capital L). Open one pincode with `?pin=560034`.
+
 An open-source, in-browser 3D map of flood risk across **Bengaluru Urban**. It opens on a city overview: every pincode in the district, coloured by a precomputed flood-susceptibility index. Pick a pincode by number, by locality name or by clicking the map. Its data pack then loads, and you get the full experience first built for **Rajarajeshwari Nagar (560098)**:
 
 - the depressions and low-lying ground
