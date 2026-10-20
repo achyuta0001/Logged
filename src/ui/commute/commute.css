@@ -139,7 +139,8 @@ body.mode-phone .sb-tabs {
   margin: 0;
   padding: 4px;
   list-style: none;
-  max-height: 290px;
+  /* stays inside the section (its body clips overflow while it animates) */
+  max-height: 236px;
   overflow-y: auto;
   border-radius: 12px;
   background: rgba(44, 44, 46, 0.98);
