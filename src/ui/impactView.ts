@@ -190,7 +190,7 @@ export class ImpactView {
       ['k-car', s?.carKm, (v) => fmtNum(v)],
       ['k-bld', s?.buildingsWet, (v) => Math.round(v).toLocaleString('en-IN')],
     ];
-    const sr = `<span class="ens-sr">Across ${s?.n ?? 0} weather models: </span>`;
+    const sr = `<span class="sr-only">Across ${s?.n ?? 0} weather models: </span>`;
     const area = $('k-area-r');
     area.innerHTML = show ? sr + areaRangeText(s!.floodedKm2).replace(/ (\S+)$/, '<small>$1</small>') : '';
     for (const [id, r, f] of ranges) $(`${id}-r`).innerHTML = show && r ? `${sr}${rangeText(r, f)}${id === 'k-bld' ? '' : '<small>km</small>'}` : '';
