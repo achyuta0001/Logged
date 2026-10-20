@@ -44,8 +44,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -58,7 +58,7 @@ jobs:
       - name: Restore built packs
         id: packs-cache
         if: ${{ !inputs.pins && !inputs.rebuild }}
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             public/data/pins
@@ -74,7 +74,7 @@ jobs:
       - name: Restore road graph
         id: roads-cache
         if: ${{ !inputs.rebuild }}
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: public/data/roads
           key: ${{ steps.roads-key.outputs.key }}
@@ -109,7 +109,7 @@ jobs:
       - run: npm test
       - name: Save built packs
         if: ${{ steps.packs-cache.outputs.cache-matched-key == '' && !inputs.pins }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             public/data/pins
@@ -118,7 +118,7 @@ jobs:
           key: ${{ steps.packs-key.outputs.prefix }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Save road graph
         if: steps.roads-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: public/data/roads
           key: ${{ steps.roads-key.outputs.key }}
@@ -136,7 +136,7 @@ jobs:
             echo "::error title=Site too large::dist is $((bytes / 1000000)) MB, over the 950 MB guard (GitHub Pages rejects sites over 1 GB). Packs should store osm.geojson.gz and depressions.json.gz, not the plain JSON (scripts/lib/pack-files.mjs); largest packs: $(du -s dist/data/pins/*/ | sort -rn | head -3 | awk '{printf "%s %d MB; ", $2, $1/1024}')"
             exit 1
           fi
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: dist
   deploy:
@@ -147,4 +147,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

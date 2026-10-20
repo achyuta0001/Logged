@@ -205,13 +205,11 @@ async function forecast(event, url) {
   return hit;
 }
 
-/** OpenFreeMap, AWS terrain tiles, Google Fonts: 'file' = immutable (cache-first), 'index' = SWR */
+/** OpenFreeMap and AWS terrain tiles: 'file' = immutable (cache-first), 'index' = SWR */
 function tileKind(url) {
   const h = url.hostname;
   if (h === 'tiles.openfreemap.org') return /\.\w+$/.test(url.pathname) ? 'file' : 'index';
   if ((h === 's3.amazonaws.com' && url.pathname.startsWith('/elevation-tiles-prod/')) || h === 'elevation-tiles-prod.s3.amazonaws.com') return 'file';
-  if (h === 'fonts.gstatic.com') return 'file';
-  if (h === 'fonts.googleapis.com') return 'index';
   return null;
 }
 
