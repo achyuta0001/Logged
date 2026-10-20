@@ -11,6 +11,8 @@
     "data:osm": "bash scripts/osm-extract.sh",
     "data:city": "node --max-old-space-size=8192 scripts/build-city.mjs",
     "data:all": "node scripts/build-all.mjs",
+    "data:roads": "node scripts/route/build-graph.mjs",
+    "bench:roads": "node scripts/route/bench.mjs",
     "preview:data": "node scripts/preview.mjs",
     "test": "node --test 'src/**/__tests__/*.test.ts'",
     "a11y": "node scripts/a11y.mjs",
