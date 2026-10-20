@@ -23,7 +23,8 @@ export class Scrubber {
     this.onPick = onPick;
     this.el = document.createElement('div');
     this.el.className = 'glass cm-scrub';
-    this.el.setAttribute('role', 'group');
+    // a named region: a landmark of its own, outside the sidebar
+    this.el.setAttribute('role', 'region');
     this.el.setAttribute('aria-label', 'Next 3 hours');
     this.el.innerHTML = `
       <div class="cm-scrub-head"><span class="cm-scrub-lbl">Next 3 hours</span><b class="cm-scrub-time"></b></div>
