@@ -28,11 +28,11 @@ async function loadBaseStyle(): Promise<StyleSpecification> {
 }
 
 async function fetchBaseStyle(): Promise<StyleSpecification> {
+  // the timeout covers the body too: a response that starts and then stalls must not hold the loader
+  const ctl = new AbortController();
+  const to = setTimeout(() => ctl.abort(), 6000);
   try {
-    const ctl = new AbortController();
-    const to = setTimeout(() => ctl.abort(), 6000);
     const r = await fetch(OFM_DARK, { signal: ctl.signal });
-    clearTimeout(to);
     if (!r.ok) throw new Error(String(r.status));
     const s = (await r.json()) as StyleSpecification;
     const src = s.sources.openmaptiles as { attribution?: string };
@@ -41,7 +41,38 @@ async function fetchBaseStyle(): Promise<StyleSpecification> {
   } catch (e) {
     console.warn('[map] OpenFreeMap style unavailable, using a plain dark background', e);
     return { version: 8, sources: {}, layers: [{ id: 'background', type: 'background', paint: { 'background-color': '#060b14' } }] };
+  } finally {
+    clearTimeout(to);
   }
+}
+
+/**
+ * The basemap without what can hold MapLibre's 'load' back for good: the sprite, the glyphs and the
+ * label layers that need them. Fills, lines, terrain and our overlays (icons via addImage) still work.
+ */
+function bare(style: StyleSpecification): StyleSpecification {
+  const s = structuredClone(style);
+  delete s.sprite;
+  delete s.glyphs;
+  s.layers = s.layers.filter((l) => l.type !== 'symbol');
+  return s;
+}
+
+/** MapLibre fires 'load' only once the sprite, glyphs and every tile in view have answered */
+const LOAD_MS = 10000;
+/** the label-less retry gets this long; after that the map carries on and tiles fill in as they come */
+const RETRY_MS = 8000;
+/** maps whose style has been parsed (sources and layers can be added from then on) */
+const parsed = new WeakSet<MLMap>();
+
+function loadedWithin(map: MLMap, ms: number): Promise<boolean> {
+  return new Promise((res) => {
+    const t = setTimeout(() => res(false), ms);
+    map.once('load', () => {
+      clearTimeout(t);
+      res(true);
+    });
+  });
 }
 
 function retheme(style: StyleSpecification) {
@@ -77,8 +108,25 @@ function retheme(style: StyleSpecification) {
  * shallower DEM: at district scale z14 terrain + z15 hillshade tiles alone would be ~7 MB.
  */
 export async function createMap(container: HTMLElement, boundary: GeoJSON.Geometry, exaggeration: number, center: [number, number] = CENTER, opts: { demMaxZoom?: number } = {}): Promise<MLMap> {
+  let map = startMap(container, await loadBaseStyle(), exaggeration, center, opts);
+  if (!(await loadedWithin(map, LOAD_MS))) {
+    // something never answered (an OpenFreeMap sprite or font, a tile): MapLibre would wait forever,
+    // and the loader with it. Start again without the sprite, glyphs and labels.
+    console.warn(`[map] basemap not loaded after ${LOAD_MS / 1000} s; retrying without sprite, glyphs and labels`);
+    map.remove();
+    map = startMap(container, bare(await loadBaseStyle()), exaggeration, center, opts);
+    if (!(await loadedWithin(map, RETRY_MS))) {
+      if (!parsed.has(map)) throw new Error('the map could not start');
+      console.warn('[map] basemap still loading; carrying on, tiles fill in as they arrive');
+    }
+  }
+  container.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
+  addBoundary(map, boundary);
+  return map;
+}
+
+function startMap(container: HTMLElement, style: StyleSpecification, exaggeration: number, center: [number, number], opts: { demMaxZoom?: number }): MLMap {
   const demZ = opts.demMaxZoom ?? 14;
-  const style = await loadBaseStyle();
   retheme(style);
 
   style.sources['eox'] = { type: 'raster', tiles: [EOX], tileSize: 256, maxzoom: 15, attribution: ATTR_EOX };
@@ -138,10 +186,7 @@ export async function createMap(container: HTMLElement, boundary: GeoJSON.Geomet
   // attribution arrives (it only auto-opens a control that is not compact yet).
   container.querySelector('.maplibregl-ctrl-attrib')?.classList.add('maplibregl-compact');
   map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), 'top-right');
-
-  await new Promise<void>((res) => map.once('load', () => res()));
-  container.querySelector('.maplibregl-ctrl-attrib')?.classList.remove('maplibregl-compact-show');
-  addBoundary(map, boundary);
+  map.once('style.load', () => parsed.add(map));
   return map;
 }
 

@@ -1,0 +1,2677 @@
+{
+ "about": "Flood spots in Bengaluru named in news reports (scripts/news/). Each report links its source; summaries are our own words, at most 15 words, never article text. Positions come from OpenStreetMap names (ODbL) or Nominatim. count = distinct flood days reported (dates within 2 days count once). Coverage follows the news: busy roads are over-represented.",
+ "generated": "2026-10-19",
+ "sources": {
+  "discovery": [
+   "GDELT DOC 2.0 API (when not rate limited)",
+   "web search (queries in scripts/news/web-search-urls.json)"
+  ],
+  "curated": "public/data/hotspots-city.json"
+ },
+ "spots": [
+  {
+   "id": "hebbal-flyover-77.590-13.042",
+   "name": "Hebbal Flyover",
+   "coord": [77.59035, 13.04244],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2025-03-26",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/a-mere-10-mm-of-rain-can-unleash-maximum-chaos-for-commuters-3462672",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Hebbal Circle."
+    },
+    {
+     "date": "2024-10-20",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/sudden-showers-bring-bengaluru-to-its-knees-3240229",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Hebbal Flyover."
+    },
+    {
+     "date": "2024-10-15",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rains-lash-bengaluru-paralysing-peak-hour-traffic-3232675",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Hebbal Flyover after heavy rain."
+    },
+    {
+     "date": "2024-10-06",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/sudden-deluge-of-rains-trigger-traffic-jams-water-logging-in-bengaluru-3221194",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Hebbal Junction after heavy rain."
+    },
+    {
+     "date": "2024-08-12",
+     "url": "https://curlytales.com/how-to-co-operate-bring-swimsuits-citizens-left-frustrated-after-heavy-rains-cause-waterlogging-in-bengaluru-city/",
+     "outlet": "curlytales.com",
+     "summary": "Flooding reported at Hebbal Flyover."
+    },
+    {
+     "date": "2024-08-12",
+     "url": "https://thesouthfirst.com/karnataka/overnight-rains-cause-widespread-waterlogging-in-bengaluru-traffic-advisory-issued/",
+     "outlet": "thesouthfirst.com",
+     "summary": "Waterlogging reported at Hebbala Flyover."
+    },
+    {
+     "date": "2024-08-06",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/waterlogging-in-many-parts-of-bengaluru-after-heavy-night-rains-3138257",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Hebbal Junction."
+    },
+    {
+     "date": "2023-11-07",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/torrential-rains-pound-bengaluru-as-northeast-monsoon-intensifies-2759397",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Hebbal Flyover."
+    },
+    {
+     "date": "2023-06-20",
+     "url": "https://www.thenewsminute.com/article/bengaluru-rains-traffic-police-announces-road-diversions-safety-advisory-178716",
+     "outlet": "thenewsminute.com",
+     "summary": "Waterlogging reported at Hebbal Flyover."
+    },
+    {
+     "date": "2023-06-20",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/people-caught-off-guard-as-bengaluru-receives-first-spell-of-monsoon-rains-1229608.html",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Hebbal Flyover."
+    },
+    {
+     "date": "2017-09-26",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/all-night-rain-throws-monday-2026596",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Hebbal Circle."
+    }
+   ],
+   "count": 9,
+   "firstYear": 2017,
+   "lastYear": 2025
+  },
+  {
+   "id": "manyata-tech-park-77.621-13.048",
+   "name": "Manyata Tech Park",
+   "coord": [77.6211, 13.04829],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2025-05-19",
+     "url": "https://www.thenewsminute.com/karnataka/rains-claim-life-of-woman-inundate-homes-in-several-parts-of-bengaluru",
+     "outlet": "thenewsminute.com",
+     "summary": "Knee-deep water reported at Manyata Tech Park."
+    },
+    {
+     "date": "2024-10-16",
+     "url": "https://thesouthfirst.com/karnataka/bengaluru-deluged-heavy-rain-floods-homes-cripples-city/",
+     "outlet": "thesouthfirst.com",
+     "summary": "Flooding reported at Manyata Tech Park after heavy rain."
+    },
+    {
+     "date": "2024-05-04",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-cripples-parts-of-city-traffic-paralysed-roads-waterlogged-3007385",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Manyata Tech Park after heavy rain."
+    },
+    {
+     "date": "2023-11-07",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/torrential-rains-pound-bengaluru-as-northeast-monsoon-intensifies-2759397",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Manyata Tech Park."
+    },
+    {
+     "date": "2023-10-09",
+     "url": "https://www.thenewsminute.com/karnataka/bengaluru-sees-heavy-rains-many-commuters-stuck-on-roads-due-to-waterlogging",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Manyata Tech Park."
+    },
+    {
+     "date": "2021-11-22",
+     "url": "https://www.thenewsminute.com/article/bengaluru-s-manyata-tech-park-flooded-employees-sent-back-home-157911",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Manyata Tech Park."
+    }
+   ],
+   "count": 6,
+   "firstYear": 2021,
+   "lastYear": 2025
+  },
+  {
+   "id": "silk-board-junction-77.624-12.916",
+   "name": "Silk Board Junction",
+   "coord": [77.62388, 12.91588],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2026-05-29",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/evening-rain-blocks-roads-knocks-down-trees-across-bengaluru-4019874",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Silk Board Junction; traffic slowed or stranded."
+    },
+    {
+     "date": "2025-05-19",
+     "url": "https://www.thenewsminute.com/karnataka/waterlogging-throws-bengaluru-into-chaos-bjp-slams-govt-for-celebration-over-crisis",
+     "outlet": "thenewsminute.com",
+     "summary": "Waterlogging reported at Silk Board Junction."
+    },
+    {
+     "date": "2025-05-19",
+     "url": "https://madhyamamonline.com/india/flooded-roads-choke-bengaluru-home-minister-says-authorities-job-1410258",
+     "outlet": "madhyamamonline.com",
+     "summary": "Rainwater reported entering homes at Silk Board Junction after heavy rain."
+    },
+    {
+     "date": "2025-05-19",
+     "url": "https://www.thenewsminute.com/karnataka/silk-board-btm-layout-among-worst-hit-as-rain-batters-bengaluru",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Silk Board Junction."
+    },
+    {
+     "date": "2024-08-12",
+     "url": "https://thesouthfirst.com/karnataka/overnight-rains-cause-widespread-waterlogging-in-bengaluru-traffic-advisory-issued/",
+     "outlet": "thesouthfirst.com",
+     "summary": "Flooding reported at Silk Board Junction after heavy rain."
+    },
+    {
+     "date": "2022-09-06",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/traffic-situation-near-ecospace-remains-very-difficult-police-1142548.html",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Silk Board Junction after heavy rain."
+    },
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thenewsminute.com/karnataka/videos-bengaluru-lakes-overflow-again-after-heavy-rains-streets-flooded-167538",
+     "outlet": "thenewsminute.com",
+     "summary": "Waterlogging reported at Silk Board Junction."
+    },
+    {
+     "date": "2022-08-31",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/roads-turn-into-rivers-as-rain-piles-misery-on-bengaluru-1140866.html",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Silk Board Junction."
+    }
+   ],
+   "count": 5,
+   "firstYear": 2022,
+   "lastYear": 2026
+  },
+  {
+   "id": "kr-circle-underpass-77.588-12.976",
+   "name": "KR Circle Underpass",
+   "coord": [77.58751, 12.97562],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2023-06-13",
+     "url": "https://www.thenewsminute.com/karnataka/bengaluru-experiences-waterlogging-again-after-several-hours-rain-178434",
+     "outlet": "thenewsminute.com",
+     "summary": "KR Circle Underpass reported under water."
+    },
+    {
+     "date": "2023-05-31",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/bbmp-readies-audit-report-on-the-condition-of-41-underpasses-1223485.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at KR Circle Underpass."
+    },
+    {
+     "date": "2023-05-31",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-brings-bengaluru-to-its-kneesonce-again-1223488.html",
+     "outlet": "deccanherald.com",
+     "summary": "KR Circle Underpass reported under water."
+    },
+    {
+     "date": "2023-05-31",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/bengaluru-flooded-underpasses-closed-1223735.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at KR Circle."
+    },
+    {
+     "date": "2023-05-26",
+     "url": "https://www.thequint.com/south-india/bengaluru-techie-death-underpass-problem-waterlogging",
+     "outlet": "thequint.com",
+     "summary": "Flooding reported at KR Circle Underpass."
+    },
+    {
+     "date": "2023-05-21",
+     "url": "https://scroll.in/latest/1049516/techie-dies-in-bengaluru-as-car-gets-submerged-in-flooded-underpass",
+     "outlet": "scroll.in",
+     "summary": "Flooding reported at K R Circle Underpass."
+    }
+   ],
+   "count": 4,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "mysuru-road-at-nayandahalli-77.525-12.942",
+   "name": "Mysuru Road At Nayandahalli",
+   "coord": [77.5255, 12.9416],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2024-10-05",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/sudden-deluge-of-rains-trigger-traffic-jams-water-logging-in-bengaluru-3221194",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Mysuru Road At Nayandahalli."
+    },
+    {
+     "date": "2020-10-20",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/havoc-in-south-west-bengaluru-more-rain-forecast-until-friday-904860.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Mysuru Road At Nayandahalli."
+    },
+    {
+     "date": "2017-10-13",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-evening-rain-wrecks-citys-2029125",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Mysuru Road At Nayandahalli."
+    },
+    {
+     "date": "2017-10-05",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/passersby-take-commuters-stranded-bus-2027654",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Mysuru Road At Nayandahalli."
+    }
+   ],
+   "count": 4,
+   "firstYear": 2017,
+   "lastYear": 2024
+  },
+  {
+   "id": "anil-kumble-circle-77.602-12.977",
+   "name": "Anil Kumble Circle",
+   "coord": [77.60182, 12.97656],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2025-05-20",
+     "url": "https://www.sakshipost.com/news/rain-continues-pour-bengaluru-traffic-disrupted-409898",
+     "outlet": "sakshipost.com",
+     "summary": "Waterlogging reported at Anil Kumble Junction."
+    },
+    {
+     "date": "2023-11-07",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/torrential-rains-pound-bengaluru-as-northeast-monsoon-intensifies-2759397",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Anil Kumble Circle."
+    },
+    {
+     "date": "2023-06-20",
+     "url": "https://www.thenewsminute.com/article/bengaluru-rains-traffic-police-announces-road-diversions-safety-advisory-178716",
+     "outlet": "thenewsminute.com",
+     "summary": "Waterlogging reported at Anil Kumble Circle after heavy rain."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2023,
+   "lastYear": 2025
+  },
+  {
+   "id": "balagere-road-77.738-12.939",
+   "name": "Balagere Road",
+   "coord": [77.73825, 12.9393],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2025-04-17",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/another-day-of-wet-mess-in-bengaluru-3497437",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Balagere Road."
+    },
+    {
+     "date": "2023-06-16",
+     "url": "https://www.deccanherald.com/city/top-bengaluru-stories/bengaluru-waterlogged-underpass-slows-down-traffic-on-panathur-balagere-roads-1228194.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Balagere Road after heavy rain."
+    },
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thenewsminute.com/article/bengaluru-flooded-after-rains-traffic-advisory-issued-people-asked-stay-home-167536",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Balagere Main Road after heavy rain."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2022,
+   "lastYear": 2025
+  },
+  {
+   "id": "btm-layout-77.610-12.914",
+   "name": "BTM Layout",
+   "coord": [77.61028, 12.914],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2025-09-03",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/citizens-battle-rain-chaos-as-bengaluru-sees-flyovers-flooded-underpasses-3709294",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at BTM Layout after heavy rain."
+    },
+    {
+     "date": "2024-08-06",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/waterlogging-in-many-parts-of-bengaluru-after-heavy-night-rains-3138257",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at BTM Layout after heavy rain."
+    },
+    {
+     "date": "2022-08-31",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/roads-turn-into-rivers-as-rain-piles-misery-on-bengaluru-1140866.html",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at BTM Layout."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2022,
+   "lastYear": 2025
+  },
+  {
+   "id": "hbr-layout-77.628-13.032",
+   "name": "HBR Layout",
+   "coord": [77.62808, 13.03199],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2025-05-19",
+     "url": "https://www.thenewsminute.com/karnataka/rains-claim-life-of-woman-inundate-homes-in-several-parts-of-bengaluru",
+     "outlet": "thenewsminute.com",
+     "summary": "Overflowing water reported at HBR Layout."
+    },
+    {
+     "date": "2022-05-18",
+     "url": "https://scroll.in/latest/1024189/two-labourers-die-in-bengaluru-after-heavy-rains-cause-flooding",
+     "outlet": "scroll.in",
+     "summary": "Flooding reported at HBR Layout after heavy rain."
+    },
+    {
+     "date": "2020-09-10",
+     "url": "https://www.etvbharat.com/english/state/karnataka/heavy-rain-lashes-parts-of-bengaluru/na20200910133623273",
+     "outlet": "etvbharat.com",
+     "summary": "Waterlogging reported at HBR Layout."
+    },
+    {
+     "date": "2020-09-09",
+     "url": "https://www.thenewsminute.com/karnataka/bengalurus-hbr-layout-horamavu-sahakar-nagar-flooded-heavy-rains-lash-city-132648",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at HBR Layout after heavy rain."
+    },
+    {
+     "date": "2020-09-08",
+     "url": "https://www.thenewsminute.com/amp/story/karnataka/bengalurus-hbr-layout-horamavu-sahakar-nagar-flooded-heavy-rains-lash-city-132648",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at HBR Layout."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2020,
+   "lastYear": 2025
+  },
+  {
+   "id": "hosur-road-at-roopena-agrahara-77.626-12.912",
+   "name": "Hosur Road At Roopena Agrahara",
+   "coord": [77.62604, 12.91199],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2025-05-19",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/flooding-in-many-parts-of-bengaluru-after-torrential-overnight-rain-3546886",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Hosur Road At Roopena Agrahara."
+    },
+    {
+     "date": "2024-10-23",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/north-east-done-rain-now-turns-to-cbd-south-3246059",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Hosur Road At Roopena Agrahara."
+    },
+    {
+     "date": "2024-10-20",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/homes-flooded-roads-choked-yet-again-after-another-rain-spell-3240856",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Hosur Road At Roopena Agrahara."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2024,
+   "lastYear": 2025
+  },
+  {
+   "id": "hsr-layout-77.639-12.912",
+   "name": "HSR Layout",
+   "coord": [77.63886, 12.91162],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2025-05-21",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/day-after-rain-deluge-bengaluru-residents-wade-through-trouble-3549914",
+     "outlet": "deccanherald.com",
+     "summary": "HSR Layout reported under water."
+    },
+    {
+     "date": "2025-05-19",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/flooding-in-many-parts-of-bengaluru-after-torrential-overnight-rain-3546886",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at HSR Layout."
+    },
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thenewsminute.com/article/bengaluru-flooded-again-after-rains-marathahalli-orr-under-water-167535",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at HSR Layout after heavy rain; traffic slowed or stranded."
+    },
+    {
+     "date": "2017-09-09",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/people-returning-home-stranded-flooded-2023669",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at HSR Layout."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2017,
+   "lastYear": 2025
+  },
+  {
+   "id": "koramangala-6th-block-77.624-12.939",
+   "name": "Koramangala 6th Block",
+   "coord": [77.62385, 12.93903],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2025-05-21",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/bbmp-top-brass-inspect-flood-hit-areas-3549920",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Koramangala 6th Block."
+    },
+    {
+     "date": "2021-10",
+     "url": "https://www.deccanherald.com/amp/story/india%2Fkarnataka%2Fbengaluru%2Frain-floods-apartments-shops-in-parts-of-bengaluru-1037414.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Koramangala 6th Block."
+    },
+    {
+     "date": "2020-04-30",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-rain-wrecks-bengaluru-s-fragile-infrastructure-831623.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Koramangala 6th Block after heavy rain."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2020,
+   "lastYear": 2025
+  },
+  {
+   "id": "mekhri-circle-77.584-13.020",
+   "name": "Mehkri Circle",
+   "coord": [77.58394, 13.01984],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2024-10-06",
+     "url": "https://www.thenewsminute.com/karnataka/bengaluru-faces-waterlogging-after-heavy-rains-imd-issues-yellow-warning-for-october-6",
+     "outlet": "thenewsminute.com",
+     "summary": "Overflowing water reported at Mekhri Circle."
+    },
+    {
+     "date": "2020-10-21",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/havoc-in-south-west-bengaluru-more-rain-forecast-until-friday-904860.html",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Mehkri Circle."
+    },
+    {
+     "date": "2017-09-26",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/all-night-rain-throws-monday-2026596",
+     "outlet": "deccanherald.com",
+     "summary": "Knee-deep water reported at Mehkri Circle."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2017,
+   "lastYear": 2024
+  },
+  {
+   "id": "pramod-layout-77.528-12.936",
+   "name": "Pramod Layout",
+   "coord": [77.5279, 12.9362],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2021-10-04",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-floods-apartments-shops-in-parts-of-bengaluru-1037414.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Pramod Layout."
+    },
+    {
+     "date": "2020-10-23",
+     "url": "https://thenewsminute.com/article/heavy-rains-overflowing-stormwater-drains-lead-flooding-south-bengaluru-areas-136036",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Pramod Layout."
+    },
+    {
+     "date": "2020-09-10",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/massive-flooding-destruction-after-heavy-rain-in-bengaluru-885699.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Pramod Layout."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2020,
+   "lastYear": 2021
+  },
+  {
+   "id": "rajarajeshwari-nagar-77.516-12.927",
+   "name": "Rajarajeshwari Nagar",
+   "coord": [77.5155, 12.9274],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2022-05-17",
+     "url": "https://www.thenewsminute.com/article/bengaluru-residents-upset-choked-stormwater-drains-lead-flooding-164116",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Rajarajeshwari Nagar."
+    },
+    {
+     "date": "2020-10-23",
+     "url": "https://thenewsminute.com/article/heavy-rains-overflowing-stormwater-drains-lead-flooding-south-bengaluru-areas-136036",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Rajarajeshwari Nagar."
+    },
+    {
+     "date": "2017-10-13",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-evening-rain-wrecks-citys-2029125",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Rajarajeshwari Nagar."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2017,
+   "lastYear": 2022
+  },
+  {
+   "id": "shivananda-circle-77.580-12.986",
+   "name": "Shivananda Circle",
+   "coord": [77.57969, 12.98649],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2023-05-31",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/bbmp-readies-audit-report-on-the-condition-of-41-underpasses-1223485.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Shivananda Circle."
+    },
+    {
+     "date": "2023-05-31",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/bengaluru-flooded-underpasses-closed-1223735.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Shivananda Circle."
+    },
+    {
+     "date": "2020-10-21",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/havoc-in-south-west-bengaluru-more-rain-forecast-until-friday-904860.html",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Sivananda Circle."
+    },
+    {
+     "date": "2017-09-26",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/all-night-rain-throws-monday-2026596",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Sivananda Circle."
+    },
+    {
+     "date": "2017-09-25",
+     "url": "https://www.deccanherald.com/amp/story/india%2Fkarnataka%2Fbengaluru%2Fall-night-rain-throws-monday-2026596",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Seshadripuram Railway Underpass."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2017,
+   "lastYear": 2023
+  },
+  {
+   "id": "spice-garden-road-77.709-12.959",
+   "name": "Spice Garden Road",
+   "coord": [77.70856, 12.9588],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2024-09",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/weekend-downpour-deluges-east-bengaluru-3213982",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Spice Garden Layout."
+    },
+    {
+     "date": "2023-06-13",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/evening-showers-leave-east-bengaluru-waterlogged-1227324.html",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Spice Garden Road."
+    },
+    {
+     "date": "2023-06-12",
+     "url": "https://www.deccanherald.com/city/top-bengaluru-stories/evening-showers-leave-east-bengaluru-waterlogged-1227324.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Spice Garden Layout."
+    },
+    {
+     "date": "2022-09-04",
+     "url": "https://www.deccanherald.com/city/encroached-canal-turns-bellandur-s-bane-1142551.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Spice Garden Layout."
+    }
+   ],
+   "count": 3,
+   "firstYear": 2022,
+   "lastYear": 2024
+  },
+  {
+   "id": "beml-layout-77.520-12.920",
+   "name": "BEML Layout",
+   "coord": [77.5202, 12.9197],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2024-10-20",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/homes-flooded-roads-choked-yet-again-after-another-rain-spell-3240856",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at BEML Layout."
+    },
+    {
+     "date": "2020-10-23",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/300-houses-flooded-as-heavy-rain-pounds-bengaluru-906259.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at BEML Layout."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2020,
+   "lastYear": 2024
+  },
+  {
+   "id": "bhadrappa-layout-77.576-13.047",
+   "name": "Bhadrappa Layout",
+   "coord": [77.57584, 13.04721],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2024-10-21",
+     "url": "https://www.thenewsminute.com/amp/story/karnataka/bengalurus-kendriya-vihar-apartments-in-yelahanka-flood-for-the-third-time-in-a-month",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Bhadrappa Layout."
+    },
+    {
+     "date": "2023-06-20",
+     "url": "https://www.thenewsminute.com/article/bengaluru-rains-traffic-police-announces-road-diversions-safety-advisory-178716",
+     "outlet": "thenewsminute.com",
+     "summary": "Waterlogging reported at Bhadrappa Layout."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2023,
+   "lastYear": 2024
+  },
+  {
+   "id": "hosakerehalli-lake-77.534-12.927",
+   "name": "Hosakerehalli Lake",
+   "coord": [77.5342, 12.9269],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2023-05-08",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-rains-disrupt-bengaluru-traffic-leaves-several-areas-flooded-1217035.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Hosakerehalli Lake."
+    },
+    {
+     "date": "2020-10-23",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/300-houses-flooded-as-heavy-rain-pounds-bengaluru-906259.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Hosakerehalli Lake."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2020,
+   "lastYear": 2023
+  },
+  {
+   "id": "ideal-homes-township-77.518-12.927",
+   "name": "Ideal Homes Township",
+   "coord": [77.5183, 12.9273],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2021-10-04",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-floods-apartments-shops-in-parts-of-bengaluru-1037414.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Ideal Homes Township."
+    },
+    {
+     "date": "2019-10-22",
+     "url": "https://www.deccanherald.com/city/south-west-bengaluru-worst-hit-by-tuesday-night-s-rain-770668.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Ideal Homes Township."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2019,
+   "lastYear": 2021
+  },
+  {
+   "id": "kalyan-nagar-underpass-77.637-13.026",
+   "name": "Kalyan Nagar Underpass",
+   "coord": [77.63719, 13.02644],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2023-11-07",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/torrential-rains-pound-bengaluru-as-northeast-monsoon-intensifies-2759397",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Kalyan Nagar Underpass."
+    },
+    {
+     "date": "2023-10-09",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/sudden-rains-cause-water-logging-across-bengaluru-yellow-alert-issued-for-tuesday-2719322",
+     "outlet": "deccanherald.com",
+     "summary": "Kalyan Nagar Bridge reported under water after heavy rain."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "kariyammana-agrahara-77.687-12.937",
+   "name": "Kariyammana Agrahara",
+   "coord": [77.6873, 12.93715],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2022-09-04",
+     "url": "https://www.deccanherald.com/city/encroached-canal-turns-bellandur-s-bane-1142551.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kariyammana Agrahara."
+    },
+    {
+     "date": "2015-05-16",
+     "url": "https://www.thenewsminute.com/article/frothing-increases-bellandur-lake-after-rain-lashes-bengaluru-29975",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Kariyammana Agrahara."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2015,
+   "lastYear": 2022
+  },
+  {
+   "id": "kasturi-nagar-bridge-77.660-13.005",
+   "name": "Kasturi Nagar Bridge",
+   "coord": [77.66032, 13.0045],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2025-03-26",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/a-mere-10-mm-of-rain-can-unleash-maximum-chaos-for-commuters-3462672",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Kasturi Nagar Bridge."
+    },
+    {
+     "date": "2024-10-15",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rains-lash-bengaluru-paralysing-peak-hour-traffic-3232675",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kasturi Nagar Bridge."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2024,
+   "lastYear": 2025
+  },
+  {
+   "id": "kendriya-vihar-apartments-77.600-13.107",
+   "name": "Kendriya Vihar Apartments",
+   "coord": [77.5996, 13.1068],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2024-10-16",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/bbmp-deploys-two-tractors-to-evacuate-kendriya-vihar-residents-3234395",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kendriya Vihar Apartments."
+    },
+    {
+     "date": "2024-10",
+     "url": "https://www.thenewsminute.com/karnataka/bengalurus-kendriya-vihar-apartments-in-yelahanka-flood-for-the-third-time-in-a-month",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Kendriya Vihar Apartments."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "kogilu-cross-77.600-13.104",
+   "name": "Kogilu Cross",
+   "coord": [77.60009, 13.10375],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2023-06-20",
+     "url": "https://www.thenewsminute.com/article/bengaluru-rains-traffic-police-announces-road-diversions-safety-advisory-178716",
+     "outlet": "thenewsminute.com",
+     "summary": "Waterlogging reported at Kogilu Cross."
+    },
+    {
+     "date": "2021-11-21",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-rains-return-after-a-lull-flood-parts-of-north-bengaluru-1053250.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kogilu Cross."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2021,
+   "lastYear": 2023
+  },
+  {
+   "id": "kumaraswamy-layout-77.562-12.903",
+   "name": "Kumaraswamy Layout",
+   "coord": [77.56178, 12.90296],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2025-05-13",
+     "url": "https://www.deccanchronicle.com/southern-states/karnataka/hailstones-accompanied-by-heavy-rains-in-bengaluru-1878608",
+     "outlet": "deccanchronicle.com",
+     "summary": "Waterlogging reported at Kumaraswamy Layout."
+    },
+    {
+     "date": "2022-05-10",
+     "url": "https://www.deccanherald.com/city/top-bengaluru-stories/rain-reign-continues-gusty-surface-wind-keeps-company-1107910.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kumaraswamy Layout after heavy rain."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2022,
+   "lastYear": 2025
+  },
+  {
+   "id": "marathahalli-bridge-77.702-12.957",
+   "name": "Marathahalli Bridge",
+   "coord": [77.70227, 12.95698],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2023-06-13",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/evening-showers-leave-east-bengaluru-waterlogged-1227324.html",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Marathahalli Bridge."
+    },
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thenewsminute.com/article/bengaluru-flooded-again-after-rains-marathahalli-orr-under-water-167535",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Marathahalli Bridge."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2022,
+   "lastYear": 2023
+  },
+  {
+   "id": "mysuru-road-at-dubasipalya-77.499-12.924",
+   "name": "Mysuru Road At Dubasipalya",
+   "coord": [77.4995, 12.924],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2025-05",
+     "url": "https://gulfnews.com/world/asia/india/bengaluru-faces-heaviest-rainfall-of-the-year-1.500132345",
+     "outlet": "gulfnews.com",
+     "summary": "Flooding reported at Mysuru Road At Dubasipalya."
+    },
+    {
+     "date": "2020-10",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/drain-overflows-floods-mysuru-road-906648.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Mysuru Road At Dubasipalya."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2020,
+   "lastYear": 2025
+  },
+  {
+   "id": "okalipuram-underpass-77.566-12.982",
+   "name": "Okalipuram Underpass",
+   "coord": [77.56644, 12.98221],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2024-05-04",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-cripples-parts-of-city-traffic-paralysed-roads-waterlogged-3007385",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Okalipuram Underpass after heavy rain."
+    },
+    {
+     "date": "2024-05-03",
+     "url": "https://www.deccanherald.com/amp/story/india%2Fkarnataka%2Fbengaluru%2Frain-cripples-parts-of-city-traffic-paralysed-roads-waterlogged-3007385",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Okalipuram Railway Underpass."
+    },
+    {
+     "date": "2023-05-30",
+     "url": "https://www.thenewsminute.com/karnataka/bengaluru-s-magic-boxes-are-far-being-magical-177847",
+     "outlet": "thenewsminute.com",
+     "summary": "Waterlogging reported at Okalipuram Underpass after heavy rain."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2023,
+   "lastYear": 2024
+  },
+  {
+   "id": "queens-circle-77.599-12.977",
+   "name": "Queen's Circle",
+   "coord": [77.59924, 12.97661],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2025-03-26",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/a-mere-10-mm-of-rain-can-unleash-maximum-chaos-for-commuters-3462672",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Queen’s Circle."
+    },
+    {
+     "date": "2023-11-07",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/torrential-rains-pound-bengaluru-as-northeast-monsoon-intensifies-2759397",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Queen's Circle."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2023,
+   "lastYear": 2025
+  },
+  {
+   "id": "queens-road-77.597-12.983",
+   "name": "Queen’s Road",
+   "coord": [77.59714, 12.98287],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2025-05-20",
+     "url": "https://www.sakshipost.com/news/rain-continues-pour-bengaluru-traffic-disrupted-409898",
+     "outlet": "sakshipost.com",
+     "summary": "Waterlogging reported at Queens Road."
+    },
+    {
+     "date": "2017-09-26",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/all-night-rain-throws-monday-2026596",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Queen’s Road."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2017,
+   "lastYear": 2025
+  },
+  {
+   "id": "rainbow-drive-layout-77.687-12.907",
+   "name": "Rainbow Drive Layout",
+   "coord": [77.68694, 12.90691],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thequint.com/climate-change/rains-in-bengaluru-continue-to-wreak-havoc-three-lakes-overflow-into-homes",
+     "outlet": "thequint.com",
+     "summary": "Flooding reported at Rainbow Drive Layout after heavy rain."
+    },
+    {
+     "date": "2022-09",
+     "url": "https://citizenmatters.in/rainbow-drive-layout-or-lake-bengaluru-flood-prone-neighbourhoods/",
+     "outlet": "citizenmatters.in",
+     "summary": "Flooding reported at Rainbow Drive Layout."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "ramamurthy-nagar-underpass-77.678-13.012",
+   "name": "Ramamurthy Nagar Underpass",
+   "coord": [77.67778, 13.01202],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2024-10-15",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rains-lash-bengaluru-paralysing-peak-hour-traffic-3232675",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Ramamurthy Nagar Underpass."
+    },
+    {
+     "date": "2024-05-04",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-cripples-parts-of-city-traffic-paralysed-roads-waterlogged-3007385",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Ramamurthy Nagar Underpass after heavy rain."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "sony-world-junction-77.627-12.937",
+   "name": "Sony World Junction",
+   "coord": [77.62708, 12.9373],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2020-10-21",
+     "url": "https://www.etvbharat.com/english/bharat/bharat-news/heavy-rains-lash-bengaluru/na20201021181617010",
+     "outlet": "etvbharat.com",
+     "summary": "Sony World Signal reported under water."
+    },
+    {
+     "date": "2017-09-26",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/all-night-rain-throws-monday-2026596",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Sony World Junction."
+    }
+   ],
+   "count": 2,
+   "firstYear": 2017,
+   "lastYear": 2020
+  },
+  {
+   "id": "ags-layout-77.534-12.913",
+   "name": "AGS Layout",
+   "coord": [77.53405, 12.91277],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2018-09-24",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/bannerghata-road-houses-flood-694434.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at AGS Layout."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2018,
+   "lastYear": 2018
+  },
+  {
+   "id": "ali-asker-road-77.593-12.985",
+   "name": "Ali Asker Road",
+   "coord": [77.5929, 12.98475],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2017-09-09",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/people-returning-home-stranded-flooded-2023669",
+     "outlet": "deccanherald.com",
+     "summary": "Rainwater reported entering homes at Ali Asker Road."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "anand-rao-circle-77.575-12.981",
+   "name": "Anand Rao Circle",
+   "coord": [77.57474, 12.98078],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2017-09-09",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/people-returning-home-stranded-flooded-2023669",
+     "outlet": "deccanherald.com",
+     "summary": "Rainwater reported entering homes at Anand Rao Circle."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "balagere-panathur-road-77.731-12.939",
+   "name": "Balagere-panathur Road",
+   "coord": [77.73094, 12.93921],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thenewsminute.com/amp/story/karnataka/videos-bengaluru-lakes-overflow-again-after-heavy-rains-streets-flooded-167538",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Balagere-panathur Road."
+    },
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thenewsminute.com/article/bengaluru-flooded-again-after-rains-marathahalli-orr-under-water-167535",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Balagere-panathur Road."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "banashankari-metro-station-77.574-12.915",
+   "name": "Banashankari Metro Station",
+   "coord": [77.5736, 12.91522],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2018-06-02",
+     "url": "https://www.deccanherald.com/india/karnataka/heavy-rains-submerge-roads-bluru-673011.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Banashankari Metro Station."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2018,
+   "lastYear": 2018
+  },
+  {
+   "id": "behind-banaswadi-railway-station-77.628-13.006",
+   "name": "Behind Banaswadi Railway Station",
+   "coord": [77.62813, 13.00584],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2021-11-15",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rains-lash-bengaluru-houses-roads-flooded-1051183.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Behind Banaswadi Railway Station."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2021,
+   "lastYear": 2021
+  },
+  {
+   "id": "bel-circle-77.557-13.046",
+   "name": "BEL Circle",
+   "coord": [77.55656, 13.04551],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2023-06-20",
+     "url": "https://www.thenewsminute.com/article/bengaluru-rains-traffic-police-announces-road-diversions-safety-advisory-178716",
+     "outlet": "thenewsminute.com",
+     "summary": "Waterlogging reported at BEL Circle."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "bel-layout-77.554-13.073",
+   "name": "BEL Layout",
+   "coord": [77.55436, 13.07297],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2017-09-09",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/people-returning-home-stranded-flooded-2023669",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at BEL Layout."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "benniganahalli-metro-station-77.668-12.996",
+   "name": "Benniganahalli Metro Station",
+   "coord": [77.66832, 12.99643],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2023-11-07",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/torrential-rains-pound-bengaluru-as-northeast-monsoon-intensifies-2759397",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Benniganahalli Metro Station."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "bhoopasandra-underpass-77.588-13.032",
+   "name": "Bhoopasandra Underpass",
+   "coord": [77.58785, 13.03249],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2024-10-21",
+     "url": "https://deccanherald.com/india/karnataka/bengaluru/heavy-overnight-rain-floods-bengalurus-homes-and-major-roads-3242875",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Bhoopasandra Underpass."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "bilekahalli-77.609-12.898",
+   "name": "Bilekahalli",
+   "coord": [77.60857, 12.89797],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2017-08-15",
+     "url": "https://www.thenewsminute.com/karnataka/rains-lash-bengaluru-leave-several-areas-city-waterlogged-66805",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Bilekahalli."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "binny-mill-junction-77.566-12.971",
+   "name": "Binny Mill Junction",
+   "coord": [77.5663, 12.97053],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2024-05-04",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-cripples-parts-of-city-traffic-paralysed-roads-waterlogged-3007385",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Binny Mill Junction after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "bmtc-bus-depot-77.593-12.954",
+   "name": "BMTC Bus Depot",
+   "coord": [77.59265, 12.95446],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2025-05-19",
+     "url": "https://www.deccanherald.com/amp/story/india%2Fkarnataka%2Fbengaluru%2Fflooding-in-many-parts-of-bengaluru-after-torrential-overnight-rain-3546886",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at BMTC Bus Depot."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "borewell-road-77.742-12.969",
+   "name": "Borewell Road",
+   "coord": [77.74187, 12.96937],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thenewsminute.com/article/bengaluru-flooded-after-rains-traffic-advisory-issued-people-asked-stay-home-167536",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Borewell Road after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "cantonment-railway-station-77.597-12.993",
+   "name": "Cantonment Railway Station",
+   "coord": [77.59721, 12.99339],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2024-10-06",
+     "url": "https://www.thenewsminute.com/karnataka/bengaluru-faces-waterlogging-after-heavy-rains-imd-issues-yellow-warning-for-october-6",
+     "outlet": "thenewsminute.com",
+     "summary": "Overflowing water reported at Cantonment Railway Station."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "cauvery-underpass-77.580-12.937",
+   "name": "Cauvery Underpass",
+   "coord": [77.58003, 12.93667],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2023-05-30",
+     "url": "https://www.thenewsminute.com/karnataka/bengaluru-s-magic-boxes-are-far-being-magical-177847",
+     "outlet": "thenewsminute.com",
+     "summary": "Waterlogging reported at Cauvery Underpass after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "chalukya-circle-77.588-12.985",
+   "name": "Chalukya Circle",
+   "coord": [77.58828, 12.98459],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2017-09-26",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/all-night-rain-throws-monday-2026596",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Chalukya Circle."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "chandapura-circle-77.706-12.800",
+   "name": "Chandapura Circle",
+   "coord": [77.70628, 12.80044],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2024-10-06",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/sudden-deluge-of-rains-trigger-traffic-jams-water-logging-in-bengaluru-3221194",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Chandapura Circle."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "chickpet-market-streets-77.579-12.968",
+   "name": "Chickpet Market Streets",
+   "coord": [77.57864, 12.968],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2020-10-23",
+     "url": "https://thenewsminute.com/article/heavy-rains-overflowing-stormwater-drains-lead-flooding-south-bengaluru-areas-136036",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Chickpet Market Streets."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2020,
+   "lastYear": 2020
+  },
+  {
+   "id": "chinnappa-layout-77.689-13.119",
+   "name": "Chinnappa Layout",
+   "coord": [77.68933, 13.11908],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2023-06-13",
+     "url": "https://www.thenewsminute.com/karnataka/bengaluru-experiences-waterlogging-again-after-several-hours-rain-178434",
+     "outlet": "thenewsminute.com",
+     "summary": "Chinnappa Layout reported under water."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "chowdeshwari-layout-77.563-12.906",
+   "name": "Chowdeshwari Layout",
+   "coord": [77.56338, 12.90637],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2025-05-19",
+     "url": "https://www.thenewsminute.com/karnataka/rains-claim-life-of-woman-inundate-homes-in-several-parts-of-bengaluru",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Chowdeshwari Layout after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "commercial-street-77.608-12.982",
+   "name": "Commercial Street",
+   "coord": [77.60825, 12.98222],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2021-10",
+     "url": "https://www.deccanherald.com/amp/story/india%2Fkarnataka%2Fbengaluru%2Frain-floods-apartments-shops-in-parts-of-bengaluru-1037414.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Commercial Street."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2021,
+   "lastYear": 2021
+  },
+  {
+   "id": "cunningham-road-77.594-12.988",
+   "name": "Cunningham Road",
+   "coord": [77.5941, 12.98817],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2024-10-20",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/sudden-showers-bring-bengaluru-to-its-knees-3240229",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Cunningham Road."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "dna-apartments-77.740-12.969",
+   "name": "DNA Apartments",
+   "coord": [77.74048, 12.96899],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thenewsminute.com/article/bengaluru-flooded-after-rains-traffic-advisory-issued-people-asked-stay-home-167536",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at DNA Apartments after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "domlur-flyover-77.642-12.961",
+   "name": "Domlur Flyover",
+   "coord": [77.64166, 12.96129],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2025-05-19",
+     "url": "https://madhyamamonline.com/india/flooded-roads-choke-bengaluru-home-minister-says-authorities-job-1410258",
+     "outlet": "madhyamamonline.com",
+     "summary": "Waterlogging reported at Domlur Flyover after heavy rain; traffic slowed or stranded."
+    },
+    {
+     "date": "2025-05-19",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/waterlogged-roads-stall-bengaluru-traffic-home-minister-says-authorities-on-job-3547011",
+     "outlet": "deccanherald.com",
+     "summary": "Knee-deep water reported at Domlur Flyover; traffic slowed or stranded."
+    },
+    {
+     "date": "2025-05-19",
+     "url": "https://www.thenewsminute.com/karnataka/rains-claim-life-of-woman-inundate-homes-in-several-parts-of-bengaluru",
+     "outlet": "thenewsminute.com",
+     "summary": "Knee-deep water reported at Domlur Flyover."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "domlur-main-road-77.638-12.962",
+   "name": "Domlur Main Road",
+   "coord": [77.6382, 12.96247],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2024-10-20",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/homes-flooded-roads-choked-yet-again-after-another-rain-spell-3240856",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Domlur Main Road."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "ecc-road-77.743-12.981",
+   "name": "ECC Road",
+   "coord": [77.74331, 12.98119],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2024-09",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/weekend-downpour-deluges-east-bengaluru-3213982",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at ECC Road."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "electronic-city-flyover-77.656-12.867",
+   "name": "Electronic City Flyover",
+   "coord": [77.65573, 12.86694],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2024-10-06",
+     "url": "https://www.thenewsminute.com/karnataka/bengaluru-faces-waterlogging-after-heavy-rains-imd-issues-yellow-warning-for-october-6",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Electronic City Flyover after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "electronic-city-flyover-77.666-12.845",
+   "name": "Electronic City Flyover",
+   "coord": [77.6658, 12.8455],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2024-10-05",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/sudden-deluge-of-rains-trigger-traffic-jams-water-logging-in-bengaluru-3221194",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Electronic City Flyover."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "epsilon-villas-77.689-12.945",
+   "name": "Epsilon Villas",
+   "coord": [77.68866, 12.94526],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2022-09",
+     "url": "https://www.thenewsminute.com/amp/story/karnataka/bengaluru-rains-upscale-apartments-flooded-ceos-evacuated-tractors-167602",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Epsilon Villas."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "global-village-tech-park-77.500-12.919",
+   "name": "Global Village Tech Park",
+   "coord": [77.5002, 12.9195],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2017-10-13",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-evening-rain-wrecks-citys-2029125",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Global Village Tech Park."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "guptha-layout-77.625-12.980",
+   "name": "Guptha Layout",
+   "coord": [77.62478, 12.97969],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2017-08-15",
+     "url": "https://www.thenewsminute.com/karnataka/rains-lash-bengaluru-leave-several-areas-city-waterlogged-66805",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Guptha Layout."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "gurudatta-layout-77.540-12.924",
+   "name": "Gurudatta Layout",
+   "coord": [77.5405, 12.924],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2020-10-23",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/in-flooded-hosakerehalli-muck-washes-away-festive-celebrations-906645.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Gurudatta Layout."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2020,
+   "lastYear": 2020
+  },
+  {
+   "id": "hal-2nd-stage-77.644-12.969",
+   "name": "HAL 2nd Stage",
+   "coord": [77.64371, 12.96894],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2017-08-15",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/flooded-homes-choked-toilets-ruin-2019989",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at HAL 2nd Stage."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "hayes-road-77.602-12.966",
+   "name": "Hayes Road",
+   "coord": [77.60151, 12.96632],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2020-04-30",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-rain-wrecks-bengaluru-s-fragile-infrastructure-831623.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Hayes Road after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2020,
+   "lastYear": 2020
+  },
+  {
+   "id": "hennur-junction-77.632-13.028",
+   "name": "Hennur Junction",
+   "coord": [77.6324, 13.02763],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2024-05-04",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-cripples-parts-of-city-traffic-paralysed-roads-waterlogged-3007385",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Hennur Junction after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "horamavu-underpass-77.660-13.025",
+   "name": "Horamavu Underpass",
+   "coord": [77.65973, 13.025],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2024-05-04",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-cripples-parts-of-city-traffic-paralysed-roads-waterlogged-3007385",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Horamavu Underpass after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "hulimavu-layout-77.603-12.877",
+   "name": "Hulimavu Layout",
+   "coord": [77.6028, 12.87735],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2019-11-24",
+     "url": "https://www.thenewsminute.com/article/lake-bund-breached-bengaluru-scores-houses-flooded-hulimavu-and-btm-layout-112869",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Hulimavu Layout."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2019,
+   "lastYear": 2019
+  },
+  {
+   "id": "ioc-flyover-77.637-13.005",
+   "name": "IOC Flyover",
+   "coord": [77.63692, 13.00466],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2023-06-20",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/people-caught-off-guard-as-bengaluru-receives-first-spell-of-monsoon-rains-1229608.html",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at IOC Flyover."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "jayanagar-4th-t-block-77.593-12.923",
+   "name": "Jayanagar 4th T Block",
+   "coord": [77.5934, 12.92305],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2018-09-24",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/bannerghata-road-houses-flood-694434.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Jayanagar 4th T Block."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2018,
+   "lastYear": 2018
+  },
+  {
+   "id": "jp-nagar-3rd-phase-77.598-12.912",
+   "name": "JP Nagar 3rd Phase",
+   "coord": [77.59762, 12.91179],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2026-05-29",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/evening-rain-blocks-roads-knocks-down-trees-across-bengaluru-4019874",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at JP Nagar 3rd Phase."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2026,
+   "lastYear": 2026
+  },
+  {
+   "id": "jp-nagar-9th-phase-77.563-12.868",
+   "name": "JP Nagar 9th Phase",
+   "coord": [77.56282, 12.86814],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2018-09-24",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/record-overnight-rain-pours-694444.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at JP Nagar 9th Phase."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2018,
+   "lastYear": 2018
+  },
+  {
+   "id": "kadubeesanahalli-underpass-77.695-12.939",
+   "name": "Kadubeesanahalli Underpass",
+   "coord": [77.69518, 12.93921],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2023-06-13",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/evening-showers-leave-east-bengaluru-waterlogged-1227324.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kadubeesanahalli Underpass."
+    },
+    {
+     "date": "2023-06-13",
+     "url": "https://www.thenewsminute.com/karnataka/bengaluru-experiences-waterlogging-again-after-several-hours-rain-178434",
+     "outlet": "thenewsminute.com",
+     "summary": "Waterlogging reported at Kadubeesanahalli Underpass."
+    },
+    {
+     "date": "2023-06-12",
+     "url": "https://www.thenewsminute.com/amp/story/karnataka/bengaluru-experiences-waterlogging-again-after-several-hours-rain-178434",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Kadubeesanahalli Underpass."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "kalamma-road-77.638-13.015",
+   "name": "Kalamma Road",
+   "coord": [77.63804, 13.01457],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2021-11-15",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rains-lash-bengaluru-houses-roads-flooded-1051183.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kalamma Road."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2021,
+   "lastYear": 2021
+  },
+  {
+   "id": "kamakya-theatre-77.553-12.923",
+   "name": "Kamakya Theatre",
+   "coord": [77.55333, 12.92332],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2022-04-14",
+     "url": "https://www.deccanherald.com/city/top-bengaluru-stories/heavy-downpour-wreaks-havoc-in-low-lying-areas-across-bengaluru-1101213.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kamakya Theatre."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "kaveri-nagar-77.610-13.033",
+   "name": "Kaveri Nagar",
+   "coord": [77.60962, 13.03261],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2021-11-15",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rains-lash-bengaluru-houses-roads-flooded-1051183.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kaveri Nagar."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2021,
+   "lastYear": 2021
+  },
+  {
+   "id": "kempegowda-bus-station-77.572-12.978",
+   "name": "Kempegowda Bus Station",
+   "coord": [77.57219, 12.97818],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2017-10-08",
+     "url": "https://www.deccanherald.com/amp/story/india%2Fkarnataka%2Fbengaluru%2Fshowers-disrupt-train-bus-services-2028136",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kempegowda Bus Station."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "kenchenahalli-77.513-12.927",
+   "name": "Kenchenahalli",
+   "coord": [77.5133, 12.9268],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2025-05",
+     "url": "https://gulfnews.com/world/asia/india/bengaluru-faces-heaviest-rainfall-of-the-year-1.500132345",
+     "outlet": "gulfnews.com",
+     "summary": "Flooding reported at Kenchenahalli."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "kengeri-railway-station-77.482-12.917",
+   "name": "Kengeri Railway Station",
+   "coord": [77.48235, 12.91658],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2024-10-20",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/homes-flooded-roads-choked-yet-again-after-another-rain-spell-3240856",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kengeri Railway Station."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "khodays-circle-underpass-77.572-12.980",
+   "name": "Khoday's Circle Underpass",
+   "coord": [77.57227, 12.9802],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2025-07-14",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/city-s-heaviest-rain-spell-this-season-leaves-trail-of-tree-falls-traffic-snarls-3628539",
+     "outlet": "deccanherald.com",
+     "summary": "Khoday's Circle Underpass reported under water."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "kogilu-junction-77.616-13.104",
+   "name": "Kogilu Junction",
+   "coord": [77.61633, 13.10357],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2025-05-21",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/bbmp-top-brass-inspect-flood-hit-areas-3549920",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Kogilu Junction."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "koramangala-4th-block-77.629-12.933",
+   "name": "Koramangala 4th Block",
+   "coord": [77.62941, 12.93278],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2017-09-09",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/people-returning-home-stranded-flooded-2023669",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Koramangala 4th Block."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "kr-puram-railway-station-77.676-13.000",
+   "name": "KR Puram Railway Station",
+   "coord": [77.6763, 12.99984],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2023-11-07",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/torrential-rains-pound-bengaluru-as-northeast-monsoon-intensifies-2759397",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at KR Puram Railway Station."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "kuvempu-nagar-and-basava-samithi-layout-77.559-13.060",
+   "name": "Kuvempu Nagar And Basava Samithi Layout",
+   "coord": [77.55916, 13.05991],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2024-10-21",
+     "url": "https://www.thenewsminute.com/amp/story/karnataka/bengalurus-kendriya-vihar-apartments-in-yelahanka-flood-for-the-third-time-in-a-month",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Kuvempu Nagar And Basava Samithi Layout."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "madhuvana-apartment-77.603-12.909",
+   "name": "Madhuvana Apartment",
+   "coord": [77.6035, 12.90895],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2025-05",
+     "url": "https://www.thenewsminute.com/karnataka/bengaluru-three-including-a-child-killed-in-rain-related-incidents",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Madhuvana Apartment."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "madiwala-underpass-77.618-12.925",
+   "name": "Madiwala Underpass",
+   "coord": [77.61806, 12.92475],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2026-05-29",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/evening-rain-blocks-roads-knocks-down-trees-across-bengaluru-4019874",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Madiwala Underpass."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2026,
+   "lastYear": 2026
+  },
+  {
+   "id": "mantri-square-mall-77.571-12.992",
+   "name": "Mantri Square Mall",
+   "coord": [77.57076, 12.99153],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2017-10-13",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-evening-rain-wrecks-citys-2029125",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Mantri Square Mall."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "marathahalli-flyover-77.698-12.955",
+   "name": "Marathahalli Flyover",
+   "coord": [77.69842, 12.95526],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thenewsminute.com/article/bengaluru-flooded-again-after-rains-marathahalli-orr-under-water-167535",
+     "outlet": "thenewsminute.com",
+     "summary": "Marathahalli Flyover reported under water."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "mekhri-circle-77.584-13.014",
+   "name": "Mekhri Circle",
+   "coord": [77.58369, 13.01358],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2017-09-25",
+     "url": "https://www.deccanherald.com/amp/story/india%2Fkarnataka%2Fbengaluru%2Fall-night-rain-throws-monday-2026596",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Mekhri Circle."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "mla-layout-77.594-12.865",
+   "name": "MLA Layout",
+   "coord": [77.59389, 12.86466],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2018-09-24",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/record-overnight-rain-pours-694444.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at MLA Layout."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2018,
+   "lastYear": 2018
+  },
+  {
+   "id": "nandidurga-road-77.600-13.001",
+   "name": "Nandidurga Road",
+   "coord": [77.59951, 13.00077],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2017-08",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/residents-spend-night-struggling-keep-2021325",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Nandidurga Road."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "nc-colony-77.644-12.976",
+   "name": "NC Colony",
+   "coord": [77.64353, 12.97617],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2025-05-19",
+     "url": "https://madhyamamonline.com/india/flooded-roads-choke-bengaluru-home-minister-says-authorities-job-1410258",
+     "outlet": "madhyamamonline.com",
+     "summary": "Rainwater reported entering homes at NC Colony after heavy rain."
+    },
+    {
+     "date": "2025-05-19",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/waterlogged-roads-stall-bengaluru-traffic-home-minister-says-authorities-on-job-3547011",
+     "outlet": "deccanherald.com",
+     "summary": "Rainwater reported entering homes at NC Colony."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "neeladri-nagar-77.648-12.842",
+   "name": "Neeladri Nagar",
+   "coord": [77.64791, 12.84159],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2025-10-10",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/parts-of-bengaluru-waterlogged-after-heavy-rains-daily-life-disrupted-3761188",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Neeladri Nagar."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "nehru-circle-77.577-12.988",
+   "name": "Nehru Circle",
+   "coord": [77.57712, 12.98821],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2023-05-31",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/bbmp-readies-audit-report-on-the-condition-of-41-underpasses-1223485.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Nehru Circle."
+    },
+    {
+     "date": "2023-05-31",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/bengaluru-flooded-underpasses-closed-1223735.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Nehru Circle."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "outer-ring-road-at-ecospace-77.681-12.928",
+   "name": "Outer Ring Road At Ecospace",
+   "coord": [77.68116, 12.92834],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2022-09-05",
+     "url": "https://www.oneindia.com/bengaluru/bengaluru-rains-cars-submerged-residential-layouts-flooded-after-overnight-heavy-downpour-3457456.html",
+     "outlet": "oneindia.com",
+     "summary": "Flooding reported at Outer Ring Road At Ecospace."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "palace-cross-77.587-12.997",
+   "name": "Palace Cross",
+   "coord": [77.58668, 12.99742],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2025-07-14",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/city-s-heaviest-rain-spell-this-season-leaves-trail-of-tree-falls-traffic-snarls-3628539",
+     "outlet": "deccanherald.com",
+     "summary": "Palace Cross reported under water."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "pr-layout-77.651-12.973",
+   "name": "PR Layout",
+   "coord": [77.6511, 12.97307],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thenewsminute.com/article/bengaluru-flooded-after-rains-traffic-advisory-issued-people-asked-stay-home-167536",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at PR Layout after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "prakash-layout-77.610-12.917",
+   "name": "Prakash Layout",
+   "coord": [77.60956, 12.91745],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2023-06-13",
+     "url": "https://www.thenewsminute.com/karnataka/bengaluru-experiences-waterlogging-again-after-several-hours-rain-178434",
+     "outlet": "thenewsminute.com",
+     "summary": "Prakash Layout reported under water."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "ramanashree-california-gardens-77.573-13.113",
+   "name": "Ramanashree California Gardens",
+   "coord": [77.57325, 13.11281],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2024-10-22",
+     "url": "https://theprint.in/india/as-rain-woes-continue-north-bengaluru-bears-the-brunt/2323472/",
+     "outlet": "theprint.in",
+     "summary": "Flooding reported at Ramanashree California Gardens."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "rr-nagar-arch-junction-77.519-12.936",
+   "name": "RR Nagar Arch Junction",
+   "coord": [77.5185, 12.9363],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2021-11-15",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rains-lash-bengaluru-houses-roads-flooded-1051183.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at RR Nagar Arch Junction."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2021,
+   "lastYear": 2021
+  },
+  {
+   "id": "rv-road-at-vijaya-college-77.580-12.941",
+   "name": "RV Road At Vijaya College",
+   "coord": [77.58023, 12.94119],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2023-05-08",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/heavy-rains-disrupt-bengaluru-traffic-leaves-several-areas-flooded-1217035.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at RV Road At Vijaya College."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "sahakar-nagar-railway-underpass-77.586-13.070",
+   "name": "Sahakar Nagar Railway Underpass",
+   "coord": [77.58573, 13.06964],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2024-10-21",
+     "url": "https://deccanherald.com/india/karnataka/bengaluru/heavy-overnight-rain-floods-bengalurus-homes-and-major-roads-3242875",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Sahakar Nagar Railway Underpass."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "sai-layout-77.645-13.039",
+   "name": "Sai Layout",
+   "coord": [77.64524, 13.03895],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2025-05-19",
+     "url": "https://www.thenewsminute.com/karnataka/rains-claim-life-of-woman-inundate-homes-in-several-parts-of-bengaluru",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Sai Layout."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "saptagiri-layout-77.544-12.902",
+   "name": "Saptagiri Layout",
+   "coord": [77.54409, 12.90152],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2018-09-24",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/4-lakes-city-south-breach-due-694405.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Saptagiri Layout."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2018,
+   "lastYear": 2018
+  },
+  {
+   "id": "sarakki-signal-77.573-12.907",
+   "name": "Sarakki Signal",
+   "coord": [77.57325, 12.90652],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2026-05-29",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/evening-rain-blocks-roads-knocks-down-trees-across-bengaluru-4019874",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Sarakki Signal."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2026,
+   "lastYear": 2026
+  },
+  {
+   "id": "shanthiniketan-colony-77.709-12.948",
+   "name": "Shanthiniketan Colony",
+   "coord": [77.70902, 12.94808],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2022-08-30",
+     "url": "https://www.thenewsminute.com/amp/story/karnataka/nightmarish-traffic-flooded-roads-life-bengaluru-thrown-out-gear-after-rains-167351",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Shanthiniketan Colony."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "shirdi-saibaba-layout-77.592-13.029",
+   "name": "Shirdi Saibaba Layout",
+   "coord": [77.59225, 13.02913],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2024-10-16",
+     "url": "https://thesouthfirst.com/karnataka/bengaluru-deluged-heavy-rain-floods-homes-cripples-city/",
+     "outlet": "thesouthfirst.com",
+     "summary": "Waterlogging reported at Shirdi Saibaba Layout after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "sjp-road-77.581-12.964",
+   "name": "SJP Road",
+   "coord": [77.58113, 12.9641],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2023-06-20",
+     "url": "https://www.thenewsminute.com/article/bengaluru-rains-traffic-police-announces-road-diversions-safety-advisory-178716",
+     "outlet": "thenewsminute.com",
+     "summary": "Waterlogging reported at SJP Road."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2023,
+   "lastYear": 2023
+  },
+  {
+   "id": "st-bed-layout-77.632-12.935",
+   "name": "ST Bed Layout",
+   "coord": [77.63243, 12.93477],
+   "kind": "layout",
+   "reports": [
+    {
+     "date": "2025-05-20",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/day-after-rain-deluge-bengaluru-residents-wade-through-trouble-3549914",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at ST Bed Layout."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "sumanahalli-junction-77.519-12.988",
+   "name": "Sumanahalli Junction",
+   "coord": [77.51918, 12.98752],
+   "kind": "junction",
+   "reports": [
+    {
+     "date": "2024-10-31",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/evening-showers-outbound-traffic-choke-bengaluru-roads-3256420",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Sumanahalli Junction after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "sunny-brooks-77.688-12.913",
+   "name": "Sunny Brooks",
+   "coord": [77.68796, 12.91293],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2022-08-30",
+     "url": "https://www.thenewsminute.com/amp/story/karnataka/nightmarish-traffic-flooded-roads-life-bengaluru-thrown-out-gear-after-rains-167351",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Sunny Brooks."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "tannery-road-77.612-13.005",
+   "name": "Tannery Road",
+   "coord": [77.6123, 13.00487],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2025-05-19",
+     "url": "https://madhyamamonline.com/india/flooded-roads-choke-bengaluru-home-minister-says-authorities-job-1410258",
+     "outlet": "madhyamamonline.com",
+     "summary": "Rainwater reported entering homes at Tannery Road after heavy rain."
+    },
+    {
+     "date": "2025-05-19",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/waterlogged-roads-stall-bengaluru-traffic-home-minister-says-authorities-on-job-3547011",
+     "outlet": "deccanherald.com",
+     "summary": "Rainwater reported entering homes at Tannery Road."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "tata-nagar-77.574-13.055",
+   "name": "Tata Nagar",
+   "coord": [77.57379, 13.05509],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2024-10-21",
+     "url": "https://www.thenewsminute.com/amp/story/karnataka/bengalurus-kendriya-vihar-apartments-in-yelahanka-flood-for-the-third-time-in-a-month",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Tata Nagar."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "thubarahalli-palya-77.722-12.956",
+   "name": "Thubarahalli Palya",
+   "coord": [77.72154, 12.95592],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2022-08-30",
+     "url": "https://www.thenewsminute.com/amp/story/karnataka/nightmarish-traffic-flooded-roads-life-bengaluru-thrown-out-gear-after-rains-167351",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Thubarahalli Palya."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "vasanth-nagar-underpass-77.596-12.994",
+   "name": "Vasanth Nagar Underpass",
+   "coord": [77.59614, 12.99446],
+   "kind": "underpass",
+   "reports": [
+    {
+     "date": "2024-10-15",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rains-lash-bengaluru-paralysing-peak-hour-traffic-3232675",
+     "outlet": "deccanherald.com",
+     "summary": "Waterlogging reported at Vasanth Nagar Underpass after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2024,
+   "lastYear": 2024
+  },
+  {
+   "id": "vittal-mallya-road-77.596-12.971",
+   "name": "Vittal Mallya Road",
+   "coord": [77.5962, 12.97128],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2017-09-09",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/people-returning-home-stranded-flooded-2023669",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Vittal Mallya Road."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2017,
+   "lastYear": 2017
+  },
+  {
+   "id": "vrishabhavathi-retaining-wall-77.498-12.916",
+   "name": "Vrishabhavathi Retaining Wall",
+   "coord": [77.4975, 12.916],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2020-06-25",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/rain-washes-away-retaining-wall-along-vrishabhavathi-853812.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Vrishabhavathi Retaining Wall."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2020,
+   "lastYear": 2020
+  },
+  {
+   "id": "wilson-garden-77.597-12.949",
+   "name": "Wilson Garden",
+   "coord": [77.59683, 12.94893],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2022-04-14",
+     "url": "https://www.deccanherald.com/city/top-bengaluru-stories/heavy-downpour-wreaks-havoc-in-low-lying-areas-across-bengaluru-1101213.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Wilson Garden."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  },
+  {
+   "id": "windsor-manor-bridge-77.585-12.995",
+   "name": "Windsor Manor Bridge",
+   "coord": [77.58484, 12.99531],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2025-07-14",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/city-s-heaviest-rain-spell-this-season-leaves-trail-of-tree-falls-traffic-snarls-3628539",
+     "outlet": "deccanherald.com",
+     "summary": "Windsor Manor Bridge reported under water."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2025,
+   "lastYear": 2025
+  },
+  {
+   "id": "yelachenahalli-77.570-12.898",
+   "name": "Yelachenahalli",
+   "coord": [77.57008, 12.89797],
+   "kind": "other",
+   "reports": [
+    {
+     "date": "2021-06-04",
+     "url": "https://www.deccanherald.com/india/karnataka/bengaluru/flash-flood-smashes-into-70-houses-in-south-bengaluru-993923.html",
+     "outlet": "deccanherald.com",
+     "summary": "Flooding reported at Yelachenahalli."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2021,
+   "lastYear": 2021
+  },
+  {
+   "id": "yemalur-main-road-77.689-12.955",
+   "name": "Yemalur Main Road",
+   "coord": [77.68941, 12.95543],
+   "kind": "road",
+   "reports": [
+    {
+     "date": "2022-09-05",
+     "url": "https://www.thenewsminute.com/article/bengaluru-flooded-after-rains-traffic-advisory-issued-people-asked-stay-home-167536",
+     "outlet": "thenewsminute.com",
+     "summary": "Flooding reported at Yemalur Main Road after heavy rain."
+    }
+   ],
+   "count": 1,
+   "firstYear": 2022,
+   "lastYear": 2022
+  }
+ ]
+}

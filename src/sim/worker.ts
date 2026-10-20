@@ -7,7 +7,7 @@ export type WorkerIn =
   | { type: 'run'; id: number; mm: number[]; params: SimParams };
 
 export type WorkerOut =
-  | { type: 'ready'; factor: number }
+  | { type: 'ready'; factor: number; engine: import('./kernel.ts').EngineKind }
   | { type: 'hour'; id: number; hour: number; total: number; frame: Uint16Array; stats: import('./core.ts').HourStats }
   | { type: 'done'; id: number; ms: number }
   | { type: 'error'; id?: number; message: string };
@@ -20,7 +20,7 @@ ctx.onmessage = (e: MessageEvent<WorkerIn>) => {
   try {
     if (msg.type === 'init') {
       runner = new Runner(msg.init);
-      ctx.postMessage({ type: 'ready', factor: runner.factor } satisfies WorkerOut);
+      ctx.postMessage({ type: 'ready', factor: runner.factor, engine: runner.engine } satisfies WorkerOut);
     } else if (msg.type === 'run') {
       if (!runner) throw new Error('worker not initialised');
       const t0 = performance.now();

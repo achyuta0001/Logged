@@ -5,12 +5,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PNG } from 'pngjs';
 
+import { terrainFromBuffer } from '../src/terrain.ts';
+
+// node scripts/preview.mjs [--pin <code>]   (default 560098; any pack format)
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const meta = JSON.parse(fs.readFileSync(path.join(ROOT, 'public/data/meta.json'), 'utf8'));
-const buf = fs.readFileSync(path.join(ROOT, 'public/data/grids.bin'));
-const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-const L = {};
-for (const [k, v] of Object.entries(meta.layers)) L[k] = v.dtype === 'f32' ? new Float32Array(ab, v.offset, v.length) : new Uint8Array(ab, v.offset, v.length);
+const i = process.argv.indexOf('--pin');
+const DIR = path.join(ROOT, 'public/data/pins', i > 0 ? process.argv[i + 1] : '560098');
+const meta = JSON.parse(fs.readFileSync(path.join(DIR, 'meta.json'), 'utf8'));
+const buf = fs.readFileSync(path.join(DIR, 'grids.bin'));
+const L = terrainFromBuffer(meta, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)).grids;
 const { width: W, height: H, cellSizeM: cs } = meta;
 const SCALE = 2;
 const png = new PNG({ width: W * SCALE, height: H * SCALE });

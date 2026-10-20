@@ -22,8 +22,10 @@
 
   /* labels and system colours (dark) */
   --label-1: #ffffff;
-  --label-2: rgba(235, 235, 245, 0.6);
-  --label-3: rgba(235, 235, 245, 0.3);
+  /* secondary/tertiary raised from Apple's 0.6/0.3 so small text keeps 4.5:1 (WCAG 1.4.3) on the
+     glass over a bright map: measured worst-case backdrop in scripts/a11y.mjs */
+  --label-2: rgba(235, 235, 245, 0.7);
+  --label-3: rgba(235, 235, 245, 0.58);
   --separator: rgba(84, 84, 88, 0.6);
   --accent: #64d2ff;
   --ok: #30d158;
@@ -106,6 +108,54 @@ a:hover {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+/* rings inside clipped or full-bleed boxes are drawn inset so nothing cuts them off */
+.maplibregl-canvas:focus-visible,
+.lg-toggle:focus-visible {
+  outline-offset: -3px;
+}
+.maplibregl-ctrl-group button:focus-visible,
+.maplibregl-ctrl-attrib-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+  box-shadow: none !important;
+}
+/* keyboard: the first Tab stop jumps past the map to the sidebar (src/ui/layout.ts) */
+.skip-link {
+  position: fixed;
+  z-index: 60;
+  top: var(--gap);
+  left: var(--gap);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #00202e;
+  font-size: 15px;
+  font-weight: 600;
+  transform: translateY(calc(-100% - var(--gap) * 2));
+}
+.skip-link:focus {
+  transform: none;
+  text-decoration: none;
+}
+body.tour-on .skip-link {
+  display: none;
+}
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+/* Esc hides hover/focus tooltips until the pointer or focus moves (WCAG 1.4.13) */
+body.tips-off [data-tip]::after,
+body.tips-off .rail-btn::after {
+  opacity: 0 !important;
 }
 .ico {
   flex: none;
@@ -758,7 +808,8 @@ body.sb-rail .sidebar {
   border-radius: 999px;
   font-weight: 600;
   font-size: 12px;
-  color: color-mix(in srgb, var(--c) 75%, white);
+  /* 60 % keeps every severity's text at 4.5:1 on its own tint */
+  color: color-mix(in srgb, var(--c) 60%, white);
   background: color-mix(in srgb, var(--c) 20%, transparent);
   white-space: nowrap;
 }
@@ -2054,6 +2105,10 @@ body.focus #map .maplibregl-ctrl-bottom-right {
 }
 .loader.error .ld-msg {
   color: var(--danger);
+  /* raw errors (e.g. a WebGL failure) can be long unbroken strings: wrap and scroll inside the card */
+  overflow-wrap: anywhere;
+  max-height: 8.5em;
+  overflow-y: auto;
 }
 
 /* =====================================================================
@@ -2181,6 +2236,34 @@ body.mode-phone .tour-btn span {
 body.mode-phone .tour-btn {
   width: 30px;
   padding: 0;
+}
+
+@media (pointer: coarse) {
+  .tl-play,
+  .capsule-btn,
+  .fb-btn {
+    position: relative;
+  }
+  .icon-btn::before,
+  .capsule-btn::before,
+  .tl-play::before,
+  .rail-btn::before,
+  .fb-btn::before {
+    content: '';
+    position: absolute;
+    inset: -7px;
+    border-radius: 999px;
+  }
+  .capsule-btn::before {
+    inset: -7px 0;
+  }
+  .tl-play::before {
+    inset: -4px;
+  }
+  .rail-btn::before,
+  .fb-btn::before {
+    inset: -2px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2392,4 +2475,130 @@ body.mode-phone .tour-btn {
 .sb-caveat .ico {
   flex: none;
   margin-top: 1px;
+}
+
+/* ---------- prediction range across weather models (live forecast only) ---------- */
+.sb-range {
+  margin: 3px 2px 0 1px;
+  font-size: 13px;
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+  text-wrap: pretty;
+}
+.kpi-r {
+  margin-top: 1px;
+  color: var(--label-3);
+  font-size: 11px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.kpi-r small {
+  color: inherit;
+  font-size: 0.92em;
+  font-weight: 400;
+}
+.ens {
+  margin-top: 8px;
+}
+.ens-note,
+.ens-worst {
+  margin: 0;
+  font-size: 13px;
+  color: var(--label-2);
+}
+.ens-worst {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  margin-top: 5px;
+}
+.ens-worst b {
+  color: var(--label-1);
+  font-weight: 600;
+}
+.ens .more {
+  margin-top: 4px;
+  font-size: 13px;
+}
+.ens-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+}
+.ens-row {
+  --c: var(--label-3);
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 10px;
+  row-gap: 1px;
+  padding: 8px 12px;
+}
+.ens-row + .ens-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 0;
+  height: 0.5px;
+  background: var(--separator);
+}
+.ens-name {
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ens-v {
+  text-align: right;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--water-pale);
+}
+.ens-meta {
+  font-size: 12px;
+  color: var(--label-2);
+  font-variant-numeric: tabular-nums;
+}
+.ens-sev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--c) 75%, white);
+}
+.ens-sev i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.ens-sev[data-sev='none'] {
+  color: var(--label-3);
+  font-weight: 500;
+}
+.ens-sev[data-sev='none'] i,
+.ens-row:has(.ens-sev[data-sev='none']) .ens-v {
+  opacity: 0.55;
+}
+.tl-band {
+  fill: rgba(143, 166, 255, 0.16);
+  stroke: rgba(143, 166, 255, 0.28);
+  stroke-width: 0.6;
+  stroke-dasharray: 2 2;
+  pointer-events: none;
+}
+.sp-band {
+  fill: rgba(143, 166, 255, 0.2);
 }

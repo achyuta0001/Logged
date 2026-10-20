@@ -23,7 +23,7 @@ if (q.has('fresh')) {
   }
 }
 
-const ds = await loadDataset();
+const ds = await loadDataset('/data/pins/560098');
 const { terrain, osm } = ds;
 const meta = terrain.meta;
 status.textContent = 'Building the 3D map…';

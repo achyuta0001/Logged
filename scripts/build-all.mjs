@@ -9,7 +9,7 @@
 // Resumable: a pack with a pack.json is skipped unless --force. Polite: OSM comes from the local
 // extract (no Overpass calls when it exists); Copernicus windows are cached in .cache/; a failed
 // pack is retried with exponential backoff (capped at 15 min) before moving on.
-// Packs other than 560098 land in public/data/pins/<code>/ (git-ignored except committed samples).
+// Packs land in public/data/pins/<code>/ (git-ignored except the committed samples, 560098 among them).
 // Their osm.geojson and depressions.json are stored gzipped (<name>.gz, scripts/lib/pack-files.mjs);
 // a pack built before that layout is compressed in place instead of being skipped as is.
 import fs from 'node:fs';
@@ -40,7 +40,7 @@ const want = arg('pins', '')
   .filter(Boolean);
 for (const c of want) if (!catalog.pins.some((p) => p.code === c)) console.warn(`[all] ${c} is not in the catalog; skipped`);
 const todo = catalog.pins.filter((p) => !want.length || want.includes(p.code)).map((p) => p.code);
-const outDir = (code) => (code === '560098' ? path.join(ROOT, 'public', 'data') : path.join(ROOT, 'public', 'data', 'pins', code));
+const outDir = (code) => path.join(ROOT, 'public', 'data', 'pins', code);
 
 function buildOne(code) {
   return new Promise((resolve) => {
@@ -60,10 +60,8 @@ let next = 0;
 async function worker() {
   while (next < todo.length) {
     const code = todo[next++];
-    // the committed 560098 reference pack (public/data, no pack.json) is rebuilt only when asked for by name
-    const legacyKept = code === '560098' && !want.includes(code) && fs.existsSync(path.join(outDir(code), 'meta.json'));
-    if (legacyKept || (!force && fs.existsSync(path.join(outDir(code), 'pack.json')))) {
-      const c = legacyKept ? null : compressPack(outDir(code));
+    if (!force && fs.existsSync(path.join(outDir(code), 'pack.json'))) {
+      const c = compressPack(outDir(code));
       if (c) log(`${code} compressed in place: ${(c.before / 1e6).toFixed(2)} -> ${(c.after / 1e6).toFixed(2)} MB on disk`);
       results.push({ code, status: 'cached' });
       continue;

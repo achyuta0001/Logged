@@ -1,6 +1,7 @@
 // Impact section: four headline numbers, the top daily-life cards (expandable),
 // and the deepest roads / lowest spots lists (collapsed by default).
 import type { Depression, ImpactReport, Severity } from '../types';
+import { areaRangeText, areaText, rangeText, type EnsembleSummary, type Range } from '../ensemble';
 import { SEVERITY_COLOR, SEVERITY_LABEL } from '../map/colors';
 import { FACILITY_LABEL } from '../map/features';
 import { esc, fmtArea, fmtDay, fmtDepth, fmtHour, fmtNum } from './format';
@@ -13,6 +14,8 @@ export interface ImpactHandlers {
 }
 
 const TOP_CARDS = 3;
+/** the four headline numbers, in order */
+const KPI_IDS = ['k-area', 'k-2w', 'k-car', 'k-bld'];
 
 export class ImpactView {
   private el: HTMLElement;
@@ -20,6 +23,9 @@ export class ImpactView {
   private deps: Depression[];
   private allCards: boolean;
   private last: { sev: Severity; area: number } | null = null;
+  /** the per-model list is open (remembered); how many models it lists (0 = none shown) */
+  private ensOpen = false;
+  private ensN = 0;
 
   constructor(el: HTMLElement, deps: Depression[], h: ImpactHandlers) {
     this.el = el;
@@ -34,6 +40,7 @@ export class ImpactView {
         <div class="kpi" role="listitem" title="Length of road deeper than 30 cm"><span class="kpi-v" id="k-car">–</span><span class="kpi-l">shut to cars</span></div>
         <div class="kpi" role="listitem" id="k-bld-box" title="Buildings with water above plinth height (25 cm)"><span class="kpi-v" id="k-bld">–</span><span class="kpi-l">buildings wet</span></div>
       </div>
+      <div class="ens" id="ens" hidden><p class="ens-note" id="ens-note"></p><p class="ens-worst" id="ens-worst" hidden></p><button class="more" id="ens-more" type="button" aria-controls="ens-list" aria-expanded="false" hidden></button><ol class="ens-list" id="ens-list" hidden></ol></div>
       <p class="imp-fac" id="k-fac" hidden></p>
       <div class="life" id="life"></div>
       <button class="more" id="life-more" type="button" aria-controls="life" aria-expanded="false" hidden></button>
@@ -44,6 +51,20 @@ export class ImpactView {
       this.allCards = !this.allCards;
       save('imp.allCards', this.allCards);
       this.syncCards();
+    });
+    // the range across weather models, quietly under each number (setEnsemble)
+    for (const id of KPI_IDS) {
+      const r = document.createElement('span');
+      r.className = 'kpi-r';
+      r.id = `${id}-r`;
+      r.hidden = true;
+      el.querySelector(`#${id}`)!.parentElement!.append(r);
+    }
+    this.ensOpen = load('imp.models', false);
+    el.querySelector('#ens-more')!.addEventListener('click', () => {
+      this.ensOpen = !this.ensOpen;
+      save('imp.models', this.ensOpen);
+      this.syncEns();
     });
     el.querySelector('#life')!.addEventListener('click', (e) => {
       const c = (e.target as HTMLElement).closest<HTMLButtonElement>('.card');
@@ -153,6 +174,57 @@ export class ImpactView {
           .join('')
       : '<li class="empty">All roads passable.</li>';
     $('sub-roads-n').textContent = worst.length ? String(worst.length) : '';
+  }
+
+  /**
+   * The prediction range across weather models (live forecast only): `pending` models still being
+   * predicted, then the summary. Nothing shows for null or when every model stays dry.
+   */
+  setEnsemble(s: EnsembleSummary | null, pending = 0) {
+    const $ = (id: string) => this.el.querySelector('#' + id) as HTMLElement;
+    const show = !!s && !s.dry && !pending;
+    $('ens').hidden = !show && !pending;
+    $('ens-note').textContent = pending ? `Comparing ${pending} weather models…` : show ? `Ranges: 48 h peak across ${s!.n} weather models` : '';
+    const ranges: [string, Range | undefined, (v: number) => string][] = [
+      ['k-2w', s?.twoWheelerKm, (v) => fmtNum(v)],
+      ['k-car', s?.carKm, (v) => fmtNum(v)],
+      ['k-bld', s?.buildingsWet, (v) => Math.round(v).toLocaleString('en-IN')],
+    ];
+    const sr = `<span class="sr-only">Across ${s?.n ?? 0} weather models: </span>`;
+    const area = $('k-area-r');
+    area.innerHTML = show ? sr + areaRangeText(s!.floodedKm2).replace(/ (\S+)$/, '<small>$1</small>') : '';
+    for (const [id, r, f] of ranges) $(`${id}-r`).innerHTML = show && r ? `${sr}${rangeText(r, f)}${id === 'k-bld' ? '' : '<small>km</small>'}` : '';
+    for (const id of KPI_IDS) {
+      const r = $(`${id}-r`);
+      r.hidden = !show;
+      r.title = show ? `Lowest to highest across ${s!.n} weather models, each at its peak in the next 48 h` : '';
+    }
+    const w = show ? s!.worse : null;
+    const worst = $('ens-worst');
+    worst.hidden = !w;
+    worst.innerHTML = w
+      ? `Worst model: <b>${esc(w.name)}</b> → <span class="sev" style="--c:${SEVERITY_COLOR[w.severity]}" data-sev="${w.severity}">${SEVERITY_LABEL[w.severity]}</span>`
+      : '';
+    $('ens-list').innerHTML = show
+      ? s!.members
+          .map(
+            (m) => `<li class="ens-row" style="--c:${SEVERITY_COLOR[m.severity]}">
+          <span class="ens-name">${esc(m.name)}</span><span class="ens-v">${areaText(m.floodedKm2, s!.floodedKm2.max)}</span>
+          <span class="ens-meta">${fmtNum(m.rainMm, m.rainMm < 10 ? 1 : 0)} mm in 48 h</span><span class="ens-sev" data-sev="${m.severity}"><i aria-hidden="true"></i>${SEVERITY_LABEL[m.severity]}</span></li>`,
+          )
+          .join('')
+      : '';
+    this.ensN = show ? s!.n : 0;
+    this.syncEns();
+  }
+
+  private syncEns() {
+    const more = this.el.querySelector('#ens-more') as HTMLButtonElement;
+    const list = this.el.querySelector('#ens-list') as HTMLElement;
+    more.hidden = !this.ensN;
+    list.hidden = !this.ensN || !this.ensOpen;
+    more.setAttribute('aria-expanded', String(this.ensOpen));
+    more.innerHTML = `<span>${this.ensOpen ? 'Hide per model' : 'Show per model'}</span>${iconSvg('chevron', 12, 1.8)}`;
   }
 
   private syncCards() {

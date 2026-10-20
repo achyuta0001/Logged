@@ -55,7 +55,7 @@ test('committed index.json (when present) is valid and contains 560098 with a pa
 });
 
 test('meta schema: the 560098 reference pack is valid against its grids.bin', () => {
-  const root = new URL('../../../public/data/', import.meta.url);
+  const root = new URL('../../../public/data/pins/560098/', import.meta.url);
   const meta = JSON.parse(readFileSync(new URL('meta.json', root), 'utf8'));
   const bytes = readFileSync(new URL('grids.bin', root)).byteLength;
   assert.deepEqual(validateMeta(meta, bytes), []);
@@ -64,7 +64,7 @@ test('meta schema: the 560098 reference pack is valid against its grids.bin', ()
 });
 
 test('meta schema: inflow points must sit on the grid with an area and a time-area histogram', () => {
-  const root = new URL('../../../public/data/', import.meta.url);
+  const root = new URL('../../../public/data/pins/560098/', import.meta.url);
   const meta = JSON.parse(readFileSync(new URL('meta.json', root), 'utf8'));
   const n = meta.width * meta.height;
   const ok = { cell: 5, at: [77.5, 12.9], areaKm2: 3, impervious: 0.6, timeArea: [0.4, 0.6] };
@@ -102,7 +102,7 @@ test('loader: reads index.json and resolves pack URLs', async () => {
   const got = await loadPinIndex('/packs', fakeFetch({ '/packs/index.json': idx }));
   assert.equal(got.pins.length, 2);
   assert.equal(packBase('/packs', got.pins[1]), '/packs/560034');
-  assert.equal(packBase('/packs', got.pins[0]), '/data'); // the reference pack stays in public/data
+  assert.equal(packBase('/packs', got.pins[0]), '/data/pins/560098'); // "." (old indexes) = the bundled reference pack
   assert.throws(() => packBase('/packs', pin('560103')), /No data pack/);
 });
 
@@ -116,7 +116,11 @@ test('loader: missing or invalid index falls back to the reference pack', async 
 
 test('loader: a hosted index without 560098 still gets the reference pack', async () => {
   const got = await loadPinIndex('https://example.org/p', fakeFetch({ 'https://example.org/p/index.json': index([pin('560034', { pack: pack('560034') }), pin('560098')]) }));
-  assert.equal(got.pins.find((p) => p.code === '560098').pack.path, '.');
+  const ref = got.pins.find((p) => p.code === '560098');
+  assert.equal(ref.pack.path, '.');
+  // it loads from the copy bundled with the app, not from the hosted root
+  assert.equal(packBase('https://example.org/p', ref), '/data/pins/560098');
+  assert.equal(packBase('https://example.org/p', got.pins.find((p) => p.code === '560034')), 'https://example.org/p/560034');
 });
 
 // ---------------------------------------------------------------- search

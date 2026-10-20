@@ -1,16 +1,14 @@
 // Standalone test bench for WaterFx + RainFx (fx-demo.html). Not part of the app bundle.
 import { createMap } from './mapView';
-import type { TerrainMeta, GridLayerName } from '../types';
+import type { GridLayerName } from '../types';
+import { loadTerrain } from '../terrain';
 import { WaterFx } from './waterFx';
 import { RainFx } from './rainFx';
 
 async function loadData() {
-  const meta = (await (await fetch('/data/meta.json')).json()) as TerrainMeta;
-  const buf = await (await fetch('/data/grids.bin')).arrayBuffer();
-  const layer = <T extends Float32Array | Uint8Array>(name: GridLayerName): T => {
-    const l = meta.layers[name];
-    return (l.dtype === 'f32' ? new Float32Array(buf, l.offset, l.length) : new Uint8Array(buf, l.offset, l.length)) as T;
-  };
+  // the 560098 reference pack (format 2: loadTerrain decodes the quantised grids)
+  const { meta, grids } = await loadTerrain('/data/pins/560098');
+  const layer = <T extends Float32Array | Uint8Array>(name: GridLayerName): T => grids[name] as T;
   return {
     meta,
     dep: layer<Float32Array>('depressionDepth'),

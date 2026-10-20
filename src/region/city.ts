@@ -10,6 +10,8 @@ import { Tooltip } from '../ui/tooltip';
 import { esc } from '../ui/format';
 import { iconSvg } from '../ui/icons';
 import { searchPins } from './packs';
+import { NewsLayer, NEWS_COLOR } from '../map/newsLayer';
+import { reportsByArea } from '../commute/near';
 
 export interface CityData {
   district: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
@@ -124,12 +126,19 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     sel = id;
     if (id >= 0) map.setFeatureState({ source: 'pins', id }, { sel: true });
   };
+  // flood reports in the news: a secondary number per pincode in the hover card, and an optional layer
+  let newsBy = new Map<string, { spots: number; reports: number }>();
+  const news = new NewsLayer(map, 'city-news');
+  void news.ready.then((spots) => {
+    if (!disposed) newsBy = reportsByArea(city.pins.features.map((f) => ({ key: f.properties.code, geometry: f.geometry })), spots);
+  });
   const tipHtml = (code: string) => {
     const p = byCode.get(code);
     const f = data.features[idOf.get(code)!];
     const s = f?.properties.s ?? p?.susceptibility ?? 0;
     return `<div class="tip-h"><div><b>${esc(code)}</b><span>${esc(p?.name ?? f?.properties.name ?? '')}</span></div></div>
       <dl><dt>Flood susceptibility</dt><dd>${suscBand(s)} · ${Math.round(s * 100)}</dd>
+      ${newsBy.has(code) ? `<dt>In the news</dt><dd>${newsBy.get(code)!.reports} flood report${newsBy.get(code)!.reports === 1 ? '' : 's'}</dd>` : ''}
       ${p ? `<dt>Area</dt><dd>${p.areaKm2.toFixed(1)} km²</dd>` : ''}
       <dt>3D flood model</dt><dd class="${p?.pack ? 'wet' : ''}">${p?.pack ? 'Click to open' : 'Not built yet'}</dd></dl>`;
   };
@@ -159,13 +168,14 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     <div class="city">
       <label class="city-search">
         ${iconSvg('target', 15)}
-        <input type="search" placeholder="Pincode or area, e.g. 560103 or Bellandur" aria-label="Find a pincode by number or area name" autocomplete="off" spellcheck="false" />
+        <input type="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="city-results" placeholder="Pincode or area, e.g. 560103 or Bellandur" aria-label="Find a pincode by number or area name" autocomplete="off" spellcheck="false" />
       </label>
-      <ul class="city-results" role="listbox" hidden></ul>
+      <ul class="city-results" id="city-results" role="listbox" aria-label="Matching pincodes" hidden></ul>
       <figure class="city-legend" aria-label="Legend: flood susceptibility, lower to higher">
         <div class="city-ramp" style="background: linear-gradient(90deg, ${grad})"></div>
         <figcaption><span>Lower</span><span>Flood susceptibility</span><span>Higher</span></figcaption>
         <p class="city-key"><i class="city-ring" aria-hidden="true"></i>Dashed outline: 3D flood model ready</p>
+        <div class="layers"><label class="lyr" title="Spots named in news reports of flooding. Bigger circle: more flood days reported. White ring: underpass"><i class="sw dot" style="--c:${NEWS_COLOR}"></i><span>Flood reports in the news</span><input type="checkbox" class="switch city-news" role="switch"></label></div>
       </figure>
       <details class="city-how">
         <summary>How the colours are worked out</summary>
@@ -183,14 +193,15 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
   const results = body.querySelector('.city-results') as HTMLUListElement;
   const list = body.querySelector('.city-list') as HTMLOListElement;
   const more = body.querySelector('.city-more') as HTMLButtonElement;
-  const row = (p: PinEntry, rank?: number) =>
-    `<li><button type="button" class="city-row" data-code="${p.code}">
-      ${rank !== undefined ? `<span class="city-rank">${rank}</span>` : ''}
+  const cells = (p: PinEntry, rank?: number) =>
+    `${rank !== undefined ? `<span class="city-rank">${rank}</span>` : ''}
       <span class="city-sw" style="background:${color(p.susceptibility ?? 0)}" aria-hidden="true"></span>
       <span class="city-name"><b>${p.code}</b><span>${esc(p.name)}</span></span>
       <span class="city-val">${p.susceptibility !== undefined ? `${suscBand(p.susceptibility)}` : ''}</span>
-      ${p.pack ? `<span class="city-3d" title="3D flood model ready">3D</span>` : ''}
-    </button></li>`;
+      ${p.pack ? `<span class="city-3d" title="3D flood model ready">3D</span>` : ''}`;
+  const row = (p: PinEntry, rank?: number) => `<li><button type="button" class="city-row" data-code="${p.code}">${cells(p, rank)}</button></li>`;
+  // search results are a listbox: focus stays in the input, the active option is announced (combobox pattern)
+  const option = (p: PinEntry, i: number) => `<li role="option" id="city-opt-${i}" class="city-row" data-code="${p.code}" aria-selected="false">${cells(p)}</li>`;
   let showAll = false;
   const renderList = () => {
     list.innerHTML = (showAll ? ranked : ranked.slice(0, 8)).map((p, i) => row(p, i + 1)).join('');
@@ -203,24 +214,37 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     renderList();
   });
   let active = -1;
+  const setActive = (i: number, scroll = false) => {
+    const rows = [...results.querySelectorAll<HTMLElement>('.city-row')];
+    rows.forEach((r, j) => {
+      r.classList.toggle('active', j === i);
+      r.setAttribute('aria-selected', String(j === i));
+    });
+    if (rows[i]) input.setAttribute('aria-activedescendant', rows[i].id);
+    else input.removeAttribute('aria-activedescendant');
+    if (scroll) rows[i]?.scrollIntoView({ block: 'nearest' });
+  };
   const renderResults = () => {
     const q = input.value.trim();
     const hits = q ? searchPins(index, q, 8) : [];
     results.hidden = !q;
+    input.setAttribute('aria-expanded', String(!!q));
     active = hits.length ? 0 : -1;
-    results.innerHTML = hits.length ? hits.map((p) => row(p)).join('') : q ? '<li class="city-none">No pincode or area by that name in Bengaluru Urban</li>' : '';
-    results.querySelector('.city-row')?.classList.add('active');
+    results.innerHTML = hits.length
+      ? hits.map(option).join('')
+      : q
+        ? '<li class="city-none" role="option" aria-disabled="true" aria-selected="false">No pincode or area by that name in Bengaluru Urban</li>'
+        : '';
+    setActive(active);
   };
   input.addEventListener('input', renderResults);
   input.addEventListener('keydown', (e) => {
-    const rows = [...results.querySelectorAll<HTMLButtonElement>('.city-row')];
+    const rows = [...results.querySelectorAll<HTMLElement>('.city-row')];
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       if (!rows.length) return;
       e.preventDefault();
-      rows[active]?.classList.remove('active');
       active = (active + (e.key === 'ArrowDown' ? 1 : rows.length - 1)) % rows.length;
-      rows[active].classList.add('active');
-      rows[active].scrollIntoView({ block: 'nearest' });
+      setActive(active, true);
     } else if (e.key === 'Enter' && rows[active]) {
       e.preventDefault();
       choose(rows[active].dataset.code!, true);
@@ -230,14 +254,18 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     }
   });
   root.addEventListener('click', (e) => {
-    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('.city-row');
+    const b = (e.target as HTMLElement).closest<HTMLElement>('.city-row');
     if (b) choose(b.dataset.code!, true);
   });
   root.addEventListener('mouseover', (e) => {
-    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('.city-row');
+    const b = (e.target as HTMLElement).closest<HTMLElement>('.city-row');
     setHover(b ? (idOf.get(b.dataset.code!) ?? -1) : -1);
   });
   root.addEventListener('mouseleave', () => setHover(-1));
+  root.addEventListener('change', (e) => {
+    const t = e.target as HTMLInputElement;
+    if (t.classList.contains('city-news')) news.setVisible(t.checked);
+  });
 
   /** select a pincode: open it when its pack exists, otherwise frame it and say so */
   function choose(code: string, fly: boolean) {
@@ -284,6 +312,7 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
       if (disposed) return;
       disposed = true;
       tip.hide();
+      news.destroy();
       map.remove();
       sidebar.clearBodies();
       shell.timelineEl.hidden = false;

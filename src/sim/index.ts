@@ -7,15 +7,32 @@ import type { RainSeries, SimParams, SimSnapshot, Terrain } from '../types.ts';
 import { DEFAULT_PARAMS, type HourStats } from './core.ts';
 import { Runner, type RunnerInit } from './runner.ts';
 import type { WorkerIn, WorkerOut } from './worker.ts';
+import { isEngineChoice, type EngineChoice, type EngineKind } from './kernel.ts';
 
 export { DEFAULT_PARAMS } from './core.ts';
 export type { HourStats } from './core.ts';
+export type { EngineChoice, EngineKind } from './kernel.ts';
 
 export interface EngineOptions {
   /** coarsening factor for the hydraulic grid (1 = native 15 m, 2 = 30 m). Default auto (2 for big grids). */
   factor?: number;
   /** force running on the main thread (tests / environments without Worker) */
   inline?: boolean;
+  /**
+   * engine of the surface step: 'auto' (default) runs WebAssembly when it loads, else JS; results are
+   * bit-identical. Without this option the page's `?engine=js` (or `wasm`) query parameter decides.
+   */
+  engine?: EngineChoice;
+}
+
+/** `?engine=js|wasm|auto` on the page, if any */
+function engineFromUrl(): EngineChoice | undefined {
+  try {
+    const v = typeof location === 'undefined' ? null : new URLSearchParams(location.search).get('engine');
+    return isEngineChoice(v) ? v : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export class FloodEngine {
@@ -34,6 +51,7 @@ export class FloodEngine {
   private maxCache?: { hour: number; arr: Float32Array };
   /** ms of the last completed run */
   lastRunMs = 0;
+  private _engine: EngineKind = 'js';
 
   private constructor(terrain: Terrain, params: SimParams, opts: EngineOptions) {
     this.terrain = terrain;
@@ -55,8 +73,12 @@ export class FloodEngine {
       // M4: runoff from land outside the grid enters at these points (src/sim/inflow.ts)
       inflow: m.inflow?.length ? m.inflow.map((p) => ({ ...p, timeArea: [...p.timeArea] })) : undefined,
       inflowEdge: m.inflowEdge?.map((r) => [...r] as typeof r),
+      engine: opts.engine ?? engineFromUrl(),
     };
-    if (opts.inline || typeof Worker === 'undefined') this.inlineRunner = new Runner(this.init);
+    if (opts.inline || typeof Worker === 'undefined') {
+      this.inlineRunner = new Runner(this.init);
+      this._engine = this.inlineRunner.engine;
+    }
   }
 
   static async create(terrain: Terrain, params?: Partial<SimParams>, opts: EngineOptions = {}): Promise<FloodEngine> {
@@ -70,7 +92,7 @@ export class FloodEngine {
     this.worker = w;
     return new Promise((resolve, reject) => {
       const onMsg = (ev: MessageEvent<WorkerOut>) => {
-        if (ev.data.type === 'ready') { w.removeEventListener('message', onMsg); resolve(); }
+        if (ev.data.type === 'ready') { this._engine = ev.data.engine; w.removeEventListener('message', onMsg); resolve(); }
         else if (ev.data.type === 'error') { w.removeEventListener('message', onMsg); reject(new Error(ev.data.message)); }
       };
       w.addEventListener('message', onMsg);
@@ -81,6 +103,11 @@ export class FloodEngine {
 
   get params(): SimParams {
     return { ...this._params };
+  }
+
+  /** engine running the surface step: 'wasm' (src/sim/kernel.ts) or the JS fallback */
+  get engine(): EngineKind {
+    return this._engine;
   }
 
   setParams(p: Partial<SimParams>): void {

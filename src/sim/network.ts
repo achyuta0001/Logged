@@ -163,7 +163,7 @@ export class DrainNetwork {
   /** area whose inlets feed the node or its upstream, m2 (diagnostics) */
   readonly areaUp: Float64Array;
   /** node fed by each cell's inlets (-1: none, the capture leaves the model) */
-  readonly cellNode: Int32Array;
+  cellNode: Int32Array;
   /** storage, m3 */
   readonly S: Float64Array;
   totals: NetworkTotals = { inflow: 0, sink: 0, surcharge: 0, lakeSurface: 0, lake: 0, out: 0 };
@@ -172,12 +172,12 @@ export class DrainNetwork {
   private Smax: Float64Array;
   private qmax: Float64Array; // m3/s through the node's outlet
   /** per-step scratch: capture demand per node, m3 (filled by capture or by the caller, see beginCapture) */
-  readonly want: Float64Array;
+  want: Float64Array;
   private took: Float64Array;
   /** per-cell capture demand this step, m */
-  readonly rcell: Float64Array;
+  rcell: Float64Array;
   /** 1 where the cell is part of a tank (its water is the network's: no inlet limit) */
-  readonly tankCell: Uint8Array;
+  tankCell: Uint8Array;
   private tankStart: Int32Array; // tank c's cells are tankCells[tankStart[c] .. tankStart[c + 1])
   private tankCells: Int32Array;
   private feedStart: Int32Array; // cells feeding node k are feedCells[feedStart[k] .. feedStart[k + 1])
@@ -404,6 +404,21 @@ export class DrainNetwork {
       }
     }
     this.intensity = -1; // resize on the next exchange
+  }
+
+  /**
+   * Move the arrays the surface step's capture pass shares with the network into `to` (same lengths;
+   * SimCore hands over views of the WebAssembly kernel's memory, src/sim/kernel.ts). Contents are copied.
+   */
+  rebind(to: { cellNode: Int32Array; tankCell: Uint8Array; want: Float64Array; rcell: Float64Array }): void {
+    to.cellNode.set(this.cellNode);
+    to.tankCell.set(this.tankCell);
+    to.want.set(this.want);
+    to.rcell.set(this.rcell);
+    this.cellNode = to.cellNode;
+    this.tankCell = to.tankCell;
+    this.want = to.want;
+    this.rcell = to.rcell;
   }
 
   /** counts per node kind (diagnostics) */

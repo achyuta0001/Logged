@@ -3,9 +3,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { gunzipSync } from 'node:zlib';
 import { buildRoadGraph, nearest, route } from '../route.ts';
 import { cellAt } from '../geo.ts';
 import { terrainFromBuffer } from '../../terrain.ts';
+import { deriveOsmCells } from '../../pack/osm.ts';
 
 // ~1.1 km square grid of 110 x 110 cells (~10 m)
 const W = 110;
@@ -96,7 +98,7 @@ test('fully blocked: returns the dry-weather route with its first blockage', () 
 });
 
 test('real data smoke test (560098): route between two named roads and to the nearest hospital', () => {
-  const root = new URL('../../../public/data/', import.meta.url);
+  const root = new URL('../../../public/data/pins/560098/', import.meta.url);
   let m;
   try {
     m = JSON.parse(readFileSync(new URL('meta.json', root), 'utf8'));
@@ -105,7 +107,9 @@ test('real data smoke test (560098): route between two named roads and to the ne
   }
   const buf = readFileSync(new URL('grids.bin', root));
   const t = terrainFromBuffer(m, buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
-  const real = JSON.parse(readFileSync(new URL('osm.geojson', root), 'utf8'));
+  // format 2: stored gzipped, without the per-feature cells (rebuilt as the app does on load)
+  const real = JSON.parse(gunzipSync(readFileSync(new URL('osm.geojson.gz', root))).toString('utf8'));
+  deriveOsmCells(real, t.meta);
   const rg = buildRoadGraph(real, t.meta);
   assert.ok(rg.stats.edges > 1000, `edges ${rg.stats.edges}`);
   const pick = (re) => {

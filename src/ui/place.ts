@@ -23,6 +23,26 @@ import {
   type RouteResult,
   type TravelMode,
 } from '../place/route';
+import { RouteSpotsLayer } from '../map/newsLayer';
+import { loadNewsSpots } from '../commute/data';
+import { spotsNearRoute } from '../commute/near';
+import type { NewsSpot } from '../commute/spots';
+import {
+  commuteSearch,
+  fmtHHMM,
+  nextCommute,
+  nextWeekdayAt,
+  parseCommuteLink,
+  parseHHMM,
+  rainAround,
+  rainSpell,
+  spotVerdict,
+  STALL_M,
+  suggestion,
+  tripVerdict,
+  VERDICT_TEXT,
+  type Verdict,
+} from '../commute/verdict';
 import './place.css';
 
 export interface PlaceOptions {
@@ -32,6 +52,8 @@ export interface PlaceOptions {
   engine: FloodEngine;
   getHour(): number;
   getTimes(): number[];
+  /** rain per hour of the run (mm), for the commute check's departure window */
+  getRain?(): number[];
   /** fly the camera to a chosen search result (default: map.flyTo) */
   onFocus?(coord: [number, number]): void;
   /** optional: richer search (modelled low spots, reported floods); fetched from /data if omitted */
@@ -246,21 +268,9 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
   // ---- lazy data structures
   let graph: RoadGraph | null = null;
   const G = () => (graph ??= buildRoadGraph(osm, meta));
-  let extras: { depressions?: Depression[]; hotspots?: Hotspot[] } = { depressions: opts.depressions, hotspots: opts.hotspots };
+  const extras: { depressions?: Depression[]; hotspots?: Hotspot[] } = { depressions: opts.depressions, hotspots: opts.hotspots };
   let index: SearchIndex | null = null;
   const I = () => (index ??= buildSearchIndex(osm, meta, extras));
-  if (!opts.depressions || !opts.hotspots) {
-    const base = `${import.meta.env?.BASE_URL ?? '/'}data/`;
-    const get = <T,>(f: string) =>
-      fetch(base + f)
-        .then((r) => (r.ok && !(r.headers.get('content-type') ?? '').includes('text/html') ? (r.json() as Promise<T>) : undefined))
-        .catch(() => undefined);
-    void Promise.all([opts.depressions ? undefined : get<Depression[]>('depressions.json'), opts.hotspots ? undefined : get<Hotspot[]>('hotspots.json')]).then(([d, h]) => {
-      extras = { depressions: opts.depressions ?? d, hotspots: opts.hotspots ?? h };
-      index = null; // rebuild with the extra entries on next use
-      if (place && !place.labelFixed) relabel();
-    });
-  }
 
   // ---- state
   const saved = load();
@@ -330,6 +340,21 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
       <ul class="pl-legend" aria-label="Route colours" hidden>
         <li><i style="--c:#2fe0d0"></i>Dry</li><li><i style="--c:#ffb02e"></i>Wet, passable</li><li><i style="--c:#ff3b4f"></i>Too deep</li><li class="pl-lg-usual"><i class="dash"></i>Usual route</li>
       </ul>
+      <div class="pl-commute" hidden>
+        <h3 id="${uid}-cm">Commute check</h3>
+        <div class="pl-dep">
+          <div class="pl-seg pl-seg-dep" role="radiogroup" aria-label="Departure">
+            <span class="pl-seg-thumb" aria-hidden="true"></span>
+            <button type="button" role="radio" data-slot="am">Morning</button>
+            <button type="button" role="radio" data-slot="pm">Evening</button>
+          </div>
+          <label class="pl-time"><span class="pl-sr">Leave at</span><input type="time" step="900" aria-label="Leave at" /></label>
+        </div>
+        <div class="pl-ans pl-cv" data-state="idle" aria-live="polite"><span class="pl-dot" aria-hidden="true"></span><div><p class="pl-lead"></p><p class="pl-detail"></p><p class="pl-detail pl-extra"></p></div></div>
+        <p class="pl-spots-h"></p>
+        <ul class="pl-spots" aria-labelledby="${uid}-cm"></ul>
+        <button type="button" class="pl-share btn-link">Copy link to this commute</button>
+      </div>
     </section>
   </div>`;
   const root = container.firstElementChild as HTMLElement;
@@ -578,16 +603,6 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
     if (road) return { label: road.name, sub: ['Street', area].filter(Boolean).join(' · '), kind: 'road' };
     return { label: 'Dropped pin', sub: [area, `${p[1].toFixed(5)}, ${p[0].toFixed(5)}`].filter(Boolean).join(' · '), kind: 'pin' };
   }
-  function relabel() {
-    if (!place || place.labelFixed) return;
-    const d = describePoint(place.coord);
-    place.label = d.label;
-    place.sub = d.sub;
-    place.kind = d.kind;
-    renderHead();
-    save();
-  }
-
   function pinAt(p: LngLat, info?: { label: string; sub: string; kind: string }) {
     if (!inBBox(meta, p)) {
       flash(`That spot is outside the modelled area around ${pinLabel}.`);
@@ -620,6 +635,7 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
     legend.hidden = true;
     hint.hidden = false;
     save();
+    renderCommute();
     opts.onChange?.(null);
   }
   $('.pl-x').addEventListener('click', unpin);
@@ -894,6 +910,7 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
       layer.setRoute(null);
       legend.hidden = true;
       renderAnswer();
+      renderCommute();
       return;
     }
     const g = G();
@@ -922,6 +939,7 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
     renderAnswer();
     if (fit && r && r.coords.length > 1) layer.fit(r, place.coord);
     if (r && !r.ok && !r.error) startReopenScan();
+    renderCommute();
   }
   const displayTarget = (name: string, kind: NearestTarget) => (kind === 'metro' && !/metro/i.test(name) ? `${name} metro station` : name);
 
@@ -1013,6 +1031,175 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
     setAnswer('blocked', lead, detail, alt);
   }
 
+  // ------------------------------------------------------------------ commute check
+  // Your place -> picked destination at a departure time: the spots news reports name as flooding
+  // within 100 m of the usual route, rain from 2 h before to 2 h after leaving, and the model's
+  // water at those spots at that hour (rules in src/commute/verdict.ts).
+  const H = 3600e3;
+  const commuteEl = $('.pl-commute');
+  const depSeg = $('.pl-seg-dep');
+  const timeIn = $<HTMLInputElement>('.pl-time input');
+  const shareBtn = $<HTMLButtonElement>('.pl-share');
+  const routeSpots = new RouteSpotsLayer(map);
+  let news: NewsSpot[] = [];
+  let commuteKey = '';
+  const link = parseCommuteLink(location.search);
+  const first = nextCommute(Date.now());
+  let depSlot: 'am' | 'pm' | 'custom' = first.slot;
+  let depHM: [number, number] = first.slot === 'am' ? [9, 0] : [18, 0];
+  const hmText = (hm: [number, number]) => `${String(hm[0]).padStart(2, '0')}:${String(hm[1]).padStart(2, '0')}`;
+  const slotOf = (hm: [number, number]): 'am' | 'pm' | 'custom' => (hm[1] ? 'custom' : hm[0] === 9 ? 'am' : hm[0] === 18 ? 'pm' : 'custom');
+  if (link?.dep) {
+    depHM = parseHHMM(link.dep)!;
+    depSlot = slotOf(depHM);
+  }
+  void loadNewsSpots().then((s) => {
+    news = s;
+    renderCommute(true);
+  });
+
+  function syncDep() {
+    [...depSeg.querySelectorAll<HTMLButtonElement>('button[data-slot]')].forEach((b, i) => {
+      const on = b.dataset.slot === depSlot;
+      b.setAttribute('aria-checked', String(on));
+      b.tabIndex = on || (depSlot === 'custom' && i === 0) ? 0 : -1;
+      if (on) depSeg.style.setProperty('--i', String(i));
+    });
+    depSeg.classList.toggle('pl-seg-none', depSlot === 'custom');
+    if (document.activeElement !== timeIn) timeIn.value = hmText(depHM);
+  }
+  depSeg.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-slot]');
+    if (!b) return;
+    depSlot = b.dataset.slot as 'am' | 'pm';
+    depHM = depSlot === 'am' ? [9, 0] : [18, 0];
+    renderCommute();
+  });
+  timeIn.addEventListener('change', () => {
+    const p = parseHHMM(timeIn.value);
+    if (!p) return;
+    depHM = p;
+    depSlot = slotOf(p);
+    renderCommute();
+  });
+  shareBtn.addEventListener('click', async () => {
+    if (!place || !custom) return;
+    const q = commuteSearch(location.search, { from: place.coord, to: custom.coord, dep: hmText(depHM) });
+    history.replaceState(history.state, '', `${location.pathname}${q}${location.hash}`);
+    let msg = 'Link copied';
+    try {
+      await navigator.clipboard.writeText(`${location.origin}${location.pathname}${q}`);
+    } catch {
+      msg = 'Link is in the address bar';
+    }
+    shareBtn.textContent = msg;
+    setTimeout(() => (shareBtn.textContent = 'Copy link to this commute'), 2500);
+  });
+  root.querySelector('.pl-spots')!.addEventListener('click', (e) => {
+    const li = (e.target as HTMLElement).closest<HTMLElement>('li[data-i]');
+    const s = li ? lastSpots[Number(li.dataset.i)] : undefined;
+    if (!s) return;
+    if (opts.onFocus) opts.onFocus(s.coord);
+    else map.flyTo({ center: s.coord, zoom: Math.max(map.getZoom(), 16), essential: true });
+  });
+  let lastSpots: NewsSpot[] = [];
+
+  function setCommute(v: Verdict | 'idle', lead: string, detail = '', extra = '') {
+    const a = $('.pl-cv');
+    a.dataset.state = v === 'clear' ? 'ok' : v === 'watch' ? 'wet' : v === 'flooded' ? 'blocked' : 'idle';
+    a.querySelector('.pl-dot')!.innerHTML = ico(v === 'clear' ? 'check' : v === 'idle' ? 'dots' : 'bang', 14, 2.6);
+    a.querySelector('.pl-lead')!.textContent = lead;
+    const [d1, d2] = a.querySelectorAll<HTMLElement>('.pl-detail');
+    d1.textContent = detail;
+    d1.hidden = !detail;
+    d2.textContent = extra;
+    d2.hidden = !extra;
+  }
+
+  function renderCommute(force = false) {
+    if (!place || dest !== 'custom' || !custom) {
+      commuteEl.hidden = true;
+      routeSpots.set(null);
+      commuteKey = '';
+      return;
+    }
+    commuteEl.hidden = false;
+    syncDep();
+    const times = opts.getTimes();
+    const mm = opts.getRain?.() ?? [];
+    const t = nextWeekdayAt(Date.now(), depHM[0], depHM[1]);
+    const key = [place.coord, custom.coord, mode, t, engine.hours, times[0], times.length, mm.reduce((a, b) => a + b, 0), news.length].join('|');
+    if (!force && key === commuteKey) return;
+    commuteKey = key;
+    const g = G();
+    const from = place.coord, to = custom.coord;
+    const usual = route(g, null, from, to, mode);
+    const near = spotsNearRoute(usual.coords, news, 100);
+    const w = rainAround(times, mm, t, 2);
+    const snapAt = (k: number) => (k >= 0 && k < engine.hours ? (engine.snapshot(k)?.depth ?? null) : null);
+    const depthAt = (d: Float32Array | null, s: NewsSpot) => {
+      if (!d) return null;
+      const c = cellAt(meta, s.coord[0], s.coord[1]);
+      return c >= 0 ? maxAround(d, meta, c, NEAR_M) : null;
+    };
+    const depth = snapAt(w.depIndex);
+    const items = near.map((n) => {
+      const d = depthAt(depth, n.spot);
+      return { spot: n.spot, d, verdict: spotVerdict(d, w, n.spot.count) };
+    });
+    lastSpots = items.map((x) => x.spot);
+    const when = `${new Date(t).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: TZ })}, ${fmtHHMM(t)}`;
+    const win = `${fmtHHMM(t - 2 * H)}–${fmtHHMM(t + 2 * H)}`;
+
+    // the spots on the route
+    const sh = $('.pl-spots-h');
+    sh.textContent = near.length
+      ? `Your route passes ${near.length} spot${near.length === 1 ? '' : 's'} reported flooded in the news:`
+      : usual.coords.length
+        ? 'No spot reported flooded in the news lies within 100 m of this route.'
+        : '';
+    $('.pl-spots').innerHTML = items
+      .map((x, i) => {
+        const yrs = x.spot.firstYear === x.spot.lastYear ? `${x.spot.firstYear}` : `${x.spot.firstYear}–${x.spot.lastYear}`;
+        const water = x.d !== null && x.d >= WET_M ? ` · ${cm(x.d)} modelled` : '';
+        const v = w.inRange ? `<em>${VERDICT_TEXT[x.verdict]}${water}</em>` : '';
+        return `<li data-i="${i}" data-v="${w.inRange ? x.verdict : 'none'}"><i aria-hidden="true"></i><span><b>${esc(x.spot.name)}</b><small>${x.spot.count} report day${x.spot.count === 1 ? '' : 's'}, ${yrs}</small>${v}</span></li>`;
+      })
+      .join('');
+    routeSpots.set(items.map((x) => ({ spot: x.spot, verdict: w.inRange ? x.verdict : 'watch', note: w.inRange ? `${VERDICT_TEXT[x.verdict]}${x.d !== null && x.d >= WET_M ? ` · ${cm(x.d)}` : ''}` : '' })));
+
+    if (!usual.coords.length) return setCommute('idle', 'No road connection between these two points on the map.');
+    if (!w.inRange) {
+      return setCommute('idle', `Leaving ${when}.`, 'That time is outside this prediction. Choose Live forecast under Rain to check the next weekday commute.');
+    }
+    const rDep = depth ? route(g, depth, from, to, mode) : null;
+    const cut = !!rDep && (!rDep.ok || !!rDep.blocked);
+    const trip = tripVerdict(
+      items.map((x) => x.verdict),
+      { blocked: cut, maxDepthM: rDep?.maxDepthM ?? 0 },
+    );
+    const spell = rainSpell(times, mm, t, 2);
+    let clearAt: number | null = null;
+    if (spell)
+      for (let k = spell.i1 + 1; k < Math.min(engine.hours, spell.i1 + 13); k++) {
+        const dk = snapAt(k);
+        if (!dk) break;
+        if (items.every((x) => (depthAt(dk, x.spot) ?? 0) < STALL_M) && reachable(g, dk, from, to, mode)) {
+          clearAt = times[k];
+          break;
+        }
+      }
+    const rain = w.peakMm < 0.2 ? `No rain forecast ${win}.` : `${w.totalMm} mm of rain forecast ${win}, up to ${w.peakMm.toFixed(1)} mm in an hour.`;
+    const deepest = items.filter((x) => x.d !== null && x.d >= STALL_M).sort((a, b) => b.d! - a.d!)[0];
+    const why = cut && rDep?.blocked
+      ? `The model cuts your route at ${rDep.blocked.roadName} (${cm(rDep.blocked.depthM)}). `
+      : deepest
+        ? `The model has ${cm(deepest.d!)} at ${deepest.spot.name}. `
+        : '';
+    const lead = trip === 'clear' ? `Likely clear if you leave ${when}.` : trip === 'watch' ? `Watch out if you leave ${when}.` : `Likely flooded if you leave ${when}.`;
+    setCommute(trip, lead, `${why}${rain}`, trip === 'clear' ? '' : suggestion(spell, clearAt));
+  }
+
   // ------------------------------------------------------------------ init
   syncModes();
   syncDestButtons();
@@ -1026,6 +1213,16 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
     renderHead();
     computeSeries();
     idle(() => runRoute(false));
+  }
+  // a shared commute link (?from=lng,lat&to=lng,lat&dep=HH:MM) inside this pincode's model
+  if (link && inBBox(meta, link.from) && inBBox(meta, link.to)) {
+    pinAt(link.from);
+    const d = describePoint(link.to);
+    custom = { coord: link.to, label: d.label === 'Dropped pin' ? 'Pinned destination' : d.label };
+    dest = 'custom';
+    syncDestButtons();
+    save();
+    idle(() => runRoute(true));
   }
   idle(() => {
     I();
@@ -1075,6 +1272,7 @@ export function mountPlace(container: HTMLElement, opts: PlaceOptions): PlaceHan
       document.removeEventListener('pointerdown', onDocDown);
       document.removeEventListener('keydown', onKey, true);
       ro?.disconnect();
+      routeSpots.destroy();
       layer.destroy();
       container.innerHTML = '';
     },

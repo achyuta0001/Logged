@@ -4,6 +4,7 @@
  */
 import type { InflowEdgeRun, InflowPoint, SimParams } from '../types.ts';
 import { SimCore, type CoreGrids, type HourStats } from './core.ts';
+import type { EngineChoice, EngineKind } from './kernel.ts';
 import { coarsen, downscaleMm, limitPits, type Coarse } from './grid.ts';
 import { Inflow, closeAcrossWater } from './inflow.ts';
 
@@ -23,6 +24,8 @@ export interface RunnerInit {
   inflow?: InflowPoint[];
   /** edge stretches of this (fine) grid where outside land drains in: terrain.meta.inflowEdge */
   inflowEdge?: InflowEdgeRun[];
+  /** engine of the surface step (default 'auto': WebAssembly when it loads, else JS; same results) */
+  engine?: EngineChoice;
 }
 
 export interface HourResult {
@@ -71,7 +74,7 @@ export class Runner {
       boundaryMask: init.boundaryMask,
     };
     this.coarse = coarsen(g, init.factor ?? defaultFactor(init.width, init.height));
-    this.core = new SimCore(this.coarse.grids, init.params);
+    this.core = new SimCore(this.coarse.grids, init.params, { engine: init.engine });
     this.fineZ = elevation;
     this.fineInside = init.boundaryMask;
     if (init.inflow?.length) {
@@ -89,6 +92,11 @@ export class Runner {
 
   get factor(): number {
     return this.coarse.f;
+  }
+
+  /** engine running the surface step */
+  get engine(): EngineKind {
+    return this.core.engine;
   }
 
   /** Synchronous run; `onHour` receives a fresh frame each hour (caller may transfer it). */

@@ -6,13 +6,15 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { Depression, Hotspot, TerrainMeta } from '../types';
 import { mountStoryPanel } from './story';
 import { createTour, orbit } from './tour';
+import { fetchPackJson } from '../pack/fetch';
 
 const q = new URLSearchParams(location.search);
-const get = <T,>(p: string) => fetch(p).then((r) => r.json() as Promise<T>);
+// the 560098 reference pack (format 2: depressions.json is stored gzipped)
+const PACK = '/data/pins/560098';
 const [hotspots, depressions, meta] = await Promise.all([
-  get<Hotspot[]>('/data/hotspots.json'),
-  get<Depression[]>('/data/depressions.json'),
-  get<TerrainMeta>('/data/meta.json'),
+  fetchPackJson<Hotspot[]>(`${PACK}/hotspots.json`),
+  fetchPackJson<Depression[]>(`${PACK}/depressions.json`, { gz: true }),
+  fetchPackJson<TerrainMeta>(`${PACK}/meta.json`),
 ]);
 
 // NOTE: CARTO raster tiles now return an "API KEY REQUIRED" placeholder, so the demo uses OpenFreeMap.

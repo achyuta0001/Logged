@@ -6,6 +6,7 @@ import type { OsmFC } from '../ui/api';
 import { depressionRGBA } from './colors';
 import { gridCorners } from './floodLayer';
 import { beforeLabels } from './mapView';
+import { NewsLayer } from './newsLayer';
 
 type CellToLngLat = (meta: Terrain['meta'], cell: number) => [number, number];
 
@@ -72,6 +73,7 @@ export class AnalysisLayers {
   /** returns modelled peak depth (m) near a coordinate, or undefined before a run */
   modelLookup: ((coord: [number, number]) => number | undefined) | null = null;
   private compare = false;
+  private news: NewsLayer | null = null;
   readonly groups: Record<string, string[]> = {
     depressions: ['depressions'],
     hand: ['hand'],
@@ -199,6 +201,11 @@ export class AnalysisLayers {
   }
 
   setVisible(group: string, v: boolean) {
+    if (group === 'news') {
+      // flood reports in the news: loaded on first use (public/data/news-spots.json)
+      if (v || this.news) (this.news ??= new NewsLayer(this.map)).setVisible(v);
+      return;
+    }
     if (group === 'hotspots') {
       for (const { m } of this.hotspotMarkers) m.getElement().style.display = v ? '' : 'none';
       return;

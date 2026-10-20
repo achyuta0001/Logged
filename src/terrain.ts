@@ -2,10 +2,10 @@ import type { GridLayerName, Terrain, TerrainMeta } from './types.ts';
 import { decodeLayer, layerBytes } from './pack/codec.ts';
 
 /**
- * Load public/data/meta.json + grids.bin and build typed-array views per layer.
+ * Load a pack's meta.json + grids.bin (public/data/pins/<code>/) and build typed-array views per layer.
  * `offset` in meta.layers is a BYTE offset; `length` is in elements.
  */
-export async function loadTerrain(base = '/data'): Promise<Terrain> {
+export async function loadTerrain(base = '/data/pins/560098'): Promise<Terrain> {
   const [metaRes, binRes] = await Promise.all([fetch(`${base}/meta.json`), fetch(`${base}/grids.bin`)]);
   if (!metaRes.ok) throw new Error(`meta.json: HTTP ${metaRes.status}`);
   if (!binRes.ok) throw new Error(`grids.bin: HTTP ${binRes.status}`);

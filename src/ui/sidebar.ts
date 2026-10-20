@@ -5,9 +5,11 @@ import { SEVERITY_COLOR } from '../map/colors';
 import { iconSvg } from './icons';
 import { load, save } from './store';
 
-export type SectionId = 'city' | 'place' | 'impact' | 'rain' | 'map' | 'story' | 'drainage' | 'sources';
-/** what the sidebar is showing: the Bengaluru Urban overview or one pincode */
-export type Scope = 'city' | 'pin';
+export type SectionId = 'commute' | 'city' | 'place' | 'impact' | 'rain' | 'map' | 'story' | 'drainage' | 'sources';
+/** what the sidebar is showing: the Bengaluru Urban overview, one pincode, or the Commute tab */
+export type Scope = 'city' | 'pin' | 'commute';
+/** the two views at the top of the sidebar */
+export type Tab = 'explore' | 'commute';
 export type Mode = 'phone' | 'tablet' | 'desktop';
 /** phone bottom-sheet detents */
 export type Detent = 'peek' | 'half' | 'full';
@@ -23,6 +25,7 @@ interface SectionDef {
 }
 
 export const SECTIONS: SectionDef[] = [
+  { id: 'commute', title: 'My commute', icon: 'commute', open: true, scope: 'commute' },
   { id: 'city', title: 'Pincodes', icon: 'flood', open: true, scope: 'city' },
   { id: 'place', title: 'Your place', icon: 'pin', open: false },
   { id: 'impact', title: 'Impact', icon: 'alert', open: true },
@@ -42,6 +45,8 @@ export interface SidebarHandlers {
   onFootprint(): void;
   /** "Bengaluru Urban" back button in a pincode view */
   onBack?(): void;
+  /** the Explore | Commute switch at the top */
+  onTab?(tab: Tab): void;
 }
 
 const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -67,6 +72,9 @@ export class Sidebar {
   private scroller: HTMLElement;
   private head: HTMLElement;
   private peek = 0;
+  private live: HTMLElement;
+  private liveTimer = 0;
+  private said = '';
 
   constructor(panel: HTMLElement, rail: HTMLElement, h: SidebarHandlers) {
     this.panel = panel;
@@ -75,13 +83,14 @@ export class Sidebar {
     panel.innerHTML = `
       <div class="sb-grip" aria-hidden="true"><i></i></div>
       <header class="sb-head">
+        <nav class="sb-tabs" aria-label="View"><a href="?" data-tab="explore" aria-current="page">Explore</a><a href="?commute=1" data-tab="commute">Commute</a></nav>
         <button class="sb-back" id="sb-back" type="button" hidden aria-label="Back to the Bengaluru Urban overview">${iconSvg('chevron', 12, 2)}<span>Bengaluru Urban</span></button>
         <div class="sb-top">
           <div class="sb-pin" title="Pincode 560098">560098</div>
           <div class="sb-tools">
             <button class="capsule-btn tinted tour-btn" id="tour-btn" type="button" aria-label="Start the guided tour">${iconSvg('play', 11)}<span>Tour</span></button>
-            <button class="icon-btn" id="focus-btn" type="button" aria-label="Focus on the map (H)" data-tip="Focus on the map · H">${iconSvg('focus', 16)}</button>
-            <button class="icon-btn" id="sb-min" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="Minimise the sidebar ([)" data-tip="Minimise · [">${iconSvg('panel_close', 17)}</button>
+            <button class="icon-btn" id="focus-btn" type="button" aria-label="Focus on the map (H)" aria-keyshortcuts="H" data-tip="Focus on the map · H">${iconSvg('focus', 16)}</button>
+            <button class="icon-btn" id="sb-min" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="Minimise the sidebar ([)" aria-keyshortcuts="[" data-tip="Minimise · [">${iconSvg('panel_close', 17)}</button>
           </div>
         </div>
         <div class="sb-name">Rajarajeshwari Nagar, Bengaluru</div>
@@ -89,6 +98,7 @@ export class Sidebar {
           <i class="sb-dot" aria-hidden="true"></i><span class="sb-answer">Working out the flood outlook</span>
         </button>
         <div class="sb-context" id="sb-context"></div>
+        <div class="sb-range" id="sb-range" hidden></div>
         <p class="sb-caveat" id="sb-caveat" hidden></p>
       </header>
       <div class="sb-scroll" id="sb-scroll">
@@ -104,17 +114,23 @@ export class Sidebar {
         ).join('')}
       </div>`;
     rail.innerHTML = `
-      <button class="rail-btn rail-expand" type="button" data-act="expand" aria-controls="sidebar" aria-label="Show the sidebar  [">${iconSvg('panel_open', 18)}</button>
+      <button class="rail-btn rail-expand" type="button" data-act="expand" aria-controls="sidebar" aria-expanded="false" aria-keyshortcuts="[" aria-label="Show the sidebar  [">${iconSvg('panel_open', 18)}</button>
       <span class="rail-sep" aria-hidden="true"></span>
       ${SECTIONS.map(
         (s) => `<button class="rail-btn" type="button" data-rail="${s.id}" aria-label="${s.title}"${s.id === 'place' ? ' hidden' : ''}>${iconSvg(s.icon, 18)}${s.id === 'impact' ? '<i class="rail-dot" aria-hidden="true"></i>' : ''}</button>`,
       ).join('')}
       <span class="rail-fill"></span>
       <button class="rail-btn" type="button" data-act="tour" aria-label="Guided tour">${iconSvg('play', 13)}</button>
-      <button class="rail-btn" type="button" data-act="focus" aria-label="Focus on the map  H">${iconSvg('focus', 18)}</button>`;
+      <button class="rail-btn" type="button" data-act="focus" aria-keyshortcuts="H" aria-label="Focus on the map  H">${iconSvg('focus', 18)}</button>`;
 
     this.scroller = panel.querySelector('#sb-scroll') as HTMLElement;
     this.head = panel.querySelector('.sb-head') as HTMLElement;
+    // the outlook is announced politely when it settles; outside the panel, which goes inert when minimised
+    this.live = document.createElement('p');
+    this.live.className = 'sr-only';
+    this.live.setAttribute('role', 'status');
+    this.live.setAttribute('aria-live', 'polite');
+    document.body.appendChild(this.live);
 
     for (const s of SECTIONS) this.setOpen(s.id, load(`sec.${s.id}`, s.open), false);
     this.scroller.addEventListener('click', (e) => {
@@ -136,6 +152,12 @@ export class Sidebar {
     panel.querySelector('#sb-min')!.addEventListener('click', () => this.toggle());
     panel.querySelector('#sb-status')!.addEventListener('click', () => h.onStatus());
     panel.querySelector('#sb-back')!.addEventListener('click', () => h.onBack?.());
+    (panel.querySelector('.sb-tabs') as HTMLElement).addEventListener('click', (e) => {
+      const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[data-tab]');
+      if (!a || !h.onTab || e.metaKey || e.ctrlKey || e.shiftKey) return; // modified clicks open a new tab as usual
+      e.preventDefault();
+      if (a.getAttribute('aria-current') !== 'page') h.onTab(a.dataset.tab as Tab);
+    });
 
     // "Your place" stays hidden until something is mounted into it
     const mount = panel.querySelector('#place-mount') as HTMLElement;
@@ -171,11 +193,30 @@ export class Sidebar {
       rb.classList.toggle('off-scope', !on);
     }
     document.body.classList.toggle('scope-city', scope === 'city');
+    document.body.classList.toggle('scope-commute', scope === 'commute');
+    this.setTab(scope === 'commute' ? 'commute' : 'explore');
     this.measurePeek();
+  }
+
+  /** Mark the current view in the Explore | Commute switch. */
+  setTab(tab: Tab) {
+    this.panel.querySelectorAll<HTMLAnchorElement>('.sb-tabs a').forEach((a) => {
+      if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    });
   }
 
   get currentScope(): Scope {
     return this.scope;
+  }
+
+  /** The prediction range across weather models, one secondary line under the status context; empty hides it. */
+  setRange(text: string) {
+    const el = this.panel.querySelector('#sb-range') as HTMLElement;
+    if (el.textContent === text && el.hidden === !text) return;
+    el.textContent = text;
+    el.hidden = !text;
+    this.measurePeek();
   }
 
   /** One quiet line under the status (e.g. inflow from outside the modelled area); null hides it. */
@@ -259,6 +300,14 @@ export class Sidebar {
       delete st.dataset.tip;
     }
     (this.panel.querySelector('#sb-context') as HTMLElement).textContent = context;
+    // one announcement per settled outlook: quick successive updates collapse into the last one
+    clearTimeout(this.liveTimer);
+    const say = [plain, context].filter(Boolean).join('. ');
+    this.liveTimer = window.setTimeout(() => {
+      if (say === this.said) return;
+      this.said = say;
+      this.live.textContent = say;
+    }, 700);
     const dot = this.rail.querySelector('.rail-dot') as HTMLElement;
     dot.style.background = statusColor(sev);
     dot.dataset.sev = sev;
