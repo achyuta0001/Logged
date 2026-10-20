@@ -6,3 +6,5 @@ public/data/pins/*/
 !public/data/pins/560098/
 !public/data/pins/560034/
 !public/data/pins/560071/
+# city road graph for commute routing (npm run data:roads; pages.yml builds it)
+public/data/roads/
