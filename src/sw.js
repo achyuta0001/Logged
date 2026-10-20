@@ -10,6 +10,9 @@
  *   logged-data-<build>   <base>data/**: pin index, city overview, pincode packs. Cache-first, filled
  *                         with revalidated responses; index + overview precached. At most MAX_PACKS
  *                         packs, the least recently opened go first.
+ *   logged-roads          the city road graph, <base>data/roads/graph-<hash>.bin.gz (src/route/). Named by
+ *                         its content, so cache-first across deploys; a new graph replaces the old.
+ *                         Its index.json (which names the file) is data, above.
  *   logged-forecast       Open-Meteo, network-first: the cached copy only when the network fails or
  *                         hangs (the page then shows "Offline · forecast from <time>").
  *   logged-tiles          OpenFreeMap basemap (style, TileJSON, tiles, glyphs, sprites), AWS terrain
@@ -31,7 +34,8 @@ const SHELL_CACHE = `logged-shell-${BUILD}`;
 const DATA_CACHE = `logged-data-${BUILD}`;
 const FORECAST_CACHE = 'logged-forecast';
 const TILE_CACHE = 'logged-tiles';
-const KEEP = [SHELL_CACHE, DATA_CACHE, FORECAST_CACHE, TILE_CACHE];
+const ROADS_CACHE = 'logged-roads';
+const KEEP = [SHELL_CACHE, DATA_CACHE, FORECAST_CACHE, TILE_CACHE, ROADS_CACHE];
 const MAX_PACKS = 12;
 const MAX_FORECASTS = 24;
 const MAX_TILES = 600;
@@ -93,7 +97,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (url.origin === SCOPE.origin) {
-    if (url.pathname.startsWith(`${BASE}data/`)) event.respondWith(data(event));
+    if (isGraph(url)) event.respondWith(roads(event));
+    else if (url.pathname.startsWith(`${BASE}data/`)) event.respondWith(data(event));
     else if (url.pathname.startsWith(`${BASE}assets/`) || SHELL.some((p) => abs(p) === url.href)) event.respondWith(shellFirst(req));
     return;
   }
@@ -155,6 +160,27 @@ async function data(event) {
     if (hit) return hit;
     throw e;
   }
+}
+
+/** the content-addressed road graph file */
+const isGraph = (url) => url.pathname.startsWith(`${BASE}data/roads/graph-`);
+
+/** road graph: immutable per name, so cache-first; storing a new one drops the others */
+async function roads(event) {
+  const req = event.request;
+  const cache = await caches.open(ROADS_CACHE);
+  const hit = await cache.match(req);
+  if (hit) return hit;
+  const res = await fetch(req);
+  if (res.ok && !isHtml(res)) event.waitUntil(putGraph(cache, req.url, res.clone()));
+  return res;
+}
+
+async function putGraph(cache, url, res) {
+  try {
+    await cache.put(url, res);
+    for (const k of await cache.keys()) if (k.url !== url) await cache.delete(k);
+  } catch {}
 }
 
 async function forecast(event, url) {
@@ -267,7 +293,12 @@ async function warm(urls) {
   for (const u of urls) {
     try {
       const url = new URL(u);
-      if (url.origin === SCOPE.origin && url.pathname.startsWith(`${BASE}data/`)) {
+      if (url.origin === SCOPE.origin && isGraph(url)) {
+        const rc = await caches.open(ROADS_CACHE);
+        if (await rc.match(u)) continue;
+        const res = await fetch(u, { credentials: 'same-origin' });
+        if (res.ok && !isHtml(res)) await putGraph(rc, u, res);
+      } else if (url.origin === SCOPE.origin && url.pathname.startsWith(`${BASE}data/`)) {
         if (await data.match(u)) continue;
         const res = await fetch(u, { cache: 'no-cache', credentials: 'same-origin' });
         if (res.ok && !isHtml(res)) await data.put(u, res);
