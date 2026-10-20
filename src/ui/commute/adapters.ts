@@ -2,12 +2,11 @@
 // only talks to `backend` below, typed by the shared contract (src/commute/types.ts).
 //
 // Real: the hotspot registry (src/commute/registry.ts), the hotspot rain and outlooks
-// (src/commute/forecast.ts + risk.ts) and the planner (src/commute/plan.ts).
-// STUB, until each lands:
+// (src/commute/forecast.ts + risk.ts), the planner (src/commute/plan.ts) and the city-wide router
+// (src/route/, loaded on the first commute check so the Explore views never fetch it).
+// STUB, until it lands:
 //  - hotspots: while public/data/commute/hotspots.geojson is missing or empty, the news-reported
-//    spots (public/data/news-spots.json) stand in, with a neutral lowness;
-//  - routes: three placeholder lines (direct, and an arc either side) at ~22 km/h, until the
-//    city-wide router (src/route/**) lands.
+//    spots (public/data/news-spots.json) stand in, with a neutral lowness.
 // Development only: ?fakeforecast=1 in `npm run dev` runs the real risk engine on a made-up storm
 // that starts within the hour, so the wet case can be checked on a dry day.
 import type { LngLat, NewsSpot } from '../../commute/spots.ts';
@@ -105,34 +104,23 @@ async function outlooks(hs: CommuteHotspot[], t0: number, hours: number): Promis
   return os;
 }
 
-// ---------------------------------------------------------------- routes (STUB)
+// ---------------------------------------------------------------- routes
 
-const KX = (lat: number) => 111320 * Math.cos((lat * Math.PI) / 180);
-const KY = 110574;
+const ROUTES_WHAT = 'The fastest car route and up to two distinct alternatives (each at most 1.4× its time), at typical weekday peak-hour speeds';
+let routesFrom = ROUTES_WHAT;
 
-/** STUB: a quadratic arc from a to b bowed sideways by `bow` of the distance (0 = straight) */
-function arc(a: LngLat, b: LngLat, bow: number, n = 48): LngLat[] {
-  const kx = KX((a[1] + b[1]) / 2);
-  const dx = (b[0] - a[0]) * kx, dy = (b[1] - a[1]) * KY;
-  const mx = (a[0] + b[0]) / 2 + (-dy * bow) / kx, my = (a[1] + b[1]) / 2 + (dx * bow) / KY;
-  return Array.from({ length: n + 1 }, (_, i) => {
-    const t = i / n, u = 1 - t;
-    return [u * u * a[0] + 2 * u * t * mx + t * t * b[0], u * u * a[1] + 2 * u * t * my + t * t * b[1]] as LngLat;
-  });
-}
-
+/**
+ * The city-wide router (src/route/): its module and the road graph (~6.5 MB, kept by the service
+ * worker) load on the first call, in a worker. Each `via` reads "via ORR and Sarjapur Road".
+ */
 async function routes(from: LngLat, to: LngLat): Promise<RouteCandidate[]> {
-  const SPEED = 22 / 3.6; // m/s, a typical Bengaluru peak-hour average
-  const make = (id: RouteCandidate['id'], bow: number, via: string): RouteCandidate => {
-    const line = arc(from, to, bow);
-    const cum = [0];
-    for (let i = 1; i < line.length; i++) cum.push(cum[i - 1] + Math.hypot((line[i][0] - line[i - 1][0]) * KX(line[i][1]), (line[i][1] - line[i - 1][1]) * KY));
-    const len = cum[cum.length - 1] || 1;
-    const lengthM = len * 1.25; // roads are longer than the line
-    const durationS = lengthM / SPEED;
-    return { id, line, lengthM, durationS, cumS: cum.map((m) => (m / len) * durationS), via };
-  };
-  return [make('A', 0.04, 'via a direct line, placeholder'), make('B', 0.3, 'via an arc to the left, placeholder'), make('C', -0.3, 'via an arc to the right, placeholder')];
+  const { planRoutes, preloadRoutes } = await import('../../route/index.ts');
+  const index = await preloadRoutes();
+  const day = new Date(index.built);
+  if (!Number.isNaN(day.getTime())) routesFrom = `${ROUTES_WHAT}, on the roads as mapped on ${day.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })}`;
+  const found = await planRoutes(from, to);
+  if (!found.length) throw new Error('no drivable route between these two places (each must be within 1.5 km of a road)');
+  return found;
 }
 
 // ---------------------------------------------------------------- the backend the UI uses
@@ -141,7 +129,7 @@ export const backend: CommuteBackend = {
   status: () => ({
     hotspots: hotspotsFrom,
     forecast: info ? `${info.label}. ${COMMUTE_WEATHER_ATTRIBUTION}` : COMMUTE_WEATHER_ATTRIBUTION,
-    routes: 'Placeholder lines until the road router lands',
+    routes: routesFrom,
   }),
   loadHotspots,
   outlooks,
