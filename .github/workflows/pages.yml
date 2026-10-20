@@ -1,7 +1,9 @@
 # Builds the app plus every Bengaluru Urban pincode pack and publishes them to GitHub Pages
 # (https://achyuta0001.github.io/Logged/). The packs live only in the published site, never in git.
 # Deploys on every push to `main` (merged pull requests) or `deploy` (git push origin HEAD:deploy),
-# or by hand.
+# by hand, and monthly: at 02:17 UTC on the 1st a scheduled run rebuilds `main` with fresh OSM packs
+# and roads (the cache keys below carry the UTC month, so a new month misses them and builds in full).
+# Only `main` deploys on the schedule. GitHub pauses schedules after 60 days without repository activity.
 #
 # Pack cache. Building the packs (OSM extract, data:city, data:all) takes most of the run, so the
 # result is cached (actions/cache) under "packs-v1-<UTC month>-<hash>". The hash covers what shapes a
@@ -21,6 +23,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main, deploy]
+  schedule:
+    - cron: '17 2 1 * *'
   workflow_dispatch:
     inputs:
       pins:
@@ -41,6 +45,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
+    # a scheduled run builds the default branch; deploy it only when that is main
+    if: github.event_name != 'schedule' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
