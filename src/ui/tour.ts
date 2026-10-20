@@ -350,12 +350,15 @@ export function createTour(map: MLMap, opts: TourOptions): Tour {
   let card: HTMLElement | null = null;
   let vignette: HTMLElement | null = null;
   let marker: maplibregl.Marker | null = null;
+  /** where keyboard focus was before the tour took over; it goes back there at the end */
+  let returnFocus: HTMLElement | null = null;
 
   const paused = () => userPaused || hoverPaused;
 
   const onKey = (e: KeyboardEvent) => {
     const t = e.target as HTMLElement | null;
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.key === ' ' && t?.closest('button, a')) return; // Space presses the focused button instead
     if (e.key === 'ArrowRight') next();
     else if (e.key === 'ArrowLeft') prev();
     else if (e.key === 'Escape') stop();
@@ -377,14 +380,14 @@ export function createTour(map: MLMap, opts: TourOptions): Tour {
       <div class="tour-timer"><i></i></div>
       <div class="tour-body" aria-live="polite"></div>
       <div class="tour-ctrl">
-        <div class="tour-dots" role="tablist" aria-label="Tour stops">
-          ${stops.map((s, i) => `<button role="tab" data-i="${i}" aria-label="Stop ${i + 1}: ${esc(s.title)}"><i></i></button>`).join('')}
+        <div class="tour-dots" role="group" aria-label="Tour stops">
+          ${stops.map((s, i) => `<button type="button" data-i="${i}" aria-label="Stop ${i + 1}: ${esc(s.title)}"><i></i></button>`).join('')}
         </div>
         <div class="tour-btns">
-          <button class="tour-b" data-a="prev" aria-label="Previous stop (Left arrow)">${iconSvg('chevron', 16, 1.8)}</button>
-          <button class="tour-b" data-a="play" aria-label="Pause (Space)"></button>
-          <button class="tour-b" data-a="next" aria-label="Next stop (Right arrow)">${iconSvg('chevron', 16, 1.8)}</button>
-          <button class="tour-b" data-a="close" aria-label="End tour (Esc)">${iconSvg('close', 15, 1.8)}</button>
+          <button type="button" class="tour-b" data-a="prev" aria-label="Previous stop (Left arrow)" aria-keyshortcuts="ArrowLeft">${iconSvg('chevron', 16, 1.8)}</button>
+          <button type="button" class="tour-b" data-a="play" aria-label="Pause (Space)" aria-keyshortcuts="Space"></button>
+          <button type="button" class="tour-b" data-a="next" aria-label="Next stop (Right arrow)" aria-keyshortcuts="ArrowRight">${iconSvg('chevron', 16, 1.8)}</button>
+          <button type="button" class="tour-b" data-a="close" aria-label="End tour (Esc)" aria-keyshortcuts="Escape">${iconSvg('close', 15, 1.8)}</button>
         </div>
       </div>`;
     card.addEventListener('mouseenter', () => {
@@ -443,7 +446,8 @@ export function createTour(map: MLMap, opts: TourOptions): Tour {
     card.querySelectorAll<HTMLButtonElement>('.tour-dots button').forEach((b, i) => {
       b.classList.toggle('on', i === idx);
       b.classList.toggle('done', i < idx);
-      b.setAttribute('aria-selected', String(i === idx));
+      if (i === idx) b.setAttribute('aria-current', 'step');
+      else b.removeAttribute('aria-current');
     });
     syncPause();
   }
@@ -544,6 +548,9 @@ export function createTour(map: MLMap, opts: TourOptions): Tour {
     lastT = performance.now();
     raf = requestAnimationFrame(loop);
     show(at);
+    // the panels hide during the tour: keep keyboard focus on the tour's own controls
+    returnFocus = document.activeElement instanceof HTMLElement && document.activeElement !== document.body ? document.activeElement : null;
+    card?.querySelector<HTMLElement>('[data-a="play"]')?.focus({ preventScroll: true });
   }
 
   function stop() {
@@ -563,6 +570,8 @@ export function createTour(map: MLMap, opts: TourOptions): Tour {
     const c = card;
     const v = vignette;
     card = vignette = null;
+    if (c?.contains(document.activeElement) && returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+    returnFocus = null;
     c?.classList.remove('in');
     v?.classList.remove('in');
     setTimeout(() => {
