@@ -16,8 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 300
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -27,7 +27,7 @@ jobs:
       - run: npm run data:city
       - run: npm run data:all -- --jobs 2 ${{ inputs.pins && format('--pins {0}', inputs.pins) || '' }}
       - run: npm test
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pincode-packs
           path: |
