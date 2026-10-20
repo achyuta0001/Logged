@@ -4,7 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { hotspotOutlook, hotspotRisk, levelAt, levelOf, rainBetween, rainAt, riskWindow, scoreRisk, thresholdOf, trackFromSums, LEVEL_TEXT } from '../risk.ts';
-import { BUCKET_MS, LEVEL_FROM, SCORE, TYPE_THRESHOLD_MMHR } from '../config.ts';
+import { BUCKET_MS, LEVEL_FROM, SCORE, THRESHOLD_SCALE, TYPE_THRESHOLD_MMHR } from '../config.ts';
 
 const H = 3600e3;
 const T0 = Date.UTC(2026, 9, 20, 0, 0); // 05:30 IST, on the bucket grid
@@ -42,7 +42,8 @@ test('terms add up to the score, and dry weather is clear whatever the ground or
 
 test('fixtures: rain series -> expected levels at a junction (threshold 7 mm/h, lowness 0.5, 3 report days)', () => {
   const h = spot();
-  const at = (mm: number[], hour: number) => hotspotRisk(h, hourly(mm), T0 + hour * H).level;
+  // type thresholds as configured, before the fitted global scale
+  const at = (mm: number[], hour: number) => hotspotRisk(h, hourly(mm), T0 + hour * H, { scale: 1 }).level;
   // dry day
   assert.equal(at([0, 0, 0, 0], 2), 'clear');
   // drizzle, 0.3 mm/h: below the rain floor
@@ -55,6 +56,15 @@ test('fixtures: rain series -> expected levels at a junction (threshold 7 mm/h, 
   assert.equal(at([2, 8, 12, 4], 2), 'severe');
   // just after a downpour stops, the last hour's water still counts
   assert.ok(['watch', 'likely'].includes(at([0, 0, 14, 0], 3)));
+});
+
+test('the fitted threshold scale applies by default and needs more rain for the same level', () => {
+  const tr = hourly([6, 6, 5, 5]);
+  const fitted = hotspotRisk(spot(), tr, T0 + 3 * H);
+  const plain = hotspotRisk(spot(), tr, T0 + 3 * H, { scale: 1 });
+  assert.ok(THRESHOLD_SCALE >= 1);
+  assert.equal(fitted.explain.thresholdMmHr, Math.round(TYPE_THRESHOLD_MMHR.junction * THRESHOLD_SCALE * 1000) / 1000);
+  assert.ok(fitted.explain.score <= plain.explain.score);
 });
 
 test('an underpass waterlogs at less rain than a layout', () => {
@@ -94,7 +104,7 @@ test('level bands follow config', () => {
 test('outlook: 30-minute buckets over the horizon, and the likely-or-worse window', () => {
   // 1-h stamps: dry, dry, 10, 10, dry, dry (mm/h) from T0
   const tr = hourly([0, 0, 10, 10, 0, 0, 0, 0]);
-  const o = hotspotOutlook(spot(), tr, { from: T0 + 10 * 60e3 });
+  const o = hotspotOutlook(spot(), tr, { from: T0 + 10 * 60e3, scale: 1 });
   assert.equal(o.buckets.length, 6); // 3 h of 30 min
   assert.equal(o.buckets[0].t, T0);
   assert.deepEqual(o.window, [T0 + 2 * H, T0 + 2.5 * H]);
