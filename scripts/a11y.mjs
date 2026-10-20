@@ -6,7 +6,7 @@
 //   npm run a11y                               start Vite on :5176, audit every view, stop Vite
 //   npm run a11y -- --url http://localhost:5173 audit a server that is already running
 //   npm run a11y -- --views city,search        only some views (city, search, pin, place, commute, news,
-//                                              tour, toast, phone)
+//                                              tour, toast, phone, tab-commute, tab-trip, tab-phone)
 //   npm run a11y -- --tab                      also walk the page with Tab and screenshot each focus
 //   npm run a11y -- --json report.json         write the full axe results
 //   npm run a11y -- --no-fail                  exit 0 even when violations are found
@@ -32,6 +32,8 @@ const opt = (n, d) => {
 const PORT = Number(opt('port', process.env.A11Y_PORT ?? 5176));
 const OUT = resolve(ROOT, opt('out', '.cache/a11y'));
 const PIN = opt('pin', '560034');
+/** a shared Commute-tab trip: Jayanagar -> Manyata Tech Park, 09:00, back 18:00 */
+const COMMUTE_TRIP = 'from=77.5838,12.9299&to=77.6208,13.0475&dep=09:00&ret=18:00&fromName=Jayanagar&toName=Manyata%20Tech%20Park';
 const TIMEOUT = Number(opt('timeout', 120000));
 
 /** Every view starts from a fresh page; `setup` brings it to the state worth auditing. */
@@ -132,6 +134,41 @@ const VIEWS = {
     note: `pincode ${PIN} on a 390 x 844 phone, sheet expanded`,
     viewport: { width: 390, height: 844 },
     async setup(p) {
+      await p.click('#sb-min');
+      await p.waitForTimeout(600);
+    },
+  },
+  // the Commute tab (src/ui/commute/): an empty card with the place list open, a saved trip with its
+  // routes and a hotspot's Why card, and the same on a phone
+  'tab-commute': {
+    path: '/?commute=1',
+    note: 'Commute tab, empty card, then the Home place list open',
+    async setup(p, audit) {
+      await p.waitForSelector('#sec-commute .cm-city:not([hidden]), #sec-commute .cm-msg[data-tone="error"]', { timeout: 30000 });
+      await audit('empty');
+      await p.fill('#cm-home-q', 'kora');
+      await p.waitForSelector('#cm-home-list:not([hidden]) .cm-opt', { timeout: 5000 });
+    },
+  },
+  'tab-trip': {
+    path: `/?commute=1&${COMMUTE_TRIP}`,
+    note: 'Commute tab with a shared trip: routes, the hotspots on route A, then one Why card',
+    async setup(p, audit) {
+      await p.waitForSelector('#sec-commute .cm-result:not([hidden])', { timeout: 30000 });
+      await audit('routes');
+      const spot = await p.$('#sec-commute [data-spot]');
+      if (spot) {
+        await spot.click();
+        await p.waitForSelector('#sec-commute .cm-why:not([hidden])', { timeout: 5000 });
+      }
+    },
+  },
+  'tab-phone': {
+    path: `/?commute=1&${COMMUTE_TRIP}`,
+    note: 'Commute tab with a shared trip on a 390 x 844 phone, sheet expanded',
+    viewport: { width: 390, height: 844 },
+    async setup(p) {
+      await p.waitForSelector('#sec-commute .cm-result:not([hidden])', { timeout: 30000 });
       await p.click('#sb-min');
       await p.waitForTimeout(600);
     },
@@ -270,7 +307,7 @@ try {
     try {
       await view.setup?.(page, audit);
       await audit('');
-      if (flag('tab') && (name === 'city' || name === 'pin')) {
+      if (flag('tab') && (name === 'city' || name === 'pin' || name === 'tab-trip')) {
         if (name === 'pin') await page.reload().then(() => page.waitForFunction(() => document.getElementById('loader')?.classList.contains('done'), null, { timeout: TIMEOUT }));
         const stops = await tabWalk(page, name);
         if (stops.some((s) => !s.ring || !s.onScreen)) console.log(`  ⚠ ${stops.filter((s) => !s.ring).length} without a visible ring, ${stops.filter((s) => !s.onScreen).length} off-screen`);
