@@ -30,6 +30,18 @@ Inspired by the Claude wildfire analysis prototype. Everything here runs on free
 
 The index is the weighted mean of the four percentile ranks, from 0 to 1. The legend bands are lower (< 0.25), moderate, high and very high (≥ 0.75). **It ranks pincodes against each other**. It is not a probability or a forecast, and it is not calibrated to flood events.
 
+## Commute tab
+
+A switch at the top of the sidebar (the drawer on phones) moves between **Explore**, everything above and below, and **Commute**, for office commuters who plan around waterlogging (`src/ui/commute/`).
+
+- **My commute:** home and office (offline search over pincodes and area names, "Use my location", or "Pick on the map"; the markers can be dragged), the usual departure (Morning / Evening, or any time) and an optional return trip. Saved in the browser (`localStorage`); nothing leaves it.
+- **The answer:** the sidebar's one line gives the planner's advice for the next weekday departure: "Leave by 17:45", "Use route B (via …)", "Consider working from home" or "Go — no waterlogging expected", with the reason under it. Advisory only; it never says a road is safe.
+- **Routes:** A, B and C with time, distance, the roads they follow and their worst level on the way. The chosen route is drawn on the map, coloured by level where it passes a hotspot, with the hotspots it meets listed by the time you reach them.
+- **Why:** tap a hotspot (on the map or in a list) for its level in each half hour of the next three hours, and the inputs in plain words: rain in the next hour and the last 24 hours, the rain at which it starts to waterlog, how low the ground is, and the days it was reported flooded, with the reports.
+- **The city map:** every hotspot coloured by level; the bar at the bottom scrubs the next three hours in half-hour steps and recolours them.
+- **Links:** `?commute=1` opens the tab. "Copy link to this commute" shares the trip as `?commute=1&from=lng,lat&to=lng,lat&dep=HH:MM` plus `&ret=HH:MM`, `&fromName=` and `&toName=`: the same `from` / `to` / `dep` as a pincode's commute check. Opening such a link replaces the saved commute.
+- **Data:** the hotspot registry, risk engine and planner are in `src/commute/` (see `CONTRACT.md`). Until the curated hotspot list and the city-wide router ship, the tab uses the news-reported flood spots and three placeholder lines, and says so under Sources. In `npm run dev`, `?commute=1&fakeforecast=1` runs the risk engine on a made-up storm that starts within the hour.
+
 ## What it does (in a pincode)
 
 - **Terrain analysis**: priority-flood depression filling, D8 flow accumulation, height-above-nearest-drainage (HAND), and 103 detected basins with volume and catchment.
