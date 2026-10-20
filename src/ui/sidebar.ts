@@ -67,6 +67,9 @@ export class Sidebar {
   private scroller: HTMLElement;
   private head: HTMLElement;
   private peek = 0;
+  private live: HTMLElement;
+  private liveTimer = 0;
+  private said = '';
 
   constructor(panel: HTMLElement, rail: HTMLElement, h: SidebarHandlers) {
     this.panel = panel;
@@ -80,8 +83,8 @@ export class Sidebar {
           <div class="sb-pin" title="Pincode 560098">560098</div>
           <div class="sb-tools">
             <button class="capsule-btn tinted tour-btn" id="tour-btn" type="button" aria-label="Start the guided tour">${iconSvg('play', 11)}<span>Tour</span></button>
-            <button class="icon-btn" id="focus-btn" type="button" aria-label="Focus on the map (H)" data-tip="Focus on the map · H">${iconSvg('focus', 16)}</button>
-            <button class="icon-btn" id="sb-min" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="Minimise the sidebar ([)" data-tip="Minimise · [">${iconSvg('panel_close', 17)}</button>
+            <button class="icon-btn" id="focus-btn" type="button" aria-label="Focus on the map (H)" aria-keyshortcuts="H" data-tip="Focus on the map · H">${iconSvg('focus', 16)}</button>
+            <button class="icon-btn" id="sb-min" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="Minimise the sidebar ([)" aria-keyshortcuts="[" data-tip="Minimise · [">${iconSvg('panel_close', 17)}</button>
           </div>
         </div>
         <div class="sb-name">Rajarajeshwari Nagar, Bengaluru</div>
@@ -105,17 +108,23 @@ export class Sidebar {
         ).join('')}
       </div>`;
     rail.innerHTML = `
-      <button class="rail-btn rail-expand" type="button" data-act="expand" aria-controls="sidebar" aria-label="Show the sidebar  [">${iconSvg('panel_open', 18)}</button>
+      <button class="rail-btn rail-expand" type="button" data-act="expand" aria-controls="sidebar" aria-expanded="false" aria-keyshortcuts="[" aria-label="Show the sidebar  [">${iconSvg('panel_open', 18)}</button>
       <span class="rail-sep" aria-hidden="true"></span>
       ${SECTIONS.map(
         (s) => `<button class="rail-btn" type="button" data-rail="${s.id}" aria-label="${s.title}"${s.id === 'place' ? ' hidden' : ''}>${iconSvg(s.icon, 18)}${s.id === 'impact' ? '<i class="rail-dot" aria-hidden="true"></i>' : ''}</button>`,
       ).join('')}
       <span class="rail-fill"></span>
       <button class="rail-btn" type="button" data-act="tour" aria-label="Guided tour">${iconSvg('play', 13)}</button>
-      <button class="rail-btn" type="button" data-act="focus" aria-label="Focus on the map  H">${iconSvg('focus', 18)}</button>`;
+      <button class="rail-btn" type="button" data-act="focus" aria-keyshortcuts="H" aria-label="Focus on the map  H">${iconSvg('focus', 18)}</button>`;
 
     this.scroller = panel.querySelector('#sb-scroll') as HTMLElement;
     this.head = panel.querySelector('.sb-head') as HTMLElement;
+    // the outlook is announced politely when it settles; outside the panel, which goes inert when minimised
+    this.live = document.createElement('p');
+    this.live.className = 'sr-only';
+    this.live.setAttribute('role', 'status');
+    this.live.setAttribute('aria-live', 'polite');
+    document.body.appendChild(this.live);
 
     for (const s of SECTIONS) this.setOpen(s.id, load(`sec.${s.id}`, s.open), false);
     this.scroller.addEventListener('click', (e) => {
@@ -269,6 +278,14 @@ export class Sidebar {
       delete st.dataset.tip;
     }
     (this.panel.querySelector('#sb-context') as HTMLElement).textContent = context;
+    // one announcement per settled outlook: quick successive updates collapse into the last one
+    clearTimeout(this.liveTimer);
+    const say = [plain, context].filter(Boolean).join('. ');
+    this.liveTimer = window.setTimeout(() => {
+      if (say === this.said) return;
+      this.said = say;
+      this.live.textContent = say;
+    }, 700);
     const dot = this.rail.querySelector('.rail-dot') as HTMLElement;
     dot.style.background = statusColor(sev);
     dot.dataset.sev = sev;
