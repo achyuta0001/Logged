@@ -10,6 +10,8 @@
 //   npm run smoke -- --pins 560034 --no-city            only some views
 //   npm run smoke -- --out /tmp/shots --timeout 180000  screenshot folder, per-view timeout (ms)
 //   npm run smoke -- --dist /tmp/build --port 4180      another build folder, first port to try
+//   npm run smoke -- --no-tiles                         skip third-party basemap, terrain and fonts (CI:
+//                                                       ~7x less CPU; the app's fallback style is used)
 //   npx playwright-core install chromium-headless-shell  once, for the browser (CI adds --with-deps)
 //
 // Asserts on the DOM and the console, not on pixels: headless WebGL is SwiftShader on Linux (the
@@ -40,6 +42,9 @@ const VIEWS = [...(process.argv.includes('--no-city') ? [] : [{ name: 'city', qu
 // SwiftShader WebGL where there is no GPU (CI); SMOKE_GL=gpu keeps Chromium's own choice
 const GL = process.env.SMOKE_GL ?? (process.platform === 'linux' ? 'swiftshader' : 'gpu');
 const GL_ARGS = GL === 'swiftshader' ? ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] : ['--ignore-gpu-blocklist'];
+/** --no-tiles: no third-party basemap style, tiles, terrain or fonts, so the map draws only the app's own layers (far less software WebGL) */
+const NO_TILES = process.argv.includes('--no-tiles');
+const TILE_HOSTS = /^https:\/\/(tiles\.openfreemap\.org|s3\.amazonaws\.com\/elevation-tiles-prod|tiles\.maps\.eox\.at|fonts\.(googleapis|gstatic)\.com)\//;
 const SIM_LINE = /^\[sim\] \d+ h in \d+ ms/;
 /** the 560098 reference pack's .gz probes (format 1 keeps plain JSON; src/pack/fetch.ts falls back) */
 const KNOWN_404 = /\/data\/(osm\.geojson|depressions\.json)\.gz$/;
@@ -97,6 +102,7 @@ process.exit(failed.length ? 1 : 0);
 async function check(v) {
   const r = { name: v.name, errors: [], external: [], known: 0, warnings: 0, readyS: null, sim: '' };
   const ctx = await browser.newContext({ viewport: { width: 1024, height: 640 }, deviceScaleFactor: 1, reducedMotion: 'reduce', serviceWorkers: 'block' });
+  if (NO_TILES) await ctx.route(TILE_HOSTS, (route) => route.abort('blockedbyclient'));
   const page = await ctx.newPage();
   log(`${v.name}: opening ${new URL(v.query, base).href}`);
   page.on('pageerror', (e) => r.errors.push(`page error: ${e.message}`));
@@ -112,8 +118,9 @@ async function check(v) {
       else r.errors.push(`console: ${text} ${at}`);
       return;
     }
-    // e.g. MapLibre logging a tile it could not fetch: third party when every URL it names is
-    const urls = text.match(/https?:\/\/[^\s"'<>)]+/g) ?? [];
+    // e.g. MapLibre logging a tile it could not fetch: third party when every URL its message names
+    // is (only the first line: the stack trace below it names the app's own bundle)
+    const urls = text.split('\n')[0].match(/https?:\/\/[^\s"'<>)]+/g) ?? [];
     if (urls.length && !urls.some(own)) r.external.push(text.slice(0, 300));
     else r.errors.push(`console: ${text.slice(0, 500)}${at ? ` (${at})` : ''}`);
   });
