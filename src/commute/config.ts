@@ -25,7 +25,7 @@ export const HORIZON_H = 3;
 /**
  * Rain (mm/h, as the forecast model gives it) at which a hotspot of each type typically starts to
  * waterlog, before the adjustments below. Forecast and reanalysis rain is a mean over a model cell of
- * ~9 km (Open-Meteo best match for Bengaluru is ECMWF IFS, checked 2026-10-20): the 30-60 mm/h that a
+ * ~9 km (the points Open-Meteo's best match returns for Bengaluru were ~0.07-0.1 degrees apart on 2026-10-20, as on ECMWF IFS's grid): the 30-60 mm/h that a
  * gauge records in a flood-day cloudburst shows up there as 4-12 mm/h (PROGRESS.md, "Real storms").
  * So these sit far below the street-level intensities in the news. Order, from the reports: an
  * underpass floods first (a sump under a road or railway, its pump often fails), then junctions,
