@@ -307,9 +307,16 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     }
     if (!pts.length) return;
     const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-    const cam = map.cameraForBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 50, maxZoom: 14 });
-    if (cam) map.easeTo({ ...cam, padding: pad(), pitch: 30, bearing: 0, duration: reduceMotion() ? 0 : 900, essential: true });
+    // cameraForBounds fits the free map area: the map's own padding (set first) plus a margin
+    map.setPadding(pad());
+    const cam = map.cameraForBounds([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], { padding: 36, maxZoom: 14 });
+    if (!cam) return;
+    const ms = reduceMotion() ? 0 : 900;
+    framingUntil = performance.now() + ms + 100;
+    map.easeTo({ center: cam.center, zoom: cam.zoom, pitch: 30, bearing: 0, duration: ms, essential: true });
   }
+  /** while the trip is being framed, a change of the free map area (the phone sheet settling) frames it again */
+  let framingUntil = 0;
 
   // ---------------------------------------------------------------- why
   function openWhy(id: string, fromList: boolean, reveal = true) {
@@ -392,6 +399,8 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     kind: 'commute',
     reframe() {
       if (disposed) return;
+      // a re-pad in the middle of framing the trip would stop that animation half way: frame again
+      if (performance.now() < framingUntil) return frameTrip();
       map.easeTo({ padding: pad(), duration: reduceMotion() ? 0 : 450, essential: true });
     },
     onStatus() {
