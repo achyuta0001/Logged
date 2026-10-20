@@ -43,6 +43,7 @@ The index is the weighted mean of the four percentile ranks, from 0 to 1. The le
 - **Visuals**: 3D terrain, animated shaded water, rain overlay, extruded buildings coloured by flood depth, and an 8-stop guided tour (Tour button; arrow keys, Space to pause, Esc to exit).
 - **Map**: dark vector basemap or Sentinel-2 satellite, adjustable terrain height, and optional analysis layers (low spots, flow paths, land near streams, drains, lakes, reported floods). Hover or tap anywhere for depth, ground level and drainage at that spot.
 - **Phones and tablets**: the side panels become drawers; the timeline stays on screen.
+- **Offline and installable**: a service worker (`src/sw.js`, production builds only) keeps the app, the pincodes you opened and the last forecast, so a repeat visit opens in about a second and works with no connection ("Offline · forecast from 21:10"). Each deploy gets its own cache; an open tab from an older deploy shows "Updated · Reload". The site can be added to a phone's home screen (`public/manifest.webmanifest`).
 - **Shareable views**: `?scenario=<id>` (`typical-evening`, `rrnagar-2024-10-20`, `cloudburst`, `multi-day-soak`, or a real storm on archive rain: `real-2024-10-20`, `real-2022-09-05`, `real-2022-05-17`, `real-2017-08-15`, or scaled to its gauge total: `real-2024-10-20-gauge`, `real-2022-09-05-gauge`, `real-2022-05-17-gauge`, `real-2017-08-15-gauge`), `&basemap=satellite`, `&view=lng,lat,zoom[,pitch,bearing]`.
 
 ## Run it
