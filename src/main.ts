@@ -628,7 +628,7 @@ export async function openPin(shell: Shell, pin: PinEntry, base: string): Promis
   function flyTo(c: [number, number], zoom: number) {
     // narrow screens: get the sidebar out of the way so the destination is visible
     sidebar.getOutOfTheWay();
-    map.flyTo({ center: c, zoom, pitch: 64, bearing: map.getBearing(), padding: layout.padding(), speed: 0.9, curve: 1.4, essential: true });
+    map.flyTo({ center: c, zoom, pitch: 64, bearing: map.getBearing(), padding: layout.padding(), speed: 0.9, curve: 1.4, essential: true, ...(reduceMotion ? { duration: 0 } : {}) });
     map.once('moveend', () => void reground(map));
   }
 }
