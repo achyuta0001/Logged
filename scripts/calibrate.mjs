@@ -18,6 +18,8 @@
 //                                                                hotspots.json + public/data/hotspots-city.json inside the grid)
 //   node scripts/calibrate.mjs --pin 560034 --impact             also buildings wet / roads closed at the peak
 //   node scripts/calibrate.mjs --pin 560034 --no-inflow          ignore the pack's upstream inflow points (M4)
+//   node scripts/calibrate.mjs --engine js                       surface step on the JS engine instead of WebAssembly
+//                                                                (src/sim/kernel.ts; results are bit-identical, only run time differs)
 //   node scripts/calibrate.mjs --pin 560034 --event all          also the real storms (HISTORICAL_EVENTS in src/weather.ts,
 //                                                                comma list of ids or "all"): hourly rain fetched from the
 //                                                                Open-Meteo archive (free, keyless, CC BY 4.0) at the pin centroid.
@@ -40,6 +42,7 @@ const opt = (name, def) => {
 const flag = (name) => args.includes(`--${name}`);
 
 const PIN = opt('pin', '560098');
+const ENGINE = opt('engine', undefined); // js | wasm | auto (default: the engine's own, WebAssembly when it loads)
 const PACK_DIR = `public/data/pins/${PIN}`;
 const DATA = path.resolve(ROOT, opt('data', PACK_DIR));
 const SIM = path.resolve(ROOT, opt('sim', 'src/sim'));
@@ -107,7 +110,7 @@ const hotCells = hotspots.map((h) => Object.fromEntries(RADII.map((r) => [r, cel
 
 // ---------------------------------------------------------------- run
 async function runScenario(series) {
-  const eng = await FloodEngine.create(terrain, {}, { inline: true });
+  const eng = await FloodEngine.create(terrain, {}, { inline: true, engine: ENGINE });
   const t0 = performance.now();
   await eng.run(series);
   const ms = performance.now() - t0;
@@ -173,7 +176,7 @@ async function runScenario(series) {
   };
 }
 
-const results = { pin: meta.pincode, name: meta.name, cellSizeM: meta.cellSizeM, cells: W * H, data: path.relative(ROOT, DATA) || '.', sim: path.relative(ROOT, SIM) || '.', scenarios: {} };
+const results = { pin: meta.pincode, name: meta.name, cellSizeM: meta.cellSizeM, cells: W * H, data: path.relative(ROOT, DATA) || '.', sim: path.relative(ROOT, SIM) || '.', engine: ENGINE ?? 'default', scenarios: {} };
 for (const id of SCEN_IDS) {
   const sc = SCENARIOS.find((s) => s.id === id);
   if (!sc) throw new Error(`unknown scenario ${id}`);
@@ -200,7 +203,7 @@ if (flag('perf')) {
   const mm = [];
   for (let d = 0; d < 9; d++) for (let h = 0; h < 24; h++) mm.push([3, 10, 15, 8, 3, 1][h - 14] ?? 0);
   const series = { source: 'forecast', label: 'perf', times: mm.map((_, i) => i * 3.6e6), mm };
-  const eng = await FloodEngine.create(terrain, {}, { inline: true });
+  const eng = await FloodEngine.create(terrain, {}, { inline: true, engine: ENGINE });
   await eng.run({ ...series, mm: mm.slice(0, 6) }); // warm-up (JIT)
   const t0 = performance.now();
   await eng.run(series);
