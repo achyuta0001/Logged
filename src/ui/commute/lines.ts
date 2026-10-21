@@ -93,10 +93,24 @@ const dayText = (t: number, short = false) => {
   return `${short ? wd.slice(0, 3) : wd} ${d.getUTCDate()} ${MONTH[d.getUTCMonth()]}`;
 };
 
+/** "12.9719, 77.6412": a picked point with no place name */
+const COORDS = /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/;
+
 /** an end of the trip as the card names it: no "Near " or "My location · ", and never raw coordinates (where someone lives stays off a shared picture) */
 export function placeName(label: string, fallback: string): string {
   const t = label.replace(/^(Near|My location ·) /, '').trim();
-  return !t || /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(t) ? fallback : t;
+  return !t || COORDS.test(t) ? fallback : t;
+}
+
+/**
+ * An end of the trip on the card: home and office by their place ("Indiranagar"; "Home" for a bare
+ * point), a saved place by the reader's own name for it ("Gym"), never by where it is; a name that
+ * is only coordinates shows as "Place".
+ */
+export function cardEnd(e: { id: string; label: string }): string {
+  if (e.id === 'home' || e.id === 'office') return placeName(e.label, e.id === 'home' ? 'Home' : 'Office');
+  const t = e.label.trim();
+  return !t || COORDS.test(t) ? 'Place' : t;
 }
 
 /** the card's date line, "Wednesday 22 Oct · leaving 08:30": a date, not "tomorrow", as the picture is read later */
