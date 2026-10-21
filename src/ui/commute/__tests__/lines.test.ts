@@ -3,7 +3,7 @@
 // Run: node --test src/ui/commute/__tests__/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cardFile, cardSpots, cardWhen, checkedText, fmtKm, fmtMin, placeName, routeReason, updateLine, windowText } from '../lines.ts';
+import { cardEnd, cardFile, cardSpots, cardWhen, checkedText, fmtKm, fmtMin, placeName, routeReason, updateLine, windowText } from '../lines.ts';
 
 const H = 3600e3;
 const IST = 5.5 * H;
@@ -90,6 +90,16 @@ test('placeName: the card names places, never coordinates', () => {
   assert.equal(placeName('Bellandur & ORR', 'Office'), 'Bellandur & ORR');
   assert.equal(placeName('12.9719, 77.6412', 'Home'), 'Home', 'a picked point stays private');
   assert.equal(placeName('', 'Office'), 'Office');
+});
+
+test('cardEnd: home and office by their places, a saved place by its own name, never coordinates', () => {
+  assert.equal(cardEnd({ id: 'home', label: 'Near Indiranagar' }), 'Indiranagar');
+  assert.equal(cardEnd({ id: 'office', label: '12.926, 77.678' }), 'Office');
+  assert.equal(cardEnd({ id: 'home', label: '12.9719, 77.6412' }), 'Home');
+  assert.equal(cardEnd({ id: 'p1', label: 'Gym' }), 'Gym', 'its name, not where it is');
+  assert.equal(cardEnd({ id: 'p2', label: 'Near the lake' }), 'Near the lake', 'a name is kept as written');
+  assert.equal(cardEnd({ id: 'p3', label: '12.9352, 77.6271' }), 'Place');
+  assert.equal(cardEnd({ id: 'p4', label: ' ' }), 'Place');
 });
 
 test('card dates: the IST day, written out, as the picture is read later', () => {

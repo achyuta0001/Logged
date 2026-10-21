@@ -17,12 +17,12 @@ import { WEATHER_ATTRIBUTION, WEATHER_ATTRIBUTION_URL } from '../../weather';
 import { esc } from '../format';
 import { backend, floorBucket, levelAt, BUCKET_MS } from './adapters';
 import { drawCard, shareCard, type CardInfo } from './card';
-import { cardFile, cardSpots, cardWhen, checkedText, fmtKm, fmtMin, placeName, routeReason, updateLine } from './lines';
+import { cardEnd, cardFile, cardSpots, cardWhen, checkedText, fmtKm, fmtMin, routeReason, updateLine } from './lines';
 import { rank, worstLevel } from './levels';
-import { Ends, HotspotPins, RouteLines } from './mapLayers';
+import { Ends, HotspotPins, RouteLines, type EndMark } from './mapLayers';
 import { CommutePanel, type End, type PlaceHit } from './panel';
 import { Scrubber, type Step } from './scrubber';
-import { dayWord, legs, linkHasTrip, loadState, saveState, shareSearch, stateFromSearch, withoutCommute, type CommuteState, type Leg } from './state';
+import { applyLink, dayWord, endLabel, endOf, legs, linkHasTrip, loadState, saveState, shareSearch, tripKey, withoutCommute, type CommuteState, type Leg } from './state';
 import './commute.css';
 
 const H = 3600e3;
@@ -43,9 +43,9 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
   shell.timelineEl.hidden = true;
   document.title = 'Commute · Bengaluru Flood Explorer';
 
-  // a shared trip replaces what is saved; the address bar keeps only ?commute=1
+  // a shared trip replaces home and office (the saved places stay); the address bar keeps only ?commute=1
   const search = location.search;
-  let state: CommuteState = linkHasTrip(search) ? stateFromSearch(search)! : loadState();
+  let state: CommuteState = applyLink(loadState(), search);
   if (linkHasTrip(search)) saveState(state);
   {
     const q = new URLSearchParams(withoutCommute(search));
@@ -64,7 +64,16 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
   const pins = new HotspotPins(map, (id) => {
     if (!picking) openWhy(id, false);
   });
-  const ends = new Ends(map, (end, p) => panel.setEnd(end, labelFor(p), p));
+  const ends = new Ends(map, (id, p) => panel.setEnd(id, labelFor(p), p));
+  /** a marker for home, office and each saved place */
+  const syncEnds = () =>
+    ends.setAll([
+      ...(['home', 'office'] as const).flatMap((id): EndMark[] => {
+        const p = state[id];
+        return p ? [{ id, kind: id, coord: p.coord, name: endLabel(state, id), label: p.label }] : [];
+      }),
+      ...state.places.map((p): EndMark => ({ id: p.id, kind: 'place', coord: p.coord, name: p.label, label: p.where })),
+    ]);
   const scrubber = new Scrubber(document.body, (k) => {
     step = k;
     drawPins();
@@ -97,12 +106,15 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     map.getCanvas().style.cursor = '';
     document.body.classList.remove('cm-picking');
   };
+  /** a place in "Tap the map where ... is": "your home", "Gym", "the place to save" */
+  const placeWords = (end: End) => (end === 'home' || end === 'office' ? `your ${end}` : end === 'add' ? 'the place to save' : endLabel(state, end) || 'the place');
   const panel = new CommutePanel(sidebar.body('commute'), state, {
     change(next) {
+      // another trip starts on its soonest leg
+      if (tripKey(next) !== tripKey(state)) legId = null;
       state = next;
       saveState(state);
-      ends.set('home', state.home?.coord ?? null, state.home?.label ?? '');
-      ends.set('office', state.office?.coord ?? null, state.office?.label ?? '');
+      syncEnds();
       void refreshTrip(true);
     },
     search: searchPlaces,
@@ -110,7 +122,7 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
       picking = end;
       map.getCanvas().style.cursor = 'crosshair';
       document.body.classList.add('cm-picking');
-      panel.say(`Tap the map where your ${end} is. Esc cancels.`);
+      panel.say(`Tap the map where ${placeWords(end)} is. Esc cancels.`);
       sidebar.getOutOfTheWay();
     },
     locate(end) {
@@ -177,8 +189,7 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     }
   };
   document.addEventListener('keydown', onKey, true);
-  ends.set('home', state.home?.coord ?? null, state.home?.label ?? '');
-  ends.set('office', state.office?.coord ?? null, state.office?.label ?? '');
+  syncEnds();
 
   // ---------------------------------------------------------------- data: the city's next 3 hours
   let hs: CommuteHotspot[] = [];
@@ -235,10 +246,18 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
   const covers = (p: CommutePlan) => p.routes[0]?.hits.every((h) => levelAt(tripOut.get(h.id), p.departure + h.atS * 1000) !== null) ?? true;
   const legName = (l: Leg) => `${l.from.label.replace(/^(Near|My location ·) /, '')} → ${l.to.label.replace(/^(Near|My location ·) /, '')}`;
 
+  /** "Home and office", "Home and Gym": the trip's two ends */
+  const tripTitle = () => {
+    const word = (id: string) => (id === 'home' || id === 'office' ? id : endLabel(state, id));
+    const a = word(state.from);
+    return `${a.charAt(0).toUpperCase()}${a.slice(1)} and ${word(state.to)}`;
+  };
+
   function setIdleStatus() {
-    const missing = !state.home && !state.office ? 'home and office' : !state.home ? 'home' : 'office';
-    sidebar.setRegion('Commute', 'Home and office', { title: 'My commute', tour: false });
-    sidebar.setStatus('none', `<b>Set your ${missing}</b> to check the commute`, 'Waterlogging on the way, from the rain forecast and past flood reports', undefined, ACCENT);
+    // only home and office can be without a place (a saved place always has one)
+    const missing = (['home', 'office'] as const).filter((id) => (state.from === id || state.to === id) && !state[id]).join(' and ');
+    sidebar.setRegion('Commute', tripTitle(), { title: 'My commute', tour: false });
+    sidebar.setStatus('none', `<b>Set your ${missing || 'places'}</b> to check the commute`, 'Waterlogging on the way, from the rain forecast and past flood reports', undefined, ACCENT);
   }
 
   /** `auto`: the 15-minute re-check while the tab is open (not something the reader changed) */
@@ -346,9 +365,9 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     const covered = covers(p);
     const best = bestRoute(p);
     const r = rs.find((x) => x.id === best);
-    const [from, to] = l.id === 'out' ? ['Home', 'Office'] : ['Office', 'Home'];
     return {
-      trip: [placeName(l.from.label, from), placeName(l.to.label, to)],
+      // home and office by their places, a saved place by its name ("Gym"): never coordinates
+      trip: [cardEnd(l.from), cardEnd(l.to)],
       when: cardWhen(p.departure),
       headline: headline(p, covered, true),
       tone: covered ? ADVICE_COLOR[p.advice.kind] : '#8e8e93',
@@ -378,8 +397,10 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     const pts: LngLat[] = [];
     for (const r of rs) pts.push(...r.line);
     if (!pts.length) {
-      if (state.home) pts.push(state.home.coord);
-      if (state.office) pts.push(state.office.coord);
+      for (const id of [state.from, state.to]) {
+        const e = endOf(state, id);
+        if (e) pts.push(e.coord);
+      }
     }
     if (!pts.length) return;
     const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
