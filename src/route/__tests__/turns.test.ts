@@ -398,6 +398,25 @@ test('search: A*, Dijkstra and the edge-based search match a brute force over ev
   assert.ok(bitten > 80, `restrictions change ${bitten} of ${pairs} trips`);
 });
 
+test('searchArcs: from the first edge of each restriction to its last, no restricted turn (regression)', () => {
+  // the edge-based search once read a state's turn rules at the wrong offset, found none and took
+  // every restricted turn: the very paths legal() had turned down
+  const midOf = (e) => {
+    const o = raw.geoOff[e];
+    const s = router.snap([(raw.geoLng[o] + raw.geoLng[o + 1]) / 2, (raw.geoLat[o] + raw.geoLat[o + 1]) / 2]);
+    assert.equal(s.e, e);
+    return s;
+  };
+  let met = 0;
+  for (const p of pats) {
+    const s = midOf(router.outEdge[p.arcs[0]]), t = midOf(router.outEdge[p.arcs[p.arcs.length - 1]]);
+    if (!router.legal(router.searchNodes(s, t, null, null, 0).arcs)) met++;
+    for (const r of [router.searchArcs(s, t, null, null, 0), dijkstra.searchArcs(s, t, null, null, 0)])
+      assert.ok(r && router.legal(r.arcs) && drivable(r.arcs), `${p.only ? 'only' : 'no'} ${p.arcs.join(' ')}`);
+  }
+  assert.ok(met >= 4, `the shortest way meets the restriction on ${met} of ${pats.length} trips`);
+});
+
 test('search: with the weights of alternatives and avoided edges too', () => {
   let seed = 7;
   const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
