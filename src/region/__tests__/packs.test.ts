@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { fallbackIndex, inflowCaveat, loadPinIndex, packBase, searchPins, validateMeta, validatePinIndex } from '../packs.ts';
+import { allowedPacksUrl, fallbackIndex, inflowCaveat, loadPinIndex, packBase, packsRoot, searchPins, validateMeta, validatePinIndex } from '../packs.ts';
 import { terrainFromBuffer } from '../../terrain.ts';
 import { SimCore } from '../../sim/core.ts';
 import { bowlAndChannel, noisyTerrain } from '../../sim/__tests__/synthetic.ts';
@@ -214,4 +214,15 @@ test('switching regions: synthetic packs of different sizes load, validate and s
   assert.equal(a2.vol, a1.vol);
   assert.deepEqual(a2.budget, a1.budget);
   assert.notEqual(a1.vol, b1.vol);
+});
+
+test('?packs= is honoured only for this origin or an allowed https host', () => {
+  const site = 'https://achyuta0001.github.io';
+  assert.equal(packsRoot('?packs=/Logged/mirror/pins/', site), '/Logged/mirror/pins');
+  assert.equal(packsRoot('?packs=https://achyuta0001.github.io/Logged/pins', 'http://localhost:5173'), 'https://achyuta0001.github.io/Logged/pins');
+  assert.equal(packsRoot('?packs=http://localhost:5173/x', 'http://localhost:5173'), 'http://localhost:5173/x');
+  for (const q of ['https://evil.example/pins', '//evil.example/pins', 'http://achyuta0001.github.io/pins', 'https://achyuta0001.github.io.evil.example/pins', 'javascript:alert(1)']) {
+    assert.equal(allowedPacksUrl(q, site), false, q);
+    assert.equal(packsRoot(`?packs=${encodeURIComponent(q)}`, site), '/data/pins', q);
+  }
 });
