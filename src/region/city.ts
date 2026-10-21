@@ -6,7 +6,7 @@
 import type { MapLayerMouseEvent } from 'maplibre-gl';
 import type { PinEntry } from '../types';
 import type { Region, Shell } from '../main';
-import { createMap } from '../map/mapView';
+import { createMap, beforeLabels } from '../map/mapView';
 import { Tooltip } from '../ui/tooltip';
 import { esc } from '../ui/format';
 import { iconSvg } from '../ui/icons';
@@ -87,33 +87,45 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     attribution: 'Pincodes &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> (ODbL); susceptibility from Copernicus DEM GLO-30 &copy; DLR e.V., &copy; Airbus Defence and Space GmbH, provided under COPERNICUS by the EU and ESA',
   });
   const ramp = SUSC_RAMP.flatMap(([v, c]) => [v, c]);
-  map.addLayer({
-    id: 'pins-fill',
-    type: 'fill',
-    source: 'pins',
-    paint: {
-      'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 's'], 0], ...ramp] as unknown as string,
-      'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.85, ['boolean', ['feature-state', 'sel'], false], 0.82, ['interpolate', ['linear'], ['coalesce', ['get', 's'], 0], 0, 0.38, 1, 0.78]],
+  // under the basemap labels like every overlay; the news circles go in there later, so they sit above the fill
+  const anchor = beforeLabels();
+  const before = anchor && map.getLayer(anchor) ? anchor : undefined;
+  map.addLayer(
+    {
+      id: 'pins-fill',
+      type: 'fill',
+      source: 'pins',
+      paint: {
+        'fill-color': ['interpolate', ['linear'], ['coalesce', ['get', 's'], 0], ...ramp] as unknown as string,
+        'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.85, ['boolean', ['feature-state', 'sel'], false], 0.82, ['interpolate', ['linear'], ['coalesce', ['get', 's'], 0], 0, 0.38, 1, 0.78]],
+      },
     },
-  });
-  map.addLayer({
-    id: 'pins-line',
-    type: 'line',
-    source: 'pins',
-    paint: {
-      'line-color': '#d6f6ff',
-      'line-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.95, ['boolean', ['feature-state', 'sel'], false], 0.95, 0.22],
-      'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 2, ['boolean', ['feature-state', 'sel'], false], 2.2, 0.7],
+    before,
+  );
+  map.addLayer(
+    {
+      id: 'pins-line',
+      type: 'line',
+      source: 'pins',
+      paint: {
+        'line-color': '#d6f6ff',
+        'line-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.95, ['boolean', ['feature-state', 'sel'], false], 0.95, 0.22],
+        'line-width': ['case', ['boolean', ['feature-state', 'hover'], false], 2, ['boolean', ['feature-state', 'sel'], false], 2.2, 0.7],
+      },
     },
-  });
+    before,
+  );
   // pincodes with a built pack get a quiet cyan ring so "openable" is visible without clutter
-  map.addLayer({
-    id: 'pins-pack',
-    type: 'line',
-    source: 'pins',
-    filter: ['==', ['get', 'pack'], 1],
-    paint: { 'line-color': '#64d2ff', 'line-width': 1.4, 'line-opacity': 0.7, 'line-dasharray': [2, 1.5] },
-  });
+  map.addLayer(
+    {
+      id: 'pins-pack',
+      type: 'line',
+      source: 'pins',
+      filter: ['==', ['get', 'pack'], 1],
+      paint: { 'line-color': '#64d2ff', 'line-width': 1.4, 'line-opacity': 0.7, 'line-dasharray': [2, 1.5] },
+    },
+    before,
+  );
 
   const idOf = new Map(data.features.map((f) => [f.properties.code, f.id as number]));
   const tip = new Tooltip();
