@@ -1908,6 +1908,13 @@ body.focus #map .maplibregl-ctrl-bottom-right {
 .hotspot:focus-visible {
   outline-offset: 0;
 }
+/* phones: a 44pt touch area around the same small ring */
+body.mode-phone .hotspot::before {
+  content: '';
+  position: absolute;
+  inset: -11px;
+  border-radius: 50%;
+}
 .hotspot-badge {
   position: absolute;
   left: 24px;
