@@ -1,5 +1,5 @@
 // City-wide road graph file (public/data/roads/graph-<hash>.bin.gz), written by
-// scripts/route/build-graph.mjs and read by the router (src/route/graph.ts). Shared by both so the
+// scripts/route/build-graph.mjs and read by the router (src/route/load.ts). Shared by both so the
 // encoder and the decoder cannot drift apart. No DOM, no network: runs in node, a page and a worker.
 //
 // Layout (little-endian), then gzip -9 over the whole file:
@@ -18,11 +18,16 @@
 //   geo      per edge: interior vertex count, then zz(dx), zz(dy) per vertex (from node u, 1e-5 deg)
 //   names    UTF-8, '\n'-separated
 //   lm       per landmark, per node: zz(delta) of the undirected travel time from the landmark, whole
-//            seconds rounded down (an ALT lower bound; see src/route/search.ts)
+//            seconds rounded down (an ALT lower bound; see src/route/router.ts)
+//   turns    per turn restriction (OSM type=restriction): uv((arcs - 2) * 2 + only), then zz(delta) of
+//            each arc from the previous one (across restrictions too). An arc is an edge driven one way:
+//            2 * edge, + 1 when driven v -> u. Arcs run from, via ways (if any), to: a no_* restriction
+//            forbids driving that sequence; an only_* one makes its last arc the only way on.
+// Version 1 files have no turns stream and still decode, with no restrictions.
 import type { SpeedTable } from './config.ts';
 
 export const GRAPH_MAGIC = 'RGR1';
-export const GRAPH_VERSION = 1;
+export const GRAPH_VERSION = 2;
 /** coordinates are stored in units of 1e-5 deg (~1.1 m) */
 export const COORD_SCALE = 1e5;
 
@@ -31,7 +36,7 @@ export const BWD = 2;
 export const BRIDGE = 4;
 export const TUNNEL = 8;
 
-export const STREAMS = ['nodes', 'signal', 'eu', 'ev', 'eflags', 'eclass', 'emax', 'esig', 'ename', 'eref', 'elen', 'ways', 'geo', 'names', 'lm'] as const;
+export const STREAMS = ['nodes', 'signal', 'eu', 'ev', 'eflags', 'eclass', 'emax', 'esig', 'ename', 'eref', 'elen', 'ways', 'geo', 'names', 'lm', 'turns'] as const;
 
 export interface GraphHeader {
   version: number;
@@ -50,6 +55,9 @@ export interface GraphHeader {
   /** total way references and polyline vertices (for preallocation) */
   wayRefs: number;
   points: number;
+  /** turn restrictions and their arcs in total (absent before version 2) */
+  turns?: number;
+  turnArcs?: number;
   /** byte length of each stream, in STREAMS order */
   streams: Record<string, number>;
   /** free-form build statistics (kept / dropped ways, components, timings) */
@@ -84,6 +92,11 @@ export interface RawGraph {
   names: string[];
   /** undirected seconds (floored) from each landmark, node-major: lm[v * landmarks.length + l] */
   lm: Uint16Array;
+  /** turn restriction r: arcs turnArc[turnOff[r] .. turnOff[r+1]) (2 * edge, + 1 driven v -> u), at
+   *  least two; turnOnly[r] = 1 for only_* (the last arc is the only way on), 0 for no_* */
+  turnOff: Int32Array;
+  turnArc: Int32Array;
+  turnOnly: Uint8Array;
 }
 
 // ------------------------------------------------------------------------------------------ varints
@@ -153,11 +166,15 @@ class Reader {
 const q = (deg: number) => Math.round(deg * COORD_SCALE);
 
 /** Serialise a graph (uncompressed; the build gzips it). `header.streams`, `n`, `m` ... are filled in. */
-export function encodeGraph(g: Omit<RawGraph, 'header'> & { header: Omit<GraphHeader, 'streams' | 'n' | 'm' | 'wayRefs' | 'points' | 'version'> }): Uint8Array {
+export function encodeGraph(
+  g: Omit<RawGraph, 'header'> & { header: Omit<GraphHeader, 'streams' | 'n' | 'm' | 'wayRefs' | 'points' | 'turns' | 'turnArcs' | 'version'> },
+): Uint8Array {
   const n = g.nodeLng.length, m = g.eU.length;
   const k = g.header.landmarks.length;
+  const R = g.turnOnly.length;
   if (g.lm.length !== k * n) throw new Error(`encodeGraph: lm has ${g.lm.length} values for ${k} landmarks x ${n} nodes`);
   for (let e = 1; e < m; e++) if (g.eU[e] < g.eU[e - 1]) throw new Error('encodeGraph: edges must be sorted by eU');
+  if (g.turnOff.length !== R + 1 || g.turnOff[R] !== g.turnArc.length) throw new Error('encodeGraph: turnOff does not match turnArc / turnOnly');
   const s: Record<string, Writer> = {};
   for (const name of STREAMS) s[name] = new Writer();
 
@@ -210,6 +227,17 @@ export function encodeGraph(g: Omit<RawGraph, 'header'> & { header: Omit<GraphHe
       prev = v;
     }
   }
+  let pa = 0;
+  for (let r = 0; r < R; r++) {
+    const a0 = g.turnOff[r], a1 = g.turnOff[r + 1];
+    if (a1 - a0 < 2) throw new Error(`encodeGraph: turn restriction ${r} has ${a1 - a0} arcs`);
+    s.turns.uv((a1 - a0 - 2) * 2 + (g.turnOnly[r] ? 1 : 0));
+    for (let j = a0; j < a1; j++) {
+      if (g.turnArc[j] < 0 || g.turnArc[j] >= 2 * m) throw new Error(`encodeGraph: turn restriction ${r} names arc ${g.turnArc[j]}`);
+      s.turns.sv(g.turnArc[j] - pa);
+      pa = g.turnArc[j];
+    }
+  }
 
   const header: GraphHeader = {
     ...g.header,
@@ -218,6 +246,8 @@ export function encodeGraph(g: Omit<RawGraph, 'header'> & { header: Omit<GraphHe
     m,
     wayRefs: g.wayOff[m],
     points: g.geoOff[m],
+    turns: R,
+    turnArcs: g.turnArc.length,
     streams: Object.fromEntries(STREAMS.map((name) => [name, s[name].len])),
   };
   const hj = new TextEncoder().encode(JSON.stringify(header));
@@ -242,7 +272,8 @@ export function decodeGraph(bytes: Uint8Array): RawGraph {
   if (magic !== GRAPH_MAGIC) throw new Error(`road graph: bad magic "${magic}"`);
   const hl = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(4, true);
   const header = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + hl))) as GraphHeader;
-  if (header.version !== GRAPH_VERSION) throw new Error(`road graph: version ${header.version}, this app reads ${GRAPH_VERSION}`);
+  // version 1 is version 2 without turn restrictions (its header lists no turns stream)
+  if (!(header.version >= 1 && header.version <= GRAPH_VERSION)) throw new Error(`road graph: version ${header.version}, this app reads 1 to ${GRAPH_VERSION}`);
   const st: Record<string, Uint8Array> = {};
   let p = 8 + hl;
   for (const name of STREAMS) {
@@ -319,6 +350,25 @@ export function decodeGraph(bytes: Uint8Array): RawGraph {
       }
     }
   }
+  const R = header.turns ?? 0, T = header.turnArcs ?? 0;
+  const turnOff = new Int32Array(R + 1), turnArc = new Int32Array(T), turnOnly = new Uint8Array(R);
+  {
+    const r = new Reader(st.turns);
+    let pa = 0, j = 0;
+    for (let i = 0; i < R; i++) {
+      const c = r.uv();
+      turnOnly[i] = c % 2;
+      turnOff[i] = j;
+      const len = Math.floor(c / 2) + 2;
+      if (j + len > T) throw new Error('road graph: turn restrictions overrun their arcs');
+      for (let a = 0; a < len; a++) {
+        pa += r.sv();
+        turnArc[j++] = pa;
+      }
+    }
+    turnOff[R] = j;
+    if (j !== T) throw new Error(`road graph: ${j} turn restriction arcs, header says ${T}`);
+  }
   const names = st.names.length ? new TextDecoder().decode(st.names).split('\n') : [];
   return {
     header,
@@ -342,6 +392,9 @@ export function decodeGraph(bytes: Uint8Array): RawGraph {
     geoLat,
     names,
     lm,
+    turnOff,
+    turnArc,
+    turnOnly,
   };
 }
 
