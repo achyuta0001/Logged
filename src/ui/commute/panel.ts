@@ -7,7 +7,7 @@
 import type { LngLat } from '../../commute/spots';
 import type { CommuteHotspot, HotspotOutlook, RiskLevel, RouteCandidate, RouteRisk } from '../../commute/types';
 import { fmtHHMM } from '../../commute/verdict';
-import { esc } from '../format';
+import { esc, safeHref } from '../format';
 import { iconSvg } from '../icons';
 import type { CardOutcome } from './card';
 import { LEVEL_COLOR, LEVEL_SHORT, LEVEL_TEXT, TYPE_LABEL, explainRows, pill, rank } from './levels';
@@ -665,7 +665,10 @@ export class CommutePanel {
     const rows = b0 ? explainRows(b0.explain, h) : [];
     const src = h.sources
       .slice(0, 3)
-      .map((s) => `<li><time>${esc(fmtDate(s.date))}</time> <a href="${encodeURI(s.url)}" target="_blank" rel="noopener">${esc(s.outlet)}</a></li>`)
+      .map((s) => {
+        const href = safeHref(s.url);
+        return `<li><time>${esc(fmtDate(s.date))}</time> ${href ? `<a href="${href}" target="_blank" rel="noopener">${esc(s.outlet)}</a>` : esc(s.outlet)}</li>`;
+      })
       .join('');
     el.innerHTML = `
       <div class="cm-why-head">
