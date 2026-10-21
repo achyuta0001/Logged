@@ -16,6 +16,7 @@ import { createMap, beforeLabels } from '../../map/mapView';
 import { WEATHER_ATTRIBUTION, WEATHER_ATTRIBUTION_URL } from '../../weather';
 import { esc } from '../format';
 import { backend, floorBucket, levelAt, BUCKET_MS } from './adapters';
+import { updateLine } from './lines';
 import { rank, worstLevel } from './levels';
 import { Ends, HotspotPins, RouteLines } from './mapLayers';
 import { CommutePanel, type End, type PlaceHit } from './panel';
@@ -205,6 +206,9 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
   let chosen: RouteCandidate['id'] | null = null;
   let leg: Leg | null = null;
   let seq = 0;
+  /** the trip and headline of the last check: an automatic re-check of the same trip that changes it shows the update banner */
+  let seen: { key: string; head: string } | null = null;
+  const nameOf = (id: string) => byId.get(id)?.name ?? id;
   const legName = (l: Leg) => `${l.from.label.replace(/^(Near|My location ·) /, '')} → ${l.to.label.replace(/^(Near|My location ·) /, '')}`;
 
   function setIdleStatus() {
@@ -213,7 +217,8 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     sidebar.setStatus('none', `<b>Set your ${missing}</b> to check the commute`, 'Waterlogging on the way, from the rain forecast and past flood reports', undefined, ACCENT);
   }
 
-  async function refreshTrip(fit: boolean) {
+  /** `auto`: the 15-minute re-check while the tab is open (not something the reader changed) */
+  async function refreshTrip(fit: boolean, auto = false) {
     const my = ++seq;
     const now = Date.now();
     const ls = legs(state, now);
@@ -227,6 +232,8 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
       panel.showRoutes(null, [], null, 0, byId);
       panel.showLeaveStrip([], '', 'out');
       panel.showLegs([], null, now, dayWord);
+      panel.showUpdate(null);
+      seen = null;
       drawPins();
       setIdleStatus();
       return;
@@ -258,7 +265,11 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
       }
       panel.showLeaveStrip(strip, leg.hhmm, leg.id);
       panel.say('');
-      render(fit);
+      const head = render(fit);
+      const key = `${leg.id} ${leg.departure} ${leg.from.coord} ${leg.to.coord}`;
+      if (!auto || !seen || seen.key !== key) panel.showUpdate(null);
+      else if (seen.head !== head) panel.showUpdate(updateLine(head, plan, nameOf, (id) => tripOut.get(id)?.window));
+      seen = { key, head };
     } catch (err) {
       if (my !== seq || disposed) return;
       console.error('[commute]', err);
@@ -267,8 +278,9 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     }
   }
 
-  function render(fit: boolean) {
-    if (!plan || !leg) return;
+  /** draws the plan; returns the headline */
+  function render(fit: boolean): string {
+    if (!plan || !leg) return '';
     const now = Date.now();
     const risk = plan.routes.find((r) => r.route === chosen) ?? null;
     onRoute = new Map((risk?.hits ?? []).map((h) => [h.id, h.level]));
@@ -280,8 +292,10 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     const first = plan.routes[0];
     const covered = !first || first.hits.every((h) => levelAt(tripOut.get(h.id), plan!.departure + h.atS * 1000) !== null);
     sidebar.setRegion('Commute', `${legName(leg)} · ${dayWord(plan.departure, now)} ${fmtHHMM(plan.departure)}`, { title: 'My commute', tour: false });
-    sidebar.setStatus('none', `<b>${esc(headline(a, covered))}</b>`, a.text.includes('Advisory') ? a.text : `${a.text} Advisory only.`, 'Show the routes', covered ? ADVICE_COLOR[a.kind] : '#8e8e93');
+    const head = headline(a, covered);
+    sidebar.setStatus('none', `<b>${esc(head)}</b>`, a.text.includes('Advisory') ? a.text : `${a.text} Advisory only.`, 'Show the routes', covered ? ADVICE_COLOR[a.kind] : '#8e8e93');
     if (fit) frameTrip();
+    return head;
   }
 
   /** the one big line: short, from the advice kind; the planner's sentence goes underneath */
@@ -397,10 +411,11 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
   void refreshTrip(true).then(renderSources);
   renderSources();
   loader.hide();
+  // re-check every 15 minutes while the tab is open (the forecast itself is cached for 30)
   const tick = window.setInterval(() => {
     void refreshCity().catch(() => {});
-    void refreshTrip(false);
-  }, 10 * 60e3);
+    void refreshTrip(false, true);
+  }, 15 * 60e3);
 
   function deadRegion(): Region {
     return { kind: 'commute', reframe() {}, destroy() {} };
