@@ -18,12 +18,42 @@ const BASE = (env?.BASE_URL ?? '/').replace(/\/?$/, '/');
 export const BUNDLED_PACKS = `${BASE}data/pins`;
 
 /**
- * Where packs live. Defaults to the bundled public/data/pins; `?packs=<url>` or VITE_PACKS_URL point it
- * at a hosted copy (a release asset or a Pages artifact built by `npm run data:all`).
+ * Hosts `?packs=` may point at besides the page's own origin; VITE_PACK_HOSTS (comma-separated) adds
+ * more at build time. A link to any other host is ignored, so nobody can show their own made-up flood
+ * data under this site's address.
  */
-export function packsRoot(search: string = typeof location !== 'undefined' ? location.search : ''): string {
+export const PACK_HOSTS: readonly string[] = [
+  'achyuta0001.github.io',
+  ...(env?.VITE_PACK_HOSTS ?? '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+];
+
+/** `?packs=` value allowed: a path or URL on the page's own origin, or https on a PACK_HOSTS host */
+export function allowedPacksUrl(q: string, origin: string): boolean {
+  try {
+    const u = new URL(q, origin);
+    if (u.origin === origin) return true;
+    return u.protocol === 'https:' && PACK_HOSTS.includes(u.host);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Where packs live. Defaults to the bundled public/data/pins; `?packs=<url>` (allowed hosts only, see
+ * PACK_HOSTS) or VITE_PACKS_URL point it at a hosted copy (a release asset or a Pages artifact built by
+ * `npm run data:all`).
+ */
+export function packsRoot(
+  search: string = typeof location !== 'undefined' ? location.search : '',
+  origin: string = typeof location !== 'undefined' ? location.origin : 'http://localhost',
+): string {
   const q = new URLSearchParams(search).get('packs');
-  const root = q && /^(https?:)?\/\/|^\//.test(q) ? q : env?.VITE_PACKS_URL || BUNDLED_PACKS;
+  const ok = !!q && /^(https?:)?\/\/|^\//.test(q) && allowedPacksUrl(q, origin);
+  if (q && !ok) console.warn('[packs] ?packs= ignored: not this site or an allowed host', q);
+  const root = ok ? q : env?.VITE_PACKS_URL || BUNDLED_PACKS;
   return root.replace(/\/$/, '');
 }
 
