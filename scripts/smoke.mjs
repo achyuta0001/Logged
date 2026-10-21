@@ -21,8 +21,6 @@
 // Service workers are blocked: each view starts from a fresh context and tests the app, not the
 // worker. Third-party failures (basemap, terrain tiles, rain forecast, fonts) are listed but do not
 // fail the run; the app falls back when they are down.
-// Known and harmless: the 560098 reference pack has no .gz files, so its .gz probes 404 on a static
-// host (src/pack/fetch.ts falls back to the plain file).
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,7 +45,7 @@ const GL_ARGS = GL === 'swiftshader' ? ['--use-angle=swiftshader', '--enable-uns
 const NO_TILES = process.argv.includes('--no-tiles');
 const TILE_HOSTS = /^https:\/\/(tiles\.openfreemap\.org|s3\.amazonaws\.com\/elevation-tiles-prod|tiles\.maps\.eox\.at|fonts\.(googleapis|gstatic)\.com)\//;
 const SIM_LINE = /^\[sim\] \d+ h in \d+ ms/;
-/** the 560098 reference pack's .gz probes (format 1 keeps plain JSON; src/pack/fetch.ts falls back) */
+/** .gz probes at the old bundled-pack path (pack.path "." in older indexes; src/pack/fetch.ts falls back) */
 const KNOWN_404 = /\/data\/(osm\.geojson|depressions\.json)\.gz$/;
 const log = (...a) => console.log('[smoke]', ...a);
 
