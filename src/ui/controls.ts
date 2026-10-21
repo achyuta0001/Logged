@@ -283,6 +283,14 @@ export class Controls {
     this.h.onSummary();
   }
 
+  /** Flip a layer's switch as a tap would (e.g. news reports on when a spot is picked from the list). */
+  setLayer(id: string, on: boolean) {
+    const c = this.m.map.querySelector<HTMLInputElement>(`input[data-layer="${id}"]`);
+    if (!c || c.checked === on) return;
+    c.checked = on;
+    c.dispatchEvent(new Event('change'));
+  }
+
   setForecastNote(text: string) {
     this.fcNote = text;
     this.syncSource();
