@@ -7,6 +7,7 @@ import type { CommuteHotspot, HotspotOutlook, RiskLevel, RouteCandidate, RouteRi
 import { fmtHHMM } from '../../commute/verdict';
 import { esc } from '../format';
 import { iconSvg } from '../icons';
+import type { CardOutcome } from './card';
 import { LEVEL_COLOR, LEVEL_SHORT, LEVEL_TEXT, TYPE_LABEL, explainRows, pill, rank } from './levels';
 import { fmtKm, fmtMin, routeReason } from './lines';
 import { EVENING, cleanDays, cleanHHMM, type CommuteState, type Leg } from './state';
@@ -29,6 +30,8 @@ export interface PanelHandlers {
   leg(id: Leg['id']): void;
   hotspot(id: string | null): void;
   share(): Promise<boolean>;
+  /** draws the checked trip as a picture and shares or saves it; absent, there is no "Share card" */
+  card?(): Promise<CardOutcome>;
 }
 
 const END_TEXT: Record<End, { name: string; ph: string }> = {
@@ -41,6 +44,9 @@ const fmtDate = (d: string) => {
   const t = Date.parse(d);
   return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : d;
 };
+const CARD = 'Share card';
+/** what the "Share card" button says after a try */
+const CARD_DONE: Record<CardOutcome, string> = { shared: 'Card shared', saved: 'Card downloaded', cancelled: CARD, retry: 'Card ready: tap to share', failed: 'Could not make the card' };
 
 export class CommutePanel {
   readonly root: HTMLElement;
@@ -51,6 +57,7 @@ export class CommutePanel {
   private open: End | null = null;
   private active = -1;
   private hits: PlaceHit[] = [];
+  private cardTimer = 0;
 
   constructor(container: HTMLElement, state: CommuteState, h: PanelHandlers) {
     this.s = state;
@@ -94,7 +101,10 @@ export class CommutePanel {
         </div>
         <div class="cm-city" hidden><h3 class="cm-h" id="cm-city-h"></h3><ul class="cm-watch" aria-labelledby="cm-city-h"></ul></div>
         <p class="cm-fine">Advisory only. Levels are estimated from the rain forecast, low ground and past flood reports, not measured on the road. Check traffic updates before you set out.</p>
-        <button type="button" class="btn-link cm-share" hidden>Copy link to this commute</button>
+        <div class="cm-actions">
+          <button type="button" class="btn-link cm-share" hidden>Copy link to this commute</button>
+          <button type="button" class="btn-link cm-card" hidden>${CARD}</button>
+        </div>
       </div>`;
     this.root = container.querySelector('.cm') as HTMLElement;
     this.wire();
@@ -164,6 +174,8 @@ export class CommutePanel {
           setTimeout(() => (b.textContent = 'Copy link to this commute'), 2500);
         });
       }
+      const card = t.closest<HTMLButtonElement>('.cm-card');
+      if (card) this.shareCard(card);
     });
     const dep = this.$<HTMLInputElement>('.cm-dep');
     dep.addEventListener('change', () => {
@@ -177,6 +189,19 @@ export class CommutePanel {
       const v = cleanHHMM(ret.value);
       // setting a time back home is the clearest way to ask for that trip: switch it on too
       if (v) this.update({ ret: v });
+    });
+  }
+
+  /** "Share card": busy while the picture is drawn, then says how it went for a moment ("tap to share" stays) */
+  private shareCard(b: HTMLButtonElement) {
+    if (!this.h.card || b.getAttribute('aria-busy') === 'true') return;
+    b.setAttribute('aria-busy', 'true');
+    b.textContent = 'Making the card…';
+    clearTimeout(this.cardTimer);
+    void this.h.card().then((r) => {
+      b.removeAttribute('aria-busy');
+      b.textContent = CARD_DONE[r];
+      if (r !== 'retry') this.cardTimer = window.setTimeout(() => (b.textContent = CARD), 2500);
     });
   }
 
@@ -340,6 +365,7 @@ export class CommutePanel {
   showRoutes(rs: RouteCandidate[] | null, risks: RouteRisk[], chosen: RouteCandidate['id'] | null, departure: number, hs: Map<string, CommuteHotspot>, advised?: RouteCandidate['id'], covered = true) {
     const res = this.$<HTMLElement>('.cm-result');
     res.hidden = !rs;
+    this.$<HTMLElement>('.cm-card').hidden = !rs || !this.h.card;
     if (!rs) return;
     const riskOf = (id: string) => risks.find((r) => r.route === id);
     const nameOf = (id: string) => hs.get(id)?.name ?? id;
