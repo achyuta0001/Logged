@@ -2194,6 +2194,19 @@ body.mode-phone .sb-head {
   touch-action: none;
   padding: 6px 16px 12px;
 }
+/* Explore | Commute: a full 44pt touch target on phones */
+body.mode-phone .sb-tabs {
+  padding: 3px;
+  border-radius: 12px;
+}
+body.mode-phone .sb-tabs a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  border-radius: 9px;
+  font-size: 16px;
+}
 body.mode-phone .sb-pin {
   font-size: 28px;
 }
