@@ -1,9 +1,9 @@
 // @ts-nocheck -- node:test types are not part of the browser tsconfig
-// Plain-language lines from the plan: the update banner and the reason under each route card.
+// Plain-language lines from the plan: the update banner, the reason under each route card and the share card's text.
 // Run: node --test src/ui/commute/__tests__/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fmtKm, fmtMin, routeReason, updateLine, windowText } from '../lines.ts';
+import { cardFile, cardSpots, cardWhen, checkedText, fmtKm, fmtMin, placeName, routeReason, updateLine, windowText } from '../lines.ts';
 
 const H = 3600e3;
 const IST = 5.5 * H;
@@ -82,4 +82,42 @@ test('routeReason: no forecast for the trip yet leaves the water out', () => {
   assert.equal(routeReason('B', routes(32, 32), risks, nameOf, false), 'About as fast');
   assert.equal(routeReason('A', routes(32), risks, nameOf, false), 'Only route found');
   assert.equal(routeReason('C', rs, risks, nameOf), '', 'an unknown route has no line');
+});
+
+test('placeName: the card names places, never coordinates', () => {
+  assert.equal(placeName('Near Indiranagar', 'Home'), 'Indiranagar');
+  assert.equal(placeName('My location · Koramangala', 'Home'), 'Koramangala');
+  assert.equal(placeName('Bellandur & ORR', 'Office'), 'Bellandur & ORR');
+  assert.equal(placeName('12.9719, 77.6412', 'Home'), 'Home', 'a picked point stays private');
+  assert.equal(placeName('', 'Office'), 'Office');
+});
+
+test('card dates: the IST day, written out, as the picture is read later', () => {
+  assert.equal(cardWhen(ist(2026, 10, 22, 8, 30)), 'Thursday 22 Oct · leaving 08:30');
+  assert.equal(cardWhen(ist(2026, 10, 23, 2, 0)), 'Friday 23 Oct · leaving 02:00', 'still the 22nd in UTC');
+  assert.equal(checkedText(ist(2026, 10, 21, 18, 5)), 'Checked 18:05, Wed 21 Oct');
+  assert.equal(cardFile(ist(2026, 10, 22, 8, 30)), 'commute-2026-10-22-0830.png');
+  assert.equal(cardFile(ist(2026, 10, 23, 2, 0)), 'commute-2026-10-23-0200.png');
+});
+
+test('cardSpots: the hotspots behind the advice first, then the rest on the best route', () => {
+  const dep = ist(2026, 10, 22, 8, 30);
+  const plan = {
+    departure: dep,
+    drivers: ['silk'],
+    routes: [risk('A', ['silk', 'likely'], ['hebbal', 'watch']), risk('B', ['ecity', 'watch'], ['kr', 'severe'])],
+  };
+  const w = { silk: [ist(2026, 10, 22, 9, 0), ist(2026, 10, 22, 9, 30)], kr: [ist(2026, 10, 22, 8, 30), ist(2026, 10, 22, 9, 0)], ecity: [ist(2026, 10, 22, 11, 0), ist(2026, 10, 22, 11, 0)] };
+  assert.deepEqual(cardSpots(plan, 'B', nameOf, (id) => w[id]), [
+    { name: 'Silk Board Junction', level: 'likely', when: '09:00–10:00' },
+    { name: 'KR Puram Bridge', level: 'severe', when: '08:30–09:30' },
+    // a watch spot gives when it is reached (B's first hit, 600 s after leaving), not its later window
+    { name: 'Electronic City Flyover', level: 'watch', when: 'around 08:40' },
+  ]);
+  assert.deepEqual(cardSpots(plan, 'B', nameOf, (id) => w[id], 1).map((s) => s.name), ['Silk Board Junction']);
+  assert.deepEqual(cardSpots(plan, 'A', nameOf, () => null).map((s) => [s.name, s.when]), [
+    ['Silk Board Junction', 'around 08:40'],
+    ['Hebbal Flyover', 'around 08:50'],
+  ], 'no window: when it is reached');
+  assert.deepEqual(cardSpots({ departure: dep, drivers: [], routes: [risk('A', ['silk', 'clear']), risk('B')] }, 'A', nameOf, () => null), [], 'nothing with water expected');
 });
