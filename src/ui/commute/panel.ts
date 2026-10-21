@@ -69,6 +69,8 @@ export class CommutePanel {
       </div>`;
     container.innerHTML = `
       <div class="cm">
+        <div class="cm-update" hidden><p class="cm-update-t"></p><button type="button" class="icon-btn cm-update-x" aria-label="Dismiss the update">${iconSvg('close', 12, 2)}</button></div>
+        <p class="sr-only cm-update-sr" role="status"></p>
         <div class="cm-why" hidden tabindex="-1" role="region" aria-label="Why this level"></div>
         <form class="cm-trip" aria-label="My commute">
           <div class="cm-ends">${field('home')}${field('office')}</div>
@@ -158,6 +160,7 @@ export class CommutePanel {
       const spot = t.closest<HTMLButtonElement>('[data-spot]');
       if (spot) return this.h.hotspot(spot.dataset.spot!);
       if (t.closest('.cm-why-close')) return this.h.hotspot(null);
+      if (t.closest('.cm-update-x')) return this.showUpdate(null);
       if (t.closest('.cm-share')) {
         const b = t.closest('.cm-share') as HTMLButtonElement;
         void this.h.share().then((ok) => {
@@ -285,6 +288,26 @@ export class CommutePanel {
     const m = this.$<HTMLElement>('.cm-msg');
     m.textContent = text;
     m.dataset.tone = tone;
+  }
+
+  /**
+   * The quiet banner at the top when a re-check changed the advice for the same trip (announced
+   * politely); null takes it away. Focus on its dismiss button moves to the chosen route.
+   */
+  showUpdate(text: string | null) {
+    const el = this.$<HTMLElement>('.cm-update');
+    const sr = this.$<HTMLElement>('.cm-update-sr');
+    if (!text) {
+      if (el.hidden) return;
+      const had = el.contains(document.activeElement);
+      el.hidden = true;
+      sr.textContent = '';
+      if (had) this.root.querySelector<HTMLElement>('.cm-route[aria-pressed="true"]')?.focus() ?? this.$<HTMLElement>('.cm-dep').focus();
+      return;
+    }
+    this.$<HTMLElement>('.cm-update-t').textContent = text;
+    el.hidden = false;
+    sr.textContent = text;
   }
 
   /**
