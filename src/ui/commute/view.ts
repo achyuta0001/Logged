@@ -287,10 +287,10 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     routes.set(rs, chosen, risk);
     drawPins();
     const advised = plan.advice.kind === 'use_route' ? plan.advice.route : undefined;
-    panel.showRoutes(rs, plan.routes, chosen, plan.departure, byId, advised);
     const a = plan.advice;
     const first = plan.routes[0];
     const covered = !first || first.hits.every((h) => levelAt(tripOut.get(h.id), plan!.departure + h.atS * 1000) !== null);
+    panel.showRoutes(rs, plan.routes, chosen, plan.departure, byId, advised, covered);
     sidebar.setRegion('Commute', `${legName(leg)} · ${dayWord(plan.departure, now)} ${fmtHHMM(plan.departure)}`, { title: 'My commute', tour: false });
     const head = headline(a, covered);
     sidebar.setStatus('none', `<b>${esc(head)}</b>`, a.text.includes('Advisory') ? a.text : `${a.text} Advisory only.`, 'Show the routes', covered ? ADVICE_COLOR[a.kind] : '#8e8e93');
