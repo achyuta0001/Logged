@@ -1,7 +1,8 @@
 // Bengaluru Urban overview: district outline, every pincode coloured by the precomputed
 // flood-susceptibility index (public/data/city/city.geojson, `npm run data:city`), a legend,
 // offline pincode search and click-to-open. Calm by default: one fill layer, one outline, no labels
-// until hover; the sidebar's "Pincodes" section holds the legend, search and the ranked list.
+// until hover; the sidebar's "Pincodes" section holds the legend, search and the ranked list, and
+// "Reported flood spots" lists the spots named in news reports (src/ui/spotList.ts).
 import type { MapLayerMouseEvent } from 'maplibre-gl';
 import type { PinEntry } from '../types';
 import type { Region, Shell } from '../main';
@@ -12,6 +13,8 @@ import { iconSvg } from '../ui/icons';
 import { searchPins } from './packs';
 import { NewsLayer, NEWS_COLOR } from '../map/newsLayer';
 import { reportsByArea } from '../commute/near';
+import type { NewsSpot } from '../commute/spots';
+import { SpotList } from '../ui/spotList';
 
 export interface CityData {
   district: GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
@@ -64,6 +67,7 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
   sidebar.setScope('city');
   sidebar.setRegion('Bengaluru', `Bengaluru Urban · ${city.pins.features.length} pincodes`, { title: 'Bengaluru Urban district', tour: false });
   sidebar.setStatus('none', '<b>Pick a pincode</b> to model its flooding', `${built.length} with a 3D flood model · colours rank flood susceptibility`, undefined, ACCENT);
+  const spotList = new SpotList(sidebar); // "Reported flood spots": hidden until its spots load
   shell.timelineEl.hidden = true;
   document.title = 'Bengaluru Urban Flood Explorer';
 
@@ -126,11 +130,14 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
     sel = id;
     if (id >= 0) map.setFeatureState({ source: 'pins', id }, { sel: true });
   };
-  // flood reports in the news: a secondary number per pincode in the hover card, and an optional layer
+  // flood reports in the news: a secondary number per pincode in the hover card, an optional layer,
+  // and every spot in the "Reported flood spots" list
   let newsBy = new Map<string, { spots: number; reports: number }>();
   const news = new NewsLayer(map, 'city-news');
   void news.ready.then((spots) => {
-    if (!disposed) newsBy = reportsByArea(city.pins.features.map((f) => ({ key: f.properties.code, geometry: f.geometry })), spots);
+    if (disposed) return;
+    newsBy = reportsByArea(city.pins.features.map((f) => ({ key: f.properties.code, geometry: f.geometry })), spots);
+    spotList.set(spots, showSpot);
   });
   const tipHtml = (code: string) => {
     const p = byCode.get(code);
@@ -284,6 +291,18 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
         if (cam) map.flyTo({ ...cam, padding: layout.padding(), pitch: 45, duration: reduceMotion() ? 0 : 1600, essential: true });
       }
     }
+  }
+
+  /** a spot picked in the list: news layer on (its switch too), the spot's card open, the map flown there */
+  function showSpot(s: NewsSpot) {
+    const sw = root.querySelector('.city-news') as HTMLInputElement;
+    if (!sw.checked) {
+      sw.checked = true;
+      news.setVisible(true);
+    }
+    news.open(s, false);
+    sidebar.getOutOfTheWay();
+    map.flyTo({ center: s.coord, zoom: 15, pitch: 45, padding: layout.padding(), duration: reduceMotion() ? 0 : 1600, essential: true });
   }
 
   // sources
