@@ -1,8 +1,8 @@
 // Pack JSON over HTTP. Format-2 packs store their big JSON gzip-compressed as `<file>.gz`
 // (scripts/lib/pack-files.mjs): GitHub Pages serves a .gz as it is, with no Content-Encoding, and the
 // site (app + 117 packs) has to stay under Pages' 1 GB limit. The browser inflates it with its own
-// DecompressionStream. The plain file stays the fallback: the 560098 reference pack (format 1), packs
-// built before the .gz layout and the dev server's sample packs keep loading.
+// DecompressionStream. The plain file stays the fallback: packs built before the .gz layout and the
+// dev server's sample packs keep loading.
 
 /** pack files a format-2 pack stores as `<name>.gz` (scripts/lib/pack-files.mjs writes them) */
 export const GZ_FILES: readonly string[] = ['osm.geojson', 'depressions.json'];
