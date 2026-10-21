@@ -187,6 +187,31 @@ body.mode-phone .sb-tabs {
   color: var(--label-2);
 }
 
+/* ---------- update banner (a re-check changed the advice) ---------- */
+.cm-update {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 8px 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.cm-update[hidden] {
+  display: none;
+}
+.cm-update-t {
+  flex: 1;
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--label-1);
+}
+.cm-update .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+
 /* ---------- departure / return ---------- */
 .cm-row {
   display: flex;
