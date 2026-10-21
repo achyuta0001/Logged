@@ -3,7 +3,7 @@
 // reports N times, 2017–2024" and up to three linked sources. Used in a pincode (Map layers,
 // off by default), in the city overview, and for the spots on a commute route (always shown there).
 // The sidebar's "Reported flood spots" list (src/ui/spotList.ts) opens the same card from the keyboard.
-import maplibregl, { type GeoJSONSource, type Map as MLMap, type MapLayerMouseEvent } from 'maplibre-gl';
+import maplibregl, { type GeoJSONSource, type Map as MLMap, type MapLayerMouseEvent, type PointLike } from 'maplibre-gl';
 import type { NewsSpot } from '../commute/spots';
 import type { Verdict } from '../commute/verdict';
 import { loadNewsSpots } from '../commute/data';
@@ -83,6 +83,12 @@ class SpotLayer {
   open(s: NewsSpot, focus = true) {
     this.popup?.remove();
     this.popup = new maplibregl.Popup({ offset: 12, maxWidth: '320px', className: 'glass-popup', focusAfterOpen: focus }).setLngLat(s.coord).setHTML(this.html(s)).addTo(this.map);
+  }
+
+  /** Whether a circle is drawn at this screen point: a tap there opens its card, so layers beneath let it go */
+  hit(point: PointLike): boolean {
+    const dot = `${this.id}-dot`;
+    return !!this.map.getLayer(dot) && this.map.queryRenderedFeatures(point, { layers: [dot] }).length > 0;
   }
 
   protected data(): GeoJSON.FeatureCollection {
