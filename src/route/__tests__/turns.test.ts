@@ -20,6 +20,8 @@ import { Router } from '../router.ts';
 //   apart) joined to the grid at both ends by Link Road, with two median gaps: Gap One at N1 / S1
 //   (two ways meeting mid-median at M1) and Gap Two at N2 / S2; Gap Lane, a dead end, leaves S1
 //   Long Road, a loop west of the grid in two ways with the same tags meeting at P, used by nothing else
+//   Closed Lane, a dead end north from the west end of North Street, sealed off: every way in is a
+//   restricted turn (OSM has a few such)
 const X = (i) => +(77.6 + 0.002 * i).toFixed(6);
 const Y = (j) => +(12.97 + 0.002 * j).toFixed(6);
 const nodes = new Map();
@@ -57,6 +59,7 @@ const P = [-1.5, 1];
 way(601, { name: 'Long Road' }, [0, 0], [-1, 0], P);
 way(602, { name: 'Long Road' }, P, [-1, 2], [0, 2]);
 way(701, { name: 'Gated Lane', access: 'private' }, [1, 1], [1.5, 1.5]);
+way(801, { name: 'Closed Lane' }, [0, 2], [0, 2.5]);
 
 const rel = (id, tags, ...members) => rels.push({ id, tags: { type: 'restriction', ...tags }, members });
 const w = (ref, role) => ({ type: 'w', ref, role });
@@ -78,6 +81,10 @@ rel(9013, { restriction: 'no_left_turn' }, w(212, 'from'), via([2, 2]), w(400, '
 // turn onto Lane 3, and after its last two not straight on to Link Road
 rel(9014, { restriction: 'no_left_turn' }, w(100, 'from'), w(101, 'via'), w(102, 'via'), w(203, 'to'));
 rel(9015, { restriction: 'no_straight_on' }, w(101, 'from'), w(102, 'via'), w(540, 'to'));
+// Closed Lane: no way in from North Street, Lane 0 or Long Road
+rel(9016, { restriction: 'no_right_turn' }, w(400, 'from'), via([0, 2]), w(801, 'to'));
+rel(9017, { restriction: 'no_straight_on' }, w(210, 'from'), via([0, 2]), w(801, 'to'));
+rel(9018, { restriction: 'no_left_turn' }, w(602, 'from'), via([0, 2]), w(801, 'to'));
 
 const esc = (s) => s.replace(/ /g, '%20%');
 const tagsOpl = (tags) => Object.entries(tags).map(([k, v]) => `${esc(k)}=${esc(v)}`).join(',');
@@ -216,16 +223,16 @@ test('parseOpl reads restriction relations; restrictionOf keeps what applies to 
 
 test('build: restrictions become arc sequences; not for cars, broken, ambiguous and moot ones are dropped', () => {
   const st = built.stats;
-  assert.equal(st.turnsRead, 15);
-  assert.equal(st.turns, 9);
+  assert.equal(st.turnsRead, 18);
+  assert.equal(st.turns, 12);
   assert.equal(st.turnsViaWay, 4);
   assert.deepEqual(st.turnsSkipped, { 'not-car': 2, invalid: 1, 'no-arc': 1, ambiguous: 1, missing: 1 });
   // via a node 2 arcs, via one way 3, via two ways 4; two only_* (straight on, U-turn)
   const lens = [];
   for (let r = 0; r < raw.turnOnly.length; r++) lens.push(raw.turnOff[r + 1] - raw.turnOff[r]);
-  assert.deepEqual(lens.sort(), [2, 2, 2, 2, 2, 3, 3, 4, 4]);
+  assert.deepEqual(lens.sort(), [2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 4, 4]);
   assert.equal(raw.turnOnly.reduce((a, b) => a + b, 0), 2);
-  assert.equal(router.turns.count, 9);
+  assert.equal(router.turns.count, 12);
   assert.equal(router.turns.extraArc.length, 6, 'an extra state per proper prefix of the via-way restrictions');
   assert.equal(router.states, A + 6);
   // the via node P and Gap One's middle (the end of a via way) are kept as junctions, though only two
@@ -367,13 +374,44 @@ test('route: a restriction with except=motorcar, or for lorries only, does not b
   assert.deepEqual(wayIds(q), [101, 202]);
 });
 
+test('route: Closed Lane is still reached, through a restricted turn, as no legal way leads in', () => {
+  const from = [X(1.5), Y(1)], to = [X(0), Y(2.25)];
+  const s = router.snap(from), t = router.snap(to);
+  assert.equal(router.searchArcs(s, t, null, null, 0), null);
+  const p = router.search(s, t, null, null, 0);
+  assert.ok(p && !p.legal && Math.abs(p.cost - router.searchNodes(s, t, null, null, 0).cost) < 1e-6);
+  // with alternatives, only the first round looks for a legal way
+  const r = new Router(raw);
+  let edgeBased = 0;
+  const searchArcs = r.searchArcs.bind(r);
+  r.searchArcs = (...a) => (edgeBased++, searchArcs(...a));
+  const rs = r.route(from, to);
+  assert.ok(rs.length >= 1 && wayIds(rs[0]).at(-1) === 801);
+  assert.ok(r.lastStats.searches > 1 && edgeBased === 1, `${r.lastStats.searches} searches, ${edgeBased} edge-based`);
+  // the way out is legal
+  const out = router.search(t, s, null, null, 0);
+  assert.ok(out.legal && router.legal(out.arcs));
+});
+
 test('search: A*, Dijkstra and the edge-based search match a brute force over every pair of points', () => {
-  let pairs = 0, bitten = 0;
+  let pairs = 0, bitten = 0, sealed = 0;
   for (const s of PTS) {
     const best = oracle(s);
     for (const t of PTS) {
       if (s === t) continue;
       const want = best(t);
+      if (want === Infinity) {
+        // no legal way (into Closed Lane): the edge-based search finds none, so search() takes the
+        // path over nodes and says it is not legal
+        const free = router.searchNodes(s, t, null, null, 0);
+        assert.equal(router.searchArcs(s, t, null, null, 0), null);
+        assert.equal(dijkstra.searchArcs(s, t, null, null, 0), null);
+        for (const r of [router.search(s, t, null, null, 0), dijkstra.search(s, t, null, null, 0)])
+          assert.ok(r && !r.legal && !router.legal(r.arcs) && Math.abs(r.cost - free.cost) < 1e-6, `${pairs}: no legal way`);
+        sealed++;
+        pairs++;
+        continue;
+      }
       const runs = [
         ['A*', router.search(s, t, null, null, 0)],
         ['Dijkstra', dijkstra.search(s, t, null, null, 0)],
@@ -381,8 +419,7 @@ test('search: A*, Dijkstra and the edge-based search match a brute force over ev
         ['edge-based Dijkstra', dijkstra.searchArcs(s, t, null, null, 0)],
       ];
       for (const [name, r] of runs) {
-        assert.equal(r === null, want === Infinity, `${name} ${pairs}: found ${!!r}, brute force ${want}`);
-        if (!r) continue;
+        assert.ok(r && r.legal, `${name} ${pairs}: found ${r && (r.legal ? 'a path' : 'no legal path')}, brute force ${want}`);
         assert.ok(Math.abs(r.cost - want) < 1e-6, `${name} ${pairs}: ${r.cost} vs ${want}`);
         assert.ok(drivable(r.arcs) && router.legal(r.arcs), `${name} ${pairs}: path drivable`);
         assert.ok(Math.abs(costOf(s, t, r.arcs) - r.cost) < 1e-6, `${name} ${pairs}: arcs add up to the cost`);
@@ -396,6 +433,7 @@ test('search: A*, Dijkstra and the edge-based search match a brute force over ev
   }
   assert.ok(pairs > 800, `${pairs} pairs`);
   assert.ok(bitten > 80, `restrictions change ${bitten} of ${pairs} trips`);
+  assert.ok(sealed > 0, 'some trips end in Closed Lane');
 });
 
 test('searchArcs: from the first edge of each restriction to its last, no restricted turn (regression)', () => {
@@ -411,8 +449,10 @@ test('searchArcs: from the first edge of each restriction to its last, no restri
   for (const p of pats) {
     const s = midOf(router.outEdge[p.arcs[0]]), t = midOf(router.outEdge[p.arcs[p.arcs.length - 1]]);
     if (!router.legal(router.searchNodes(s, t, null, null, 0).arcs)) met++;
+    // no legal way at all into Closed Lane: none found
+    const open = oracle(s)(t) < Infinity;
     for (const r of [router.searchArcs(s, t, null, null, 0), dijkstra.searchArcs(s, t, null, null, 0)])
-      assert.ok(r && router.legal(r.arcs) && drivable(r.arcs), `${p.only ? 'only' : 'no'} ${p.arcs.join(' ')}`);
+      assert.ok(open ? r && router.legal(r.arcs) && drivable(r.arcs) : r === null, `${p.only ? 'only' : 'no'} ${p.arcs.join(' ')}`);
   }
   assert.ok(met >= 4, `the shortest way meets the restriction on ${met} of ${pats.length} trips`);
 });
@@ -428,8 +468,8 @@ test('search: with the weights of alternatives and avoided edges too', () => {
       for (const t of PTS) {
         if (s === t) continue;
         const want = best(t), r = router.search(s, t, mult, avoid, 600);
-        assert.equal(r === null, want === Infinity);
-        if (r) {
+        assert.ok(r && r.legal === (want < Infinity));
+        if (r.legal) {
           assert.ok(Math.abs(r.cost - want) < 1e-6, `${r.cost} vs ${want}`);
           assert.ok(drivable(r.arcs));
         }
