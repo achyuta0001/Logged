@@ -8,6 +8,7 @@ import { fmtHHMM } from '../../commute/verdict';
 import { esc } from '../format';
 import { iconSvg } from '../icons';
 import { LEVEL_COLOR, LEVEL_SHORT, LEVEL_TEXT, TYPE_LABEL, explainRows, pill, rank } from './levels';
+import { fmtKm, fmtMin, routeReason } from './lines';
 import { EVENING, cleanDays, cleanHHMM, type CommuteState, type Leg } from './state';
 
 export type End = 'home' | 'office';
@@ -36,11 +37,6 @@ const END_TEXT: Record<End, { name: string; ph: string }> = {
 };
 /** the week, Monday first: [ISO digit, letter, name] */
 const DAYS: [string, string, string][] = [['1', 'M', 'Monday'], ['2', 'T', 'Tuesday'], ['3', 'W', 'Wednesday'], ['4', 'T', 'Thursday'], ['5', 'F', 'Friday'], ['6', 'S', 'Saturday'], ['7', 'S', 'Sunday']];
-const fmtMin = (s: number) => {
-  const m = Math.max(1, Math.round(s / 60));
-  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`;
-};
-const fmtKm = (m: number) => `${(m / 1000).toFixed(m < 10000 ? 1 : 0)} km`;
 const fmtDate = (d: string) => {
   const t = Date.parse(d);
   return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : d;
@@ -337,20 +333,25 @@ export class CommutePanel {
       .join('');
   }
 
-  /** routes A/B/C and the hotspots met on the chosen one; null hides the result */
-  showRoutes(rs: RouteCandidate[] | null, risks: RouteRisk[], chosen: RouteCandidate['id'] | null, departure: number, hs: Map<string, CommuteHotspot>, advised?: RouteCandidate['id']) {
+  /**
+   * Routes A/B/C, each with a line on how it differs from the fastest, and the hotspots met on the
+   * chosen one; null hides the result. `covered` false: no rain forecast for the trip yet.
+   */
+  showRoutes(rs: RouteCandidate[] | null, risks: RouteRisk[], chosen: RouteCandidate['id'] | null, departure: number, hs: Map<string, CommuteHotspot>, advised?: RouteCandidate['id'], covered = true) {
     const res = this.$<HTMLElement>('.cm-result');
     res.hidden = !rs;
     if (!rs) return;
     const riskOf = (id: string) => risks.find((r) => r.route === id);
+    const nameOf = (id: string) => hs.get(id)?.name ?? id;
     this.$<HTMLElement>('.cm-routes').innerHTML = rs
       .map((r) => {
         const rk = riskOf(r.id);
         const l: RiskLevel = rk?.level ?? 'clear';
         const n = rk?.hits.filter((x) => rank(x.level) > 0).length ?? 0;
+        const why = routeReason(r.id, rs, risks, nameOf, covered);
         return `<li><button type="button" class="cm-route" data-route="${r.id}" aria-pressed="${r.id === chosen}">
           <span class="cm-rid" aria-hidden="true">${r.id}</span>
-          <span class="cm-rmain"><span class="cm-rtop"><b>${fmtMin(r.durationS)}</b><span>${fmtKm(r.lengthM)}</span>${r.id === advised ? '<span class="cm-tag">Suggested</span>' : ''}</span><span class="cm-via">${esc(r.via)}</span></span>
+          <span class="cm-rmain"><span class="cm-rtop"><b>${fmtMin(r.durationS)}</b><span>${fmtKm(r.lengthM)}</span>${r.id === advised ? '<span class="cm-tag">Suggested</span>' : ''}</span><span class="cm-via">${esc(r.via)}</span>${why ? `<span class="cm-reason">${esc(why)}</span>` : ''}</span>
           ${pill(l)}<span class="sr-only">${n ? `, ${n} hotspot${n === 1 ? '' : 's'} with water expected` : ''}</span>
         </button></li>`;
       })
