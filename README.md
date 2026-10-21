@@ -17,7 +17,7 @@ Inspired by the Claude wildfire analysis prototype. Everything here runs on free
 - **The map:** the district outline (OSM relation `2020589`) and the **117 pincodes** that lie at least half inside it, coloured by susceptibility. A dashed outline marks a pincode whose 3D flood model has been built. Hover a pincode for its numbers, and click one to open it.
 - **Search:** the "Pincodes" section of the sidebar finds a pincode by number (`560103`, `5601`) or by area name (`Bellandur`, `HSR`, `Electronic City`). Search is offline, over the pincode index, and calls no geocoder. A ranked list gives the same information as a table.
 - **Links:** `?pin=<code>` opens a pincode directly, and the back button returns to the overview. Every other URL parameter below still works.
-- **Fallback:** if the overview data is missing, the app opens 560098 as before.
+- **Fallback:** if the overview data is missing, the app opens 560098.
 
 ### Susceptibility index
 
@@ -108,7 +108,7 @@ Reported flood spots for the whole district live in `public/data/hotspots-city.j
 The repository commits the pipeline, the index and the city overview, plus the 560098 pack and a few small sample packs. Every other pack is built by `npm run data:all` into `public/data/pins/<code>/`, which is git-ignored.
 
 To publish them:
-- **Release asset or any static host:** upload `public/data/pins/`. Then open the app with `?packs=https://host/path/pins`, or build it with `VITE_PACKS_URL=https://host/path/pins`. The hosted folder needs its own `index.json` (written by `data:all`).
+- **Release asset or any static host:** upload `public/data/pins/`. Then open the app with `?packs=https://host/path/pins`, or build it with `VITE_PACKS_URL=https://host/path/pins`. `?packs=` only accepts this site's own origin or an allowed https host (`PACK_HOSTS` in `src/region/packs.ts`, plus `VITE_PACK_HOSTS=host1,host2` at build time); any other link falls back to the bundled packs, so nobody can show made-up flood data under this site's address. The hosted folder needs its own `index.json` (written by `data:all`).
 - **GitHub Actions:** `.github/workflows/packs.yml` (manual `workflow_dispatch` only) builds everything and uploads `public/data/pins` and `public/data/city` as an artifact.
 - **GitHub Pages:** `.github/workflows/pages.yml` publishes the app and every pack on each push to `main`, and again at 02:17 UTC on the 1st of every month (cron `17 2 1 * *`, `main` only), so the OSM-derived packs and road graph are rebuilt from fresh data monthly.
 
