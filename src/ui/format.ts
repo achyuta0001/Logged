@@ -24,6 +24,15 @@ export function fmtArea(m2: number): string {
 export function esc(s: string): string {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 }
+/** An http(s) URL as an escaped href value; null for any other scheme (javascript:, data:) or a malformed URL. */
+export function safeHref(u: string | undefined): string | null {
+  try {
+    const url = new URL(String(u));
+    return url.protocol === 'https:' || url.protocol === 'http:' ? esc(url.href) : null;
+  } catch {
+    return null;
+  }
+}
 export function relHours(h: number, now: number | undefined): string {
   if (now === undefined) return `hour ${h}`;
   const d = h - now;
