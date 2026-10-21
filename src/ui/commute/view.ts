@@ -7,7 +7,7 @@ import type { MapMouseEvent } from 'maplibre-gl';
 import type { Region, Shell } from '../../main';
 import type { CityData } from '../../region/city';
 import type { LngLat } from '../../commute/spots';
-import type { Advice, CommuteHotspot, CommutePlan, HotspotOutlook, RiskLevel, RouteCandidate } from '../../commute/types';
+import type { CommuteHotspot, CommutePlan, HotspotOutlook, RiskLevel, RouteCandidate } from '../../commute/types';
 import { BLR_BBOX } from '../../commute/spots';
 import { pointInGeometry } from '../../commute/near';
 import { fmtHHMM } from '../../commute/verdict';
@@ -16,7 +16,8 @@ import { createMap, beforeLabels } from '../../map/mapView';
 import { WEATHER_ATTRIBUTION, WEATHER_ATTRIBUTION_URL } from '../../weather';
 import { esc } from '../format';
 import { backend, floorBucket, levelAt, BUCKET_MS } from './adapters';
-import { updateLine } from './lines';
+import { drawCard, shareCard, type CardInfo } from './card';
+import { cardFile, cardSpots, cardWhen, checkedText, fmtKm, fmtMin, placeName, routeReason, updateLine } from './lines';
 import { rank, worstLevel } from './levels';
 import { Ends, HotspotPins, RouteLines } from './mapLayers';
 import { CommutePanel, type End, type PlaceHit } from './panel';
@@ -142,6 +143,23 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
         return false;
       }
     },
+    async card() {
+      // the plan on screen when tapped; its card is drawn once, so another tap shares it at once
+      const p = plan, l = leg;
+      if (!p || !l) return 'failed';
+      try {
+        let c = lastCard?.plan === p ? lastCard : null;
+        const fresh = !c;
+        if (!c) {
+          const info = cardInfo(p, l);
+          c = lastCard = { plan: p, info, png: await drawCard(info) };
+        }
+        return await shareCard(c.png, c.info, fresh);
+      } catch (err) {
+        console.error('[commute] card', err);
+        return 'failed';
+      }
+    },
   });
   const onMapClick = (ev: MapMouseEvent) => {
     if (!picking) return;
@@ -208,7 +226,13 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
   let seq = 0;
   /** the trip and headline of the last check: an automatic re-check of the same trip that changes it shows the update banner */
   let seen: { key: string; head: string } | null = null;
+  /** the share card last drawn, with the plan it shows */
+  let lastCard: { plan: CommutePlan; info: CardInfo; png: Blob } | null = null;
   const nameOf = (id: string) => byId.get(id)?.name ?? id;
+  /** the route the advice is about: the one to take, else A (the one the panel starts on) */
+  const bestRoute = (p: CommutePlan) => (p.advice.kind === 'use_route' ? p.advice.route : (rs[0]?.id ?? null));
+  /** whether the forecast reaches every hotspot on route A when it is reached (no forecast is never "no waterlogging") */
+  const covers = (p: CommutePlan) => p.routes[0]?.hits.every((h) => levelAt(tripOut.get(h.id), p.departure + h.atS * 1000) !== null) ?? true;
   const legName = (l: Leg) => `${l.from.label.replace(/^(Near|My location ·) /, '')} → ${l.to.label.replace(/^(Near|My location ·) /, '')}`;
 
   function setIdleStatus() {
@@ -253,7 +277,7 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
       rs = found;
       tripOut = new Map(os.map((o) => [o.id, o]));
       plan = backend.plan(rs, hs, os, leg.departure, now);
-      chosen = plan.advice.kind === 'use_route' ? plan.advice.route : (rs[0]?.id ?? null);
+      chosen = bestRoute(plan);
       // best time to leave: every 15 min within 2 h either side, the least risky route at each
       const strip: { hhmm: string; level: RiskLevel }[] = [];
       for (let m = -120; m <= 120; m += 15) {
@@ -288,33 +312,60 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     drawPins();
     const advised = plan.advice.kind === 'use_route' ? plan.advice.route : undefined;
     const a = plan.advice;
-    const first = plan.routes[0];
-    const covered = !first || first.hits.every((h) => levelAt(tripOut.get(h.id), plan!.departure + h.atS * 1000) !== null);
+    const covered = covers(plan);
     panel.showRoutes(rs, plan.routes, chosen, plan.departure, byId, advised, covered);
     sidebar.setRegion('Commute', `${legName(leg)} · ${dayWord(plan.departure, now)} ${fmtHHMM(plan.departure)}`, { title: 'My commute', tour: false });
-    const head = headline(a, covered);
+    const head = headline(plan, covered);
     sidebar.setStatus('none', `<b>${esc(head)}</b>`, a.text.includes('Advisory') ? a.text : `${a.text} Advisory only.`, 'Show the routes', covered ? ADVICE_COLOR[a.kind] : '#8e8e93');
     if (fit) frameTrip();
     return head;
   }
 
-  /** the one big line: short, from the advice kind; the planner's sentence goes underneath */
-  function headline(a: Advice, covered: boolean): string {
+  /** the one big line: short, from the advice kind; the planner's sentence goes underneath. `bare`: no roads after "Use route B" (the share card shows them below) */
+  function headline(p: CommutePlan, covered: boolean, bare = false): string {
+    const a = p.advice;
     switch (a.kind) {
       case 'go':
         if (!covered) return 'No forecast for that time yet';
-        return plan?.routes[0]?.hits.some((h) => h.level === 'watch') ? 'Go, but watch for water' : 'Go — no waterlogging expected';
+        return p.routes[0]?.hits.some((h) => h.level === 'watch') ? 'Go, but watch for water' : 'Go — no waterlogging expected';
       case 'leave_by':
         return `Leave by ${fmtHHMM(a.at)}`;
       case 'leave_after':
         return `Leave after ${fmtHHMM(a.at)}`;
       case 'use_route': {
-        const via = rs.find((r) => r.id === a.route)?.via;
+        const via = bare ? '' : rs.find((r) => r.id === a.route)?.via;
         return `Use route ${a.route}${via ? ` (${via})` : ''}`;
       }
       case 'wfh':
         return 'Consider working from home';
     }
+  }
+
+  /** the share card for a plan: the trip, the headline, the best route and why, the hotspots behind the advice */
+  function cardInfo(p: CommutePlan, l: Leg): CardInfo {
+    const covered = covers(p);
+    const best = bestRoute(p);
+    const r = rs.find((x) => x.id === best);
+    const [from, to] = l.id === 'out' ? ['Home', 'Office'] : ['Office', 'Home'];
+    return {
+      trip: [placeName(l.from.label, from), placeName(l.to.label, to)],
+      when: cardWhen(p.departure),
+      headline: headline(p, covered, true),
+      tone: covered ? ADVICE_COLOR[p.advice.kind] : '#8e8e93',
+      route: r
+        ? {
+            id: r.id,
+            time: `${fmtMin(r.durationS)} · ${fmtKm(r.lengthM)}`,
+            via: r.via,
+            level: covered ? (p.routes.find((x) => x.route === r.id)?.level ?? 'clear') : null,
+            reason: routeReason(r.id, rs, p.routes, nameOf, covered),
+          }
+        : null,
+      spots: covered ? cardSpots(p, best, nameOf, (id) => tripOut.get(id)?.window) : [],
+      none: covered ? 'No waterlogging expected at the hotspots on the way' : 'No rain forecast covers this time yet',
+      checked: checkedText(Date.now()),
+      file: cardFile(p.departure),
+    };
   }
 
   function chooseRoute(id: RouteCandidate['id']) {
