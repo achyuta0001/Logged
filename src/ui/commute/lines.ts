@@ -1,9 +1,9 @@
 // Short plain-language lines from the plan (src/commute/plan.ts) for the Commute tab: the update
-// banner when a re-check changes the advice for the same trip, and the reason under each route card.
-// Pure, no DOM (node tests run it).
-import type { CommutePlan, RouteCandidate, RouteRisk } from '../../commute/types.ts';
+// banner when a re-check changes the advice for the same trip, the reason under each route card, and
+// the text of the share card (src/ui/commute/card.ts draws it). Pure, no DOM (node tests run it).
+import type { CommutePlan, RiskLevel, RouteCandidate, RouteRisk } from '../../commute/types.ts';
 import { BUCKET_MS } from '../../commute/config.ts';
-import { fmtHHMM } from '../../commute/verdict.ts';
+import { fmtHHMM, istParts } from '../../commute/verdict.ts';
 import { rank } from './levels.ts';
 
 /** a likely-or-worse window (first and last half-hour bucket, ms) as "09:00–10:00" IST */
@@ -80,4 +80,67 @@ export function routeReason(
   const own = rank(rk?.level ?? 'clear');
   if (missed.length && own < rank('likely') && own < rank(fk?.level ?? 'clear')) return `Avoids ${andMore(missed.map((h) => h.id), nameOf)} · ${cost}`;
   return `${cap(meets(rk, nameOf))} · ${cost}`;
+}
+
+// ---------------------------------------------------------------- share card
+
+const WEEKDAY = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/** the IST calendar day of a time: "Wednesday 22 Oct" (short: "Wed 22 Oct"), the same in every browser */
+const dayText = (t: number, short = false) => {
+  const d = new Date(t + 5.5 * 3600e3);
+  const wd = WEEKDAY[istParts(t).day];
+  return `${short ? wd.slice(0, 3) : wd} ${d.getUTCDate()} ${MONTH[d.getUTCMonth()]}`;
+};
+
+/** an end of the trip as the card names it: no "Near " or "My location · ", and never raw coordinates (where someone lives stays off a shared picture) */
+export function placeName(label: string, fallback: string): string {
+  const t = label.replace(/^(Near|My location ·) /, '').trim();
+  return !t || /^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(t) ? fallback : t;
+}
+
+/** the card's date line, "Wednesday 22 Oct · leaving 08:30": a date, not "tomorrow", as the picture is read later */
+export const cardWhen = (departure: number): string => `${dayText(departure)} · leaving ${fmtHHMM(departure)}`;
+
+/** when the prediction on the card was made, "Checked 18:05, Tue 21 Oct" */
+export const checkedText = (now: number): string => `Checked ${fmtHHMM(now)}, ${dayText(now, true)}`;
+
+/** the card's file name, "commute-2026-10-22-0830.png" (IST) */
+export function cardFile(departure: number): string {
+  const d = new Date(departure + 5.5 * 3600e3);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `commute-${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}-${fmtHHMM(departure).replace(':', '')}.png`;
+}
+
+export interface CardSpot {
+  name: string;
+  /** level when the commuter reaches it */
+  level: RiskLevel;
+  /** the likely-or-worse window "09:00–10:00", or for a watch spot when it is reached, "around 09:10" */
+  when: string;
+}
+
+/**
+ * The hotspots the share card names, at most `max`: the ones behind the advice first, then any other
+ * with water expected on the best route (worst first). Each is taken where it is met: on the best
+ * route when it lies there, else on the first route that passes it.
+ */
+export function cardSpots(
+  plan: Pick<CommutePlan, 'departure' | 'routes' | 'drivers'>,
+  best: RouteCandidate['id'] | null,
+  nameOf: (id: string) => string,
+  windowOf: (id: string) => [number, number] | null | undefined,
+  max = 3,
+): CardSpot[] {
+  const on = plan.routes.find((r) => r.route === best);
+  const hitOf = (id: string) => on?.hits.find((h) => h.id === id) ?? plan.routes.flatMap((r) => r.hits).find((h) => h.id === id);
+  const out: CardSpot[] = [];
+  for (const id of new Set([...plan.drivers, ...wet(on).map((h) => h.id)])) {
+    const h = hitOf(id);
+    if (!h || rank(h.level) === 0) continue;
+    const w = rank(h.level) >= rank('likely') ? windowOf(id) : null;
+    out.push({ name: nameOf(id), level: h.level, when: w ? windowText(w) : `around ${fmtHHMM(plan.departure + h.atS * 1000)}` });
+    if (out.length === max) break;
+  }
+  return out;
 }
