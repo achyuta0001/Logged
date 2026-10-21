@@ -10,7 +10,9 @@
 // via a node or via ways) are obeyed. A search over nodes runs first; its path never turns back on
 // itself, so when it makes no restricted turn (most trips) it is the answer. Otherwise an edge-based
 // search (a state is the arc a car arrived by; ./turns.ts) finds the fastest legal path. Both rules
-// only take paths away, so the landmark bounds, built without them, stay lower bounds.
+// only take paths away, so the landmark bounds, built without them, stay lower bounds. Where the
+// restrictions leave no way at all (OSM seals off a few road ends with them), the route ignores them
+// rather than fail.
 // Points snap onto the nearest edge (flyover decks and motorways are only taken when nothing else is
 // near), and a route starts and ends mid-edge, honouring one-way streets on those edges too.
 // Alternatives: the penalty method. Each round multiplies the weight of the edges on the routes found
@@ -94,6 +96,8 @@ interface Path {
   arcs: number[];
   cost: number;
   settled: number;
+  /** false when the turn restrictions leave no way at all and this path ignores them */
+  legal: boolean;
 }
 
 class Heap {
@@ -185,6 +189,8 @@ export class Router {
   private readonly parN: Int32Array;
   private readonly stampN: Uint32Array;
   private labels: { dist: Float64Array; par: Int32Array; stamp: Uint32Array } | null = null;
+  /** states the last edge-based search settled (for the stats when it finds no path) */
+  private arcsSettled = 0;
   private gen = 0;
   private readonly heap = new Heap();
   private wayEdges: Map<number, number[]> | null = null;
@@ -374,14 +380,21 @@ export class Router {
    * Fastest path a car may drive between two snapped points. `mult` scales edge weights
    * (alternatives), `avoid` flags edges that cost `avoidS` extra. The search over nodes runs first:
    * its path never turns back on itself, so unless a turn restriction rules it out (rare: most trips
-   * meet none) it is also the fastest legal one. Otherwise the edge-based search runs.
+   * meet none) it is also the fastest legal one. Otherwise the edge-based search runs. When it finds
+   * no way at all (a road the restrictions seal off), the path over nodes is the answer, `legal`
+   * false; `strict` false goes straight to it (a later round of a trip known to have no legal way).
    */
-  search(s: Snap, t: Snap, mult: Float32Array | null, avoid: Uint8Array | null, avoidS: number): Path | null {
+  search(s: Snap, t: Snap, mult: Float32Array | null, avoid: Uint8Array | null, avoidS: number, strict = true): Path | null {
     const r = this.searchNodes(s, t, mult, avoid, avoidS);
     if (!r || this.turns.count === 0 || this.legal(r.arcs)) return r;
-    const q = this.searchArcs(s, t, mult, avoid, avoidS);
-    if (q) q.settled += r.settled;
-    return q;
+    const q = strict ? this.searchArcs(s, t, mult, avoid, avoidS) : null;
+    if (q) {
+      q.settled += r.settled;
+      return q;
+    }
+    if (strict) r.settled += this.arcsSettled;
+    r.legal = false;
+    return r;
   }
 
   /** Whether a car may drive these arcs one after another: no U-turn but at a dead end, and no turn a
@@ -560,6 +573,7 @@ export class Router {
         }
       }
     }
+    this.arcsSettled = settled;
     if (bestX < 0) return d.arc < 0 ? null : this.path(s, t, [d.arc], best, settled);
     const arcs = [tArc[bestA]];
     for (let x = bestX, guard = 0; guard <= this.states; guard++) {
@@ -643,14 +657,14 @@ export class Router {
   /** A Path from the arcs it drives (see Path). */
   private path(s: Snap, t: Snap, arcs: number[], cost: number, settled: number): Path {
     const g = this.g;
-    if (arcs.length === 1) return { pieces: [{ e: s.e, t0: s.t, t1: t.t }], arcs, cost, settled };
+    if (arcs.length === 1) return { pieces: [{ e: s.e, t0: s.t, t1: t.t }], arcs, cost, settled, legal: true };
     const pieces: Piece[] = [{ e: s.e, t0: s.t, t1: this.outAlong[arcs[0]] ? g.eLen[s.e] : 0 }];
     for (let i = 1; i + 1 < arcs.length; i++) {
       const e = this.outEdge[arcs[i]];
       pieces.push(this.outAlong[arcs[i]] ? { e, t0: 0, t1: g.eLen[e] } : { e, t0: g.eLen[e], t1: 0 });
     }
     pieces.push({ e: t.e, t0: this.outAlong[arcs[arcs.length - 1]] ? 0 : g.eLen[t.e], t1: t.t });
-    return { pieces, arcs, cost, settled };
+    return { pieces, arcs, cost, settled, legal: true };
   }
 
   // ------------------------------------------------------------------------------------ routes
@@ -674,10 +688,16 @@ export class Router {
         avoid[t.e] = 0;
       }
     }
+    // once a search finds that the turn restrictions leave this trip no legal way, the later rounds
+    // skip the edge-based search: their weights differ, but not which ways exist
+    let strict = true;
     const run = (mult: Float32Array | null) => {
-      const r = this.search(s, t, mult, avoid, avoidS);
+      const r = this.search(s, t, mult, avoid, avoidS, strict);
       this.lastStats.searches++;
-      if (r) this.lastStats.settled += r.settled;
+      if (r) {
+        this.lastStats.settled += r.settled;
+        if (!r.legal) strict = false;
+      }
       return r;
     };
     const first = run(null);
