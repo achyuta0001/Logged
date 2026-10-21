@@ -8,6 +8,7 @@ import type { NewsSpot } from '../commute/spots';
 import type { Verdict } from '../commute/verdict';
 import { loadNewsSpots } from '../commute/data';
 import { beforeLabels } from './mapView';
+import { safeHref } from '../ui/format';
 
 export const NEWS_COLOR = '#ffb340';
 const VERDICT_COLOR: Record<Verdict, string> = { clear: '#2fe0d0', watch: '#ffd60a', flooded: '#ff453a' };
@@ -25,13 +26,19 @@ export function reportLine(s: NewsSpot): string {
   return s.count === 1 ? `Flooded in reports once, ${years}` : `Flooded in reports ${s.count} times, ${years}`;
 }
 
+/** the outlet as a link, or as plain text when the URL is not http(s) */
+const link = (url: string, outlet: string) => {
+  const href = safeHref(url);
+  return href ? `<a href="${href}" target="_blank" rel="noopener">${esc(outlet)}</a>` : `<span>${esc(outlet)}</span>`;
+};
+
 export function spotPopupHtml(s: NewsSpot, extra = ''): string {
   return `<div class="pop">
     <div class="pop-title">${esc(s.name)}</div>
     <div class="pop-sub">${KIND_LABEL[s.kind]} · ${esc(reportLine(s))}</div>${extra}
     <ul class="pop-events">${s.reports
       .slice(0, 3)
-      .map((r) => `<li><time>${esc(fmtDate(r.date))}</time><p>${esc(r.summary)}</p><a href="${encodeURI(r.url)}" target="_blank" rel="noopener">${esc(r.outlet)}</a></li>`)
+      .map((r) => `<li><time>${esc(fmtDate(r.date))}</time><p>${esc(r.summary)}</p>${link(r.url, r.outlet)}</li>`)
       .join('')}</ul>
     ${s.reports.length > 3 ? `<div class="pop-sub">${s.reports.length - 3} more report${s.reports.length - 3 === 1 ? '' : 's'}</div>` : ''}</div>`;
 }

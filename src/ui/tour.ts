@@ -1,8 +1,9 @@
-// Cinematic guided flythrough of pincode 560098 + idle "attract mode" orbit.
+// Cinematic guided flythrough of a pincode (hand-written script for 560098, data-driven elsewhere)
+// + idle "attract mode" orbit.
 // Every claim in a caption comes from public/data (model output) or a linked news/BBMP source.
 import maplibregl, { type Map as MLMap } from 'maplibre-gl';
 import type { Depression, Hotspot } from '../types';
-import { esc, fmtArea } from './format';
+import { esc, fmtArea, safeHref } from './format';
 import { iconSvg } from './icons';
 import './story.css';
 
@@ -428,12 +429,14 @@ export function createTour(map: MLMap, opts: TourOptions): Tour {
       depth !== undefined
         ? `<p class="tour-line model">${iconSvg('flood', 15)}<span>Deepest street water the model shows within 300 m: <b>${esc(fmtModelDepth(depth))}</b></span></p>`
         : '';
+    const repHref = s.reported && s.reported.source !== s.source?.href ? safeHref(s.reported.source) : null;
+    const srcHref = s.source ? safeHref(s.source.href) : null;
     const rep = s.reported
       ? `<p class="tour-line rep">${iconSvg('alert', 15)}<span>Reported: <b>${esc(fmtEventDate(s.reported.date))}</b> — ${esc(s.reported.summary)}${
-          s.reported.source && s.reported.source !== s.source?.href ? ` <a href="${esc(s.reported.source)}" target="_blank" rel="noopener">Source</a>` : ''
+          repHref ? ` <a href="${repHref}" target="_blank" rel="noopener">Source</a>` : ''
         }</span></p>`
       : '';
-    const src = s.source ? `<a class="tour-src" href="${esc(s.source.href)}" target="_blank" rel="noopener">${esc(s.source.label)} ${iconSvg('chevron', 11, 2)}</a>` : '';
+    const src = s.source && srcHref ? `<a class="tour-src" href="${srcHref}" target="_blank" rel="noopener">${esc(s.source.label)} ${iconSvg('chevron', 11, 2)}</a>` : '';
     body.dataset.kind = s.kind;
     body.innerHTML = `
       <div class="tour-kick"><span class="tour-num">${String(idx + 1).padStart(2, '0')}<small>/${String(stops.length).padStart(2, '0')}</small></span><span class="tour-kt">${esc(s.kicker)}</span></div>

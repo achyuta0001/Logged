@@ -1,4 +1,4 @@
-// Offline, flood-aware routing on the OSM road network in public/data/osm.geojson.
+// Offline, flood-aware routing on the OSM road network in the pincode pack's osm.geojson.
 //
 // Graph: OSM ways share exact node coordinates at junctions (rounded to 1e-6 deg by the data build),
 // so vertices are keyed by rounded coordinate; a vertex becomes a graph node where a way ends or where

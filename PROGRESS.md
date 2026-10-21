@@ -108,7 +108,6 @@ Verify: `npx tsc --noEmit && npm test && npx vite build`. For a pack: `node scri
 - Branch: the session's designated branch, `claude/dreamy-ritchie-rr1iam`, not `blr-urban`.
 - OSM comes from the planet on AWS `osm-pds` via osmium, because Overpass and Geofabrik are blocked here. The Daylight distribution was tried first and dropped: it has no boundary relations.
 - Pincode rule: OSM `boundary=postal_code`, code from `postal_code` or else a 6-digit number in `ref`/`name`, ≥ 50 % of area inside relation 2020589. This keeps 117 of 139.
-- 560098 stays format 1 in `public/data/`. `data:all` rebuilds it only when asked by name.
 - Synthetic packs are test fixtures only.
 - The scenarios are city-wide reuses of the RR Nagar 2024 rainfall. This is stated in the README.
 - Real storms run the archive rain unscaled: it is the only free, keyless hourly rain for any point and date, and scaling it to a news-reported gauge total would be our invention. Its caveat is in every event description, the README and the Sources section. Events whose date could not be tied to a report are left out.

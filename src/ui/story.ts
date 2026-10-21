@@ -1,4 +1,4 @@
-// "Why RR Nagar floods" (sourced context) + "Model vs reported" comparison list.
+// "Why RR Nagar floods" (sourced context, 560098 only) + "Model vs reported" comparison list.
 import type { Depression, Hotspot } from '../types';
 import { esc } from './format';
 import { iconSvg } from './icons';

@@ -1,6 +1,6 @@
 // "Your place": pin your street or a landmark and get a personal answer:
 // will it flood, when, and can I get out (on foot / two-wheeler / car)?
-// Everything runs offline on public/data (no geocoder): see src/place/search.ts and route.ts.
+// Everything runs offline on the pincode's pack (no geocoder): see src/place/search.ts and route.ts.
 import type { Map as MLMap, MapMouseEvent } from 'maplibre-gl';
 import type { Depression, Hotspot, Terrain } from '../types';
 import type { OsmFC } from './api';

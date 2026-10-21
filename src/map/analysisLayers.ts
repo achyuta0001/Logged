@@ -7,6 +7,7 @@ import type { OsmFC } from '../ui/api';
 import { depressionRGBA } from './colors';
 import { gridCorners } from './floodLayer';
 import { beforeLabels } from './mapView';
+import { safeHref } from '../ui/format';
 import { NewsLayer } from './newsLayer';
 
 type CellToLngLat = (meta: Terrain['meta'], cell: number) => [number, number];
@@ -165,7 +166,10 @@ export class AnalysisLayers {
       <div class="pop-sub">${events.length} reported flood${events.length === 1 ? '' : 's'}</div>${model}
       <ul class="pop-events">${events
         .map(
-          (e) => `<li><time>${esc(fmtDate(e.date))}</time><p>${esc(e.summary)}</p>${e.source ? `<a href="${encodeURI(e.source)}" target="_blank" rel="noopener">${esc(host(e.source))}</a>` : ''}</li>`,
+          (e) => {
+            const href = safeHref(e.source);
+            return `<li><time>${esc(fmtDate(e.date))}</time><p>${esc(e.summary)}</p>${href ? `<a href="${href}" target="_blank" rel="noopener">${esc(host(e.source!))}</a>` : ''}</li>`;
+          },
         )
         .join('')}</ul></div>`;
     };

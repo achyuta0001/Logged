@@ -1,6 +1,6 @@
 // Offline place search over the local data only (osm.geojson, depressions.json, hotspots.json).
 // No geocoding service: Nominatim's usage policy forbids search-as-you-type, and everything we
-// need (named roads, schools, hospitals, stops, lakes, low spots) is already in public/data.
+// need (named roads, schools, hospitals, stops, lakes, low spots) is already in the pincode's pack.
 import type { Depression, Hotspot, OsmKind, OsmProps, TerrainMeta } from '../types.ts';
 import { cellAt, cellCenter, distM, inBBox, type LngLat } from './geo.ts';
 

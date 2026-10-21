@@ -194,7 +194,7 @@ export interface ImpactReport {
 
 // ---------------------------------------------------------------- multi-region (Bengaluru Urban)
 
-/** Pack format version. 1 = f32 grids (560098 reference pack); 2 = quantised grids (see CONTRACT.md). */
+/** Pack format version. 1 = f32 grids (older packs); 2 = quantised grids (see CONTRACT.md). */
 export type PackFormat = 1 | 2;
 
 /** One pincode in public/data/pins/index.json */

@@ -1,7 +1,7 @@
 // Pack files on disk. A format-2 pack stores its big JSON (GZ_FILES: osm.geojson, depressions.json)
 // gzip-compressed as `<name>.gz` and not also plain: GitHub Pages serves a .gz as it is (no
 // Content-Encoding) and the site must stay under its 1 GB limit, so the app inflates them itself
-// (src/pack/fetch.ts, falling back to the plain file). The 560098 reference pack (format 1) stays plain.
+// (src/pack/fetch.ts, falling back to the plain file).
 //
 //   node scripts/lib/pack-files.mjs <pack dir>...   compress packs built before the .gz layout, in place
 import fs from 'node:fs';
