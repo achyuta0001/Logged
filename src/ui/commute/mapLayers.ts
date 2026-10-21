@@ -1,6 +1,6 @@
 // Commute map layers: every hotspot as a pin coloured by its waterlogging level (in the style of the
 // news-report circles: bigger = reported more often, white ring = underpass), the candidate routes
-// with the chosen one coloured by level where it meets a hotspot, and the home / office markers.
+// with the chosen one coloured by level where it meets a hotspot, and the home, office and saved-place markers.
 import maplibregl, { type GeoJSONSource, type Map as MLMap, type MapLayerMouseEvent } from 'maplibre-gl';
 import type { LngLat } from '../../commute/spots';
 import type { CommuteHotspot, RiskLevel, RouteCandidate, RouteRisk } from '../../commute/types';
@@ -159,43 +159,64 @@ export class RouteLines {
   }
 }
 
-/** Home and office markers; drag one to move it. */
+export type EndKind = 'home' | 'office' | 'place';
+/** a place with a marker: its id (home, office or a saved place's), kind, point, name ("Gym") and where it is */
+export interface EndMark {
+  id: string;
+  kind: EndKind;
+  coord: LngLat;
+  name: string;
+  label: string;
+}
+const END_ICON: Record<EndKind, string> = { home: 'home', office: 'office', place: 'pin' };
+
+/** Home, office and saved-place markers; drag one to move it. */
 export class Ends {
   private map: MLMap;
-  private m: Record<'home' | 'office', maplibregl.Marker | null> = { home: null, office: null };
-  private onMove: (end: 'home' | 'office', p: LngLat) => void;
+  private m = new Map<string, maplibregl.Marker>();
+  private onMove: (id: string, p: LngLat) => void;
 
-  constructor(map: MLMap, onMove: (end: 'home' | 'office', p: LngLat) => void) {
+  constructor(map: MLMap, onMove: (id: string, p: LngLat) => void) {
     this.map = map;
     this.onMove = onMove;
   }
 
-  set(end: 'home' | 'office', p: LngLat | null, label: string) {
-    if (!p) {
-      this.m[end]?.remove();
-      this.m[end] = null;
-      return;
+  /** a marker for each of these places, moved and relabelled in place; any other is removed */
+  setAll(items: EndMark[]) {
+    const keep = new Set(items.map((x) => x.id));
+    for (const [id, mk] of this.m) {
+      if (keep.has(id)) continue;
+      mk.remove();
+      this.m.delete(id);
     }
-    let mk = this.m[end];
-    if (!mk) {
-      const el = document.createElement('div');
-      el.className = `cm-end-mk cm-end-${end}`;
-      el.setAttribute('role', 'img');
-      el.innerHTML = iconSvg(end === 'home' ? 'home' : 'office', 15, 2);
-      mk = new maplibregl.Marker({ element: el, draggable: true, anchor: 'center' }).setLngLat(p).addTo(this.map);
-      mk.on('dragend', () => {
-        const ll = mk!.getLngLat();
-        this.onMove(end, [ll.lng, ll.lat]);
-      });
-      this.m[end] = mk;
+    for (const x of items) {
+      let mk = this.m.get(x.id);
+      if (mk && mk.getElement().dataset.kind !== x.kind) {
+        mk.remove();
+        mk = undefined;
+      }
+      if (!mk) {
+        const el = document.createElement('div');
+        el.className = `cm-end-mk cm-end-${x.kind}`;
+        el.dataset.kind = x.kind;
+        el.setAttribute('role', 'img');
+        el.innerHTML = iconSvg(END_ICON[x.kind], x.kind === 'place' ? 13 : 15, 2);
+        const made: maplibregl.Marker = new maplibregl.Marker({ element: el, draggable: true, anchor: 'center' }).setLngLat(x.coord).addTo(this.map);
+        made.on('dragend', () => {
+          const ll = made.getLngLat();
+          this.onMove(x.id, [ll.lng, ll.lat]);
+        });
+        this.m.set(x.id, made);
+        mk = made;
+      }
+      mk.setLngLat(x.coord);
+      mk.getElement().setAttribute('aria-label', `${x.name}: ${x.label}`);
+      mk.getElement().title = `${x.name}: ${x.label} (drag to move)`;
     }
-    mk.setLngLat(p);
-    mk.getElement().setAttribute('aria-label', `${end === 'home' ? 'Home' : 'Office'}: ${label}`);
-    mk.getElement().title = `${end === 'home' ? 'Home' : 'Office'}: ${label} (drag to move)`;
   }
 
   destroy() {
-    this.m.home?.remove();
-    this.m.office?.remove();
+    for (const mk of this.m.values()) mk.remove();
+    this.m.clear();
   }
 }

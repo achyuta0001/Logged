@@ -37,8 +37,10 @@ import { Timeline } from './ui/timeline';
 import { Tooltip } from './ui/tooltip';
 import { esc, fmtArea, fmtDepth, fmtHour, fmtWeekday, relHours } from './ui/format';
 import { iconSvg } from './ui/icons';
+import { SpotList } from './ui/spotList';
+import { loadNewsSpots } from './commute/data';
 import type { PinEntry, PinIndex } from './types';
-import { LEGACY_PIN, inflowCaveat } from './region/packs';
+import { LEGACY_PIN, inBBox, inflowCaveat } from './region/packs';
 import { offlineForecastTime } from './sw-register';
 
 const DEMO_SCENARIO = 'rrnagar-2024-10-20';
@@ -127,6 +129,7 @@ export async function openPin(shell: Shell, pin: PinEntry, base: string): Promis
   // M4: catchments cross pincode edges; say quietly how much land drains in from outside the grid and how much is simulated
   const caveat = inflowCaveat(pin);
   sidebar.setCaveat(caveat?.text ?? null, caveat?.tip);
+  const spotList = new SpotList(sidebar); // "Reported flood spots": hidden until its spots load
   timelineEl.hidden = false;
   document.title = `${pin.code} Flood Outlook`;
   const ds = await loadDataset(base);
@@ -326,6 +329,16 @@ export async function openPin(shell: Shell, pin: PinEntry, base: string): Promis
   if (!view) intro(map);
   // no sourced reports and no hand-written story: nothing to show in that section
   sidebar.setHidden('story', !legacy && !ds.hotspots.length);
+  // the news-report spots inside the grid, listed for the keyboard and screen readers: picking one
+  // turns the news layer on and opens the card a tap on its circle opens
+  void loadNewsSpots().then((all) => {
+    if (disposed) return;
+    spotList.set(all.filter((s) => inBBox(s.coord, meta.bbox)), (s) => {
+      controls.setLayer('news', true);
+      analysis.openNews(s);
+      flyTo(s.coord, 16.2);
+    });
+  });
   // apply what was picked while loading (the first run may have reset the controls since)
   const picked = early;
   early = null;

@@ -2,6 +2,7 @@
 // D8 flow-accumulation streams, drains, lakes, historical hotspots.
 import maplibregl, { type Map as MLMap } from 'maplibre-gl';
 import type { Hotspot, Terrain } from '../types';
+import type { NewsSpot } from '../commute/spots';
 import type { OsmFC } from '../ui/api';
 import { depressionRGBA } from './colors';
 import { gridCorners } from './floodLayer';
@@ -211,6 +212,11 @@ export class AnalysisLayers {
       return;
     }
     for (const id of this.groups[group] ?? []) if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', v ? 'visible' : 'none');
+  }
+
+  /** A news spot's card, picked in the sidebar's "Reported flood spots" list (keyboard focus stays there). */
+  openNews(s: NewsSpot) {
+    (this.news ??= new NewsLayer(this.map)).open(s, false);
   }
 }
 

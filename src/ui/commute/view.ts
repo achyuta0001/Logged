@@ -7,7 +7,7 @@ import type { MapMouseEvent } from 'maplibre-gl';
 import type { Region, Shell } from '../../main';
 import type { CityData } from '../../region/city';
 import type { LngLat } from '../../commute/spots';
-import type { Advice, CommuteHotspot, CommutePlan, HotspotOutlook, RiskLevel, RouteCandidate } from '../../commute/types';
+import type { CommuteHotspot, CommutePlan, HotspotOutlook, RiskLevel, RouteCandidate } from '../../commute/types';
 import { BLR_BBOX } from '../../commute/spots';
 import { pointInGeometry } from '../../commute/near';
 import { fmtHHMM } from '../../commute/verdict';
@@ -16,11 +16,13 @@ import { createMap, beforeLabels } from '../../map/mapView';
 import { WEATHER_ATTRIBUTION, WEATHER_ATTRIBUTION_URL } from '../../weather';
 import { esc } from '../format';
 import { backend, floorBucket, levelAt, BUCKET_MS } from './adapters';
+import { drawCard, shareCard, type CardInfo } from './card';
+import { cardEnd, cardFile, cardSpots, cardWhen, checkedText, fmtKm, fmtMin, routeReason, updateLine } from './lines';
 import { rank, worstLevel } from './levels';
-import { Ends, HotspotPins, RouteLines } from './mapLayers';
+import { Ends, HotspotPins, RouteLines, type EndMark } from './mapLayers';
 import { CommutePanel, type End, type PlaceHit } from './panel';
 import { Scrubber, type Step } from './scrubber';
-import { dayWord, legs, linkHasTrip, loadState, saveState, shareSearch, stateFromSearch, withoutCommute, type CommuteState, type Leg } from './state';
+import { applyLink, dayWord, endLabel, endOf, legs, linkHasTrip, loadState, saveState, shareSearch, tripKey, withoutCommute, type CommuteState, type Leg } from './state';
 import './commute.css';
 
 const H = 3600e3;
@@ -41,9 +43,9 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
   shell.timelineEl.hidden = true;
   document.title = 'Commute · Bengaluru Flood Explorer';
 
-  // a shared trip replaces what is saved; the address bar keeps only ?commute=1
+  // a shared trip replaces home and office (the saved places stay); the address bar keeps only ?commute=1
   const search = location.search;
-  let state: CommuteState = linkHasTrip(search) ? stateFromSearch(search)! : loadState();
+  let state: CommuteState = applyLink(loadState(), search);
   if (linkHasTrip(search)) saveState(state);
   {
     const q = new URLSearchParams(withoutCommute(search));
@@ -62,7 +64,16 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
   const pins = new HotspotPins(map, (id) => {
     if (!picking) openWhy(id, false);
   });
-  const ends = new Ends(map, (end, p) => panel.setEnd(end, labelFor(p), p));
+  const ends = new Ends(map, (id, p) => panel.setEnd(id, labelFor(p), p));
+  /** a marker for home, office and each saved place */
+  const syncEnds = () =>
+    ends.setAll([
+      ...(['home', 'office'] as const).flatMap((id): EndMark[] => {
+        const p = state[id];
+        return p ? [{ id, kind: id, coord: p.coord, name: endLabel(state, id), label: p.label }] : [];
+      }),
+      ...state.places.map((p): EndMark => ({ id: p.id, kind: 'place', coord: p.coord, name: p.label, label: p.where })),
+    ]);
   const scrubber = new Scrubber(document.body, (k) => {
     step = k;
     drawPins();
@@ -95,12 +106,15 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     map.getCanvas().style.cursor = '';
     document.body.classList.remove('cm-picking');
   };
+  /** a place in "Tap the map where ... is": "your home", "Gym", "the place to save" */
+  const placeWords = (end: End) => (end === 'home' || end === 'office' ? `your ${end}` : end === 'add' ? 'the place to save' : endLabel(state, end) || 'the place');
   const panel = new CommutePanel(sidebar.body('commute'), state, {
     change(next) {
+      // another trip starts on its soonest leg
+      if (tripKey(next) !== tripKey(state)) legId = null;
       state = next;
       saveState(state);
-      ends.set('home', state.home?.coord ?? null, state.home?.label ?? '');
-      ends.set('office', state.office?.coord ?? null, state.office?.label ?? '');
+      syncEnds();
       void refreshTrip(true);
     },
     search: searchPlaces,
@@ -108,7 +122,7 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
       picking = end;
       map.getCanvas().style.cursor = 'crosshair';
       document.body.classList.add('cm-picking');
-      panel.say(`Tap the map where your ${end} is. Esc cancels.`);
+      panel.say(`Tap the map where ${placeWords(end)} is. Esc cancels.`);
       sidebar.getOutOfTheWay();
     },
     locate(end) {
@@ -141,6 +155,23 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
         return false;
       }
     },
+    async card() {
+      // the plan on screen when tapped; its card is drawn once, so another tap shares it at once
+      const p = plan, l = leg;
+      if (!p || !l) return 'failed';
+      try {
+        let c = lastCard?.plan === p ? lastCard : null;
+        const fresh = !c;
+        if (!c) {
+          const info = cardInfo(p, l);
+          c = lastCard = { plan: p, info, png: await drawCard(info) };
+        }
+        return await shareCard(c.png, c.info, fresh);
+      } catch (err) {
+        console.error('[commute] card', err);
+        return 'failed';
+      }
+    },
   });
   const onMapClick = (ev: MapMouseEvent) => {
     if (!picking) return;
@@ -158,8 +189,7 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     }
   };
   document.addEventListener('keydown', onKey, true);
-  ends.set('home', state.home?.coord ?? null, state.home?.label ?? '');
-  ends.set('office', state.office?.coord ?? null, state.office?.label ?? '');
+  syncEnds();
 
   // ---------------------------------------------------------------- data: the city's next 3 hours
   let hs: CommuteHotspot[] = [];
@@ -205,15 +235,33 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
   let chosen: RouteCandidate['id'] | null = null;
   let leg: Leg | null = null;
   let seq = 0;
+  /** the trip and headline of the last check: an automatic re-check of the same trip that changes it shows the update banner */
+  let seen: { key: string; head: string } | null = null;
+  /** the share card last drawn, with the plan it shows */
+  let lastCard: { plan: CommutePlan; info: CardInfo; png: Blob } | null = null;
+  const nameOf = (id: string) => byId.get(id)?.name ?? id;
+  /** the route the advice is about: the one to take, else A (the one the panel starts on) */
+  const bestRoute = (p: CommutePlan) => (p.advice.kind === 'use_route' ? p.advice.route : (rs[0]?.id ?? null));
+  /** whether the forecast reaches every hotspot on route A when it is reached (no forecast is never "no waterlogging") */
+  const covers = (p: CommutePlan) => p.routes[0]?.hits.every((h) => levelAt(tripOut.get(h.id), p.departure + h.atS * 1000) !== null) ?? true;
   const legName = (l: Leg) => `${l.from.label.replace(/^(Near|My location ·) /, '')} → ${l.to.label.replace(/^(Near|My location ·) /, '')}`;
 
+  /** "Home and office", "Home and Gym": the trip's two ends */
+  const tripTitle = () => {
+    const word = (id: string) => (id === 'home' || id === 'office' ? id : endLabel(state, id));
+    const a = word(state.from);
+    return `${a.charAt(0).toUpperCase()}${a.slice(1)} and ${word(state.to)}`;
+  };
+
   function setIdleStatus() {
-    const missing = !state.home && !state.office ? 'home and office' : !state.home ? 'home' : 'office';
-    sidebar.setRegion('Commute', 'Home and office', { title: 'My commute', tour: false });
-    sidebar.setStatus('none', `<b>Set your ${missing}</b> to check the commute`, 'Waterlogging on the way, from the rain forecast and past flood reports', undefined, ACCENT);
+    // only home and office can be without a place (a saved place always has one)
+    const missing = (['home', 'office'] as const).filter((id) => (state.from === id || state.to === id) && !state[id]).join(' and ');
+    sidebar.setRegion('Commute', tripTitle(), { title: 'My commute', tour: false });
+    sidebar.setStatus('none', `<b>Set your ${missing || 'places'}</b> to check the commute`, 'Waterlogging on the way, from the rain forecast and past flood reports', undefined, ACCENT);
   }
 
-  async function refreshTrip(fit: boolean) {
+  /** `auto`: the 15-minute re-check while the tab is open (not something the reader changed) */
+  async function refreshTrip(fit: boolean, auto = false) {
     const my = ++seq;
     const now = Date.now();
     const ls = legs(state, now);
@@ -227,6 +275,8 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
       panel.showRoutes(null, [], null, 0, byId);
       panel.showLeaveStrip([], '', 'out');
       panel.showLegs([], null, now, dayWord);
+      panel.showUpdate(null);
+      seen = null;
       drawPins();
       setIdleStatus();
       return;
@@ -246,7 +296,7 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
       rs = found;
       tripOut = new Map(os.map((o) => [o.id, o]));
       plan = backend.plan(rs, hs, os, leg.departure, now);
-      chosen = plan.advice.kind === 'use_route' ? plan.advice.route : (rs[0]?.id ?? null);
+      chosen = bestRoute(plan);
       // best time to leave: every 15 min within 2 h either side, the least risky route at each
       const strip: { hhmm: string; level: RiskLevel }[] = [];
       for (let m = -120; m <= 120; m += 15) {
@@ -258,7 +308,11 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
       }
       panel.showLeaveStrip(strip, leg.hhmm, leg.id);
       panel.say('');
-      render(fit);
+      const head = render(fit);
+      const key = `${leg.id} ${leg.departure} ${leg.from.coord} ${leg.to.coord}`;
+      if (!auto || !seen || seen.key !== key) panel.showUpdate(null);
+      else if (seen.head !== head) panel.showUpdate(updateLine(head, plan, nameOf, (id) => tripOut.get(id)?.window));
+      seen = { key, head };
     } catch (err) {
       if (my !== seq || disposed) return;
       console.error('[commute]', err);
@@ -267,40 +321,70 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     }
   }
 
-  function render(fit: boolean) {
-    if (!plan || !leg) return;
+  /** draws the plan; returns the headline */
+  function render(fit: boolean): string {
+    if (!plan || !leg) return '';
     const now = Date.now();
     const risk = plan.routes.find((r) => r.route === chosen) ?? null;
     onRoute = new Map((risk?.hits ?? []).map((h) => [h.id, h.level]));
     routes.set(rs, chosen, risk);
     drawPins();
     const advised = plan.advice.kind === 'use_route' ? plan.advice.route : undefined;
-    panel.showRoutes(rs, plan.routes, chosen, plan.departure, byId, advised);
     const a = plan.advice;
-    const first = plan.routes[0];
-    const covered = !first || first.hits.every((h) => levelAt(tripOut.get(h.id), plan!.departure + h.atS * 1000) !== null);
+    const covered = covers(plan);
+    panel.showRoutes(rs, plan.routes, chosen, plan.departure, byId, advised, covered);
     sidebar.setRegion('Commute', `${legName(leg)} · ${dayWord(plan.departure, now)} ${fmtHHMM(plan.departure)}`, { title: 'My commute', tour: false });
-    sidebar.setStatus('none', `<b>${esc(headline(a, covered))}</b>`, a.text.includes('Advisory') ? a.text : `${a.text} Advisory only.`, 'Show the routes', covered ? ADVICE_COLOR[a.kind] : '#8e8e93');
+    const head = headline(plan, covered);
+    sidebar.setStatus('none', `<b>${esc(head)}</b>`, a.text.includes('Advisory') ? a.text : `${a.text} Advisory only.`, 'Show the routes', covered ? ADVICE_COLOR[a.kind] : '#8e8e93');
     if (fit) frameTrip();
+    return head;
   }
 
-  /** the one big line: short, from the advice kind; the planner's sentence goes underneath */
-  function headline(a: Advice, covered: boolean): string {
+  /** the one big line: short, from the advice kind; the planner's sentence goes underneath. `bare`: no roads after "Use route B" (the share card shows them below) */
+  function headline(p: CommutePlan, covered: boolean, bare = false): string {
+    const a = p.advice;
     switch (a.kind) {
       case 'go':
         if (!covered) return 'No forecast for that time yet';
-        return plan?.routes[0]?.hits.some((h) => h.level === 'watch') ? 'Go, but watch for water' : 'Go — no waterlogging expected';
+        return p.routes[0]?.hits.some((h) => h.level === 'watch') ? 'Go, but watch for water' : 'Go — no waterlogging expected';
       case 'leave_by':
         return `Leave by ${fmtHHMM(a.at)}`;
       case 'leave_after':
         return `Leave after ${fmtHHMM(a.at)}`;
       case 'use_route': {
-        const via = rs.find((r) => r.id === a.route)?.via;
+        const via = bare ? '' : rs.find((r) => r.id === a.route)?.via;
         return `Use route ${a.route}${via ? ` (${via})` : ''}`;
       }
       case 'wfh':
         return 'Consider working from home';
     }
+  }
+
+  /** the share card for a plan: the trip, the headline, the best route and why, the hotspots behind the advice */
+  function cardInfo(p: CommutePlan, l: Leg): CardInfo {
+    const covered = covers(p);
+    const best = bestRoute(p);
+    const r = rs.find((x) => x.id === best);
+    return {
+      // home and office by their places, a saved place by its name ("Gym"): never coordinates
+      trip: [cardEnd(l.from), cardEnd(l.to)],
+      when: cardWhen(p.departure),
+      headline: headline(p, covered, true),
+      tone: covered ? ADVICE_COLOR[p.advice.kind] : '#8e8e93',
+      route: r
+        ? {
+            id: r.id,
+            time: `${fmtMin(r.durationS)} · ${fmtKm(r.lengthM)}`,
+            via: r.via,
+            level: covered ? (p.routes.find((x) => x.route === r.id)?.level ?? 'clear') : null,
+            reason: routeReason(r.id, rs, p.routes, nameOf, covered),
+          }
+        : null,
+      spots: covered ? cardSpots(p, best, nameOf, (id) => tripOut.get(id)?.window) : [],
+      none: covered ? 'No waterlogging expected at the hotspots on the way' : 'No rain forecast covers this time yet',
+      checked: checkedText(Date.now()),
+      file: cardFile(p.departure),
+    };
   }
 
   function chooseRoute(id: RouteCandidate['id']) {
@@ -313,8 +397,10 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
     const pts: LngLat[] = [];
     for (const r of rs) pts.push(...r.line);
     if (!pts.length) {
-      if (state.home) pts.push(state.home.coord);
-      if (state.office) pts.push(state.office.coord);
+      for (const id of [state.from, state.to]) {
+        const e = endOf(state, id);
+        if (e) pts.push(e.coord);
+      }
     }
     if (!pts.length) return;
     const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
@@ -397,10 +483,11 @@ export async function openCommute(shell: Shell, city: CityData | null): Promise<
   void refreshTrip(true).then(renderSources);
   renderSources();
   loader.hide();
+  // re-check every 15 minutes while the tab is open (the forecast itself is cached for 30)
   const tick = window.setInterval(() => {
     void refreshCity().catch(() => {});
-    void refreshTrip(false);
-  }, 10 * 60e3);
+    void refreshTrip(false, true);
+  }, 15 * 60e3);
 
   function deadRegion(): Region {
     return { kind: 'commute', reframe() {}, destroy() {} };

@@ -5,7 +5,7 @@ import { SEVERITY_COLOR } from '../map/colors';
 import { iconSvg } from './icons';
 import { load, save } from './store';
 
-export type SectionId = 'commute' | 'city' | 'place' | 'impact' | 'rain' | 'map' | 'story' | 'drainage' | 'sources';
+export type SectionId = 'commute' | 'city' | 'place' | 'impact' | 'rain' | 'map' | 'story' | 'spots' | 'drainage' | 'sources';
 /** what the sidebar is showing: the Bengaluru Urban overview, one pincode, or the Commute tab */
 export type Scope = 'city' | 'pin' | 'commute';
 /** the two views at the top of the sidebar */
@@ -20,8 +20,8 @@ interface SectionDef {
   icon: string;
   /** open on a first visit */
   open: boolean;
-  /** shown only in this scope (default: the pincode view) */
-  scope?: Scope | 'both';
+  /** shown only in this scope (default: the pincode view); 'explore': the city overview and a pincode; 'both': everywhere */
+  scope?: Scope | 'explore' | 'both';
 }
 
 export const SECTIONS: SectionDef[] = [
@@ -32,6 +32,7 @@ export const SECTIONS: SectionDef[] = [
   { id: 'rain', title: 'Rain', icon: 'rain', open: true },
   { id: 'map', title: 'Map layers', icon: 'layers', open: false },
   { id: 'story', title: 'Why RR Nagar floods', icon: 'book', open: false },
+  { id: 'spots', title: 'Reported flood spots', icon: 'news', open: false, scope: 'explore' },
   { id: 'drainage', title: 'Drainage assumptions', icon: 'sliders', open: false },
   { id: 'sources', title: 'Sources and licences', icon: 'info', open: false, scope: 'both' },
 ];
@@ -186,7 +187,7 @@ export class Sidebar {
   setScope(scope: Scope) {
     this.scope = scope;
     for (const s of SECTIONS) {
-      const on = (s.scope ?? 'pin') === scope || s.scope === 'both';
+      const on = s.scope === 'both' || (s.scope === 'explore' ? scope !== 'commute' : (s.scope ?? 'pin') === scope);
       const sec = this.panel.querySelector(`#sec-${s.id}`) as HTMLElement;
       const rb = this.rail.querySelector(`[data-rail="${s.id}"]`) as HTMLElement;
       sec.classList.toggle('off-scope', !on);

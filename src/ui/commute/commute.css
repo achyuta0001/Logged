@@ -32,38 +32,6 @@
   --tint: #30d158;
 }
 
-/* ---------- Explore | Commute ---------- */
-.sb-tabs {
-  display: flex;
-  margin: -4px 0 12px;
-  padding: 2px;
-  border-radius: 9px;
-  background: var(--fill);
-}
-.sb-tabs a {
-  flex: 1;
-  padding: 5px 10px;
-  border-radius: 7px;
-  color: var(--label-1);
-  font-size: 13px;
-  font-weight: 500;
-  text-align: center;
-  text-decoration: none;
-  transition: background 0.25s var(--ease-spring);
-}
-.sb-tabs a:hover {
-  text-decoration: none;
-  background: rgba(255, 255, 255, 0.05);
-}
-.sb-tabs a[aria-current='page'] {
-  background: #636366;
-  font-weight: 600;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.18), 0 1px 1px rgba(0, 0, 0, 0.1);
-}
-body.mode-phone .sb-tabs {
-  margin: 0 0 8px;
-}
-
 /* ---------- home / office ---------- */
 .cm-trip {
   display: flex;
@@ -78,7 +46,7 @@ body.mode-phone .sb-tabs {
 .cm-end {
   position: relative;
   display: grid;
-  grid-template-columns: 26px 54px 1fr;
+  grid-template-columns: 26px 76px minmax(0, 1fr);
   align-items: center;
   gap: 4px;
   min-height: 46px;
@@ -105,6 +73,7 @@ body.mode-phone .sb-tabs {
   background: #bf8cff;
 }
 .cm-end-lbl {
+  padding-left: 7px;
   font-size: 13px;
   color: var(--label-2);
 }
@@ -187,6 +156,214 @@ body.mode-phone .sb-tabs {
   color: var(--label-2);
 }
 
+/* ---------- saved places: a name, the place field and delete; the add row below them ---------- */
+.cm-saved:not(.cm-add) {
+  grid-template-columns: 26px 76px minmax(0, 1fr) auto;
+}
+.cm-saved.set .cm-end-ico,
+.cm-end-place {
+  background: #d1d1d6;
+}
+.cm-add .cm-end-ico {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+/* the name is the reader's own and can be changed in place: a quiet field until it is pointed at */
+.cm-name {
+  min-width: 0;
+  width: 100%;
+  height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.045);
+  color: var(--label-1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  text-overflow: ellipsis;
+  transition: background 0.15s;
+}
+.cm-name::placeholder {
+  color: var(--label-3);
+  font-weight: 400;
+}
+.cm-name:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.cm-name:focus-visible {
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.cm-del {
+  width: 26px;
+  height: 26px;
+}
+.cm-del:focus-visible,
+.cm-swap:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.cm-full {
+  margin: 0;
+  padding: 10px 12px 11px;
+  border-top: 0.5px solid var(--separator);
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--label-2);
+}
+
+/* ---------- the trip: From and To, two rows of chips (radio groups), and swap ---------- */
+.cm-pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cm-pair-rows {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cm-pair-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.cm-pair-lbl {
+  flex: none;
+  width: 40px;
+  font-size: 14px;
+  line-height: 28px;
+  color: var(--label-1);
+}
+.cm-chips {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cm-chip {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+}
+/* the radio itself covers the chip, unseen: clicks, keys and screen readers all reach it */
+.cm-chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.cm-chip span {
+  max-width: 100%;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 14px;
+  background: var(--fill);
+  color: var(--label-1);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 28px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 0.15s, color 0.15s;
+}
+.cm-chip:hover input:not(:checked) + span {
+  background: rgba(118, 118, 128, 0.34);
+}
+.cm-chip input:checked + span {
+  background: var(--accent);
+  color: #00202e;
+}
+.cm-chip input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.cm-swap {
+  color: var(--label-1);
+}
+
+/* phones: every control here at least 44 pt */
+body.mode-phone .cm-end {
+  min-height: 52px;
+}
+body.mode-phone .cm-q,
+body.mode-phone .cm-name {
+  height: 44px;
+}
+/* a 44 pt button around the usual 30 px circle */
+body.mode-phone .cm-del,
+body.mode-phone .cm-swap {
+  width: 44px;
+  height: 44px;
+  padding: 7px;
+  background-clip: content-box;
+}
+body.mode-phone .cm-opt {
+  min-height: 44px;
+}
+body.mode-phone .cm-pair-lbl {
+  line-height: 44px;
+}
+/* one line of chips each, scrolled sideways (the chosen one is kept in view) */
+body.mode-phone .cm-chips {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  /* room for the focus ring */
+  margin: -4px;
+  padding: 4px;
+}
+body.mode-phone .cm-chips::-webkit-scrollbar {
+  display: none;
+}
+body.mode-phone .cm-chip {
+  flex: none;
+  max-width: 70%;
+}
+body.mode-phone .cm-chip span {
+  height: 44px;
+  padding: 0 16px;
+  border-radius: 22px;
+  font-size: 15px;
+  line-height: 44px;
+}
+
+/* ---------- update banner (a re-check changed the advice) ---------- */
+.cm-update {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 8px 10px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.cm-update[hidden] {
+  display: none;
+}
+.cm-update-t {
+  flex: 1;
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--label-1);
+}
+.cm-update .icon-btn {
+  width: 24px;
+  height: 24px;
+}
+
 /* ---------- departure / return ---------- */
 .cm-row {
   display: flex;
@@ -207,6 +384,34 @@ body.mode-phone .sb-tabs {
 /* the time back home while that trip is off: still there to find and edit, just quieter */
 .cm-time.off {
   opacity: 0.5;
+}
+/* commute days: seven round toggles, Monday first */
+.cm-days {
+  flex: none;
+  display: flex;
+  gap: 4px;
+}
+.cm-days button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--fill);
+  color: var(--label-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.cm-days button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #00202e;
+}
+.cm-days button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .cm-time {
   flex: none;
@@ -331,6 +536,14 @@ body.mode-phone .sb-tabs {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* how the route differs from the fastest: the one line that explains the order, so it wraps rather than cuts */
+.cm-reason {
+  margin-top: 1px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--label-1);
+  text-wrap: pretty;
+}
 .cm-pill {
   flex: none;
   padding: 2px 8px;
@@ -374,7 +587,17 @@ body.mode-phone .sb-tabs {
   font-size: 12px;
   color: var(--label-2);
 }
-.cm-share {
+/* passing the trip on, side by side: the link, and the picture (src/ui/commute/card.ts) */
+.cm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+}
+.cm-actions:not(:has(> :not([hidden]))) {
+  display: none;
+}
+.cm-share,
+.cm-card {
   align-self: flex-start;
   border: 0;
   background: transparent;
@@ -383,6 +606,10 @@ body.mode-phone .sb-tabs {
   font-size: 13px;
   padding: 2px 0;
   cursor: pointer;
+}
+.cm-card[aria-busy='true'] {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 /* ---------- why ---------- */
@@ -478,6 +705,12 @@ body.mode-phone .sb-tabs {
   border: 2px solid #fff;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
   cursor: grab;
+}
+/* a saved place: smaller and quieter than home and office */
+.cm-end-mk.cm-end-place {
+  width: 26px;
+  height: 26px;
+  color: #1c1c1e;
 }
 body.cm-picking #map .maplibregl-canvas {
   cursor: crosshair;

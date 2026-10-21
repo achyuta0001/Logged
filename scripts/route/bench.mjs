@@ -6,7 +6,8 @@
 // for the fastest route alone (median of --runs), nodes settled, road length vs the straight line
 // (expect ~1.2-1.6x), typical peak-hour time and the alternatives' stretch and overlap. Last, A* with
 // the landmark bounds is checked against plain Dijkstra on --pairs random trips: equal times prove
-// the bounds admissible on the real graph.
+// the bounds admissible on the real graph. It counts the trips a turn restriction reroutes too (the
+// edge-based search runs for those), and checks the bounds in that search on them.
 import fs from 'node:fs';
 import path from 'node:path';
 import { gunzipSync } from 'node:zlib';
@@ -90,7 +91,7 @@ const plain = new Router(g, { heuristic: false });
 let seed = 42;
 const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
 const [w, s, e, n] = [77.42, 12.78, 77.76, 13.14];
-let worst = 0, astarMs = 0, dijMs = 0, aSet = 0, dSet = 0, tried = 0;
+let worst = 0, astarMs = 0, dijMs = 0, aSet = 0, dSet = 0, tried = 0, rerouted = 0;
 for (let i = 0; i < PAIRS; i++) {
   const p = [w + rnd() * (e - w), s + rnd() * (n - s)], q = [w + rnd() * (e - w), s + rnd() * (n - s)];
   const sp = router.snap(p), sq = router.snap(q);
@@ -103,6 +104,11 @@ for (let i = 0; i < PAIRS; i++) {
   dijMs += performance.now() - t;
   if (!x || !y) throw new Error(`pair ${i}: A* ${!!x}, Dijkstra ${!!y}`);
   worst = Math.max(worst, Math.abs(x.cost - y.cost));
+  if (!router.legal(router.searchNodes(sp, sq, null, null, 0).arcs)) {
+    rerouted++;
+    const z = plain.searchArcs(sp, sq, null, null, 0);
+    worst = Math.max(worst, Math.abs(x.cost - z.cost));
+  }
   aSet += x.settled;
   dSet += y.settled;
   tried++;
@@ -110,6 +116,7 @@ for (let i = 0; i < PAIRS; i++) {
 console.log(
   `\nA* vs Dijkstra on ${tried} random trips: largest time difference ${worst.toExponential(1)} s; A* ${(astarMs / tried).toFixed(1)} ms / ${Math.round(aSet / tried)} settled, Dijkstra ${(dijMs / tried).toFixed(1)} ms / ${Math.round(dSet / tried)} settled per trip`,
 );
+console.log(`turn restrictions: ${router.turns.count} in force; ${rerouted} of ${tried} trips rerouted by them (edge-based search)`);
 if (worst > 1e-6) {
   console.error('A* and Dijkstra disagree: the landmark bounds are not admissible');
   process.exit(1);

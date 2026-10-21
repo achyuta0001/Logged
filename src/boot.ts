@@ -12,6 +12,7 @@ import { LEGACY_PIN, loadPinIndex, packBase, packsRoot } from './region/packs';
 import { loadCity, openCity } from './region/city';
 import { registerServiceWorker } from './sw-register';
 import { withoutCommute } from './ui/commute/state';
+import { initInstallHint, noteOpen } from './ui/installHint';
 
 /** go() target for the Commute tab (pincodes are six digits, so it never clashes) */
 const COMMUTE = 'commute';
@@ -98,6 +99,7 @@ async function boot() {
           : e
             ? await (await import('./main')).openPin(shell, e, packBase(root, e))
             : await openCity(shell, city!);
+        if (commute || e) noteOpen();
       } catch (err) {
         console.error(err);
         // a tab opened before a deploy runs old code against the new packs: reload into the new build
@@ -125,6 +127,7 @@ boot().catch((e) => {
   new Loader().error(`Could not start: ${e instanceof Error ? e.message : String(e)}`);
 });
 registerServiceWorker();
+initInstallHint();
 
 /**
  * True when the site now serves a different build than the one running (its index.html points at

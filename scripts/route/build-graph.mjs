@@ -6,8 +6,8 @@
 //
 // Input is the Bengaluru OSM extract (.cache/osm/blr-region.osm.pbf, from scripts/osm-extract.sh or
 // pages.yml; ODbL). osmium-tool, which the pack pipeline already needs, cuts the drivable highway ways
-// in the bbox (whole ways) with their node locations and the traffic-signal nodes; no npm dependency.
-// The rest is plain JS:
+// in the bbox (whole ways) with their node locations, the traffic-signal nodes and the turn
+// restriction relations; no npm dependency. The rest is plain JS:
 //   1. keep motorway .. residential, living_street and road; service ways only when named, or when
 //      an unnamed service network joins two parts of the road network that are otherwise separate
 //      ("needed for connectivity"). Drop area=yes, car access no/private/..., reversible lanes,
@@ -18,6 +18,11 @@
 //   3. keep the largest strongly connected component (every kept node can reach every other: no snap
 //      onto an island or a one-way trap), number nodes in Hilbert order, sort edges by node.
 //   4. ALT landmarks: undirected lower-bound travel times from 12 peripheral nodes ("farthest" choice).
+//   5. turn restrictions (type=restriction: no_* and only_*, via a node or via ways; not conditional
+//      ones, nor those with except=motorcar) become arc sequences from, via, to. A via node, and each
+//      end of a via way, is kept as a junction in step 2. A member way that gives no arc at the via
+//      node (not drivable, not there, wrong way), or two (passing through it), drops the restriction
+//      (counted in the stats).
 // The file format is src/route/format.ts; speeds are src/route/config.ts, copied into the header.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -58,12 +63,14 @@ function parseTags(f) {
 }
 
 /**
- * OPL with way node locations (osmium add-locations-to-ways) -> ways and traffic-signal node ids.
+ * OPL with way node locations (osmium add-locations-to-ways) -> ways, traffic-signal node ids and
+ * type=restriction relations ({ id, tags, members: [{ type: 'n' | 'w' | 'r', ref, role }] }).
  * A way node without a location (outside the extract) has NaN coordinates; the way is split there.
  */
 export function parseOpl(text) {
   const ways = [];
   const signals = new Set();
+  const restrictions = [];
   let start = 0;
   while (start < text.length) {
     let end = text.indexOf('\n', start);
@@ -71,16 +78,28 @@ export function parseOpl(text) {
     const line = text.slice(start, end);
     start = end + 1;
     const kind = line[0];
-    if (kind !== 'w' && kind !== 'n') continue;
+    if (kind !== 'w' && kind !== 'n' && kind !== 'r') continue;
     const fields = line.split(' ');
     const id = Number(fields[0].slice(1));
     let tagsF = '', refsF = '';
     for (let i = 1; i < fields.length; i++) {
       if (fields[i][0] === 'T') tagsF = fields[i].slice(1);
-      else if (fields[i][0] === 'N') refsF = fields[i].slice(1);
+      else if (fields[i][0] === 'N' || fields[i][0] === 'M') refsF = fields[i].slice(1);
     }
     if (kind === 'n') {
       if (/(^|,)highway=traffic_signals(,|$)/.test(tagsF)) signals.add(id);
+      continue;
+    }
+    if (kind === 'r') {
+      const tags = parseTags(tagsF);
+      if (tags.type !== 'restriction') continue;
+      const members = [];
+      if (refsF)
+        for (const r of refsF.split(',')) {
+          const at = r.indexOf('@');
+          members.push({ type: r[0], ref: Number(r.slice(1, at)), role: unesc(r.slice(at + 1)) });
+        }
+      restrictions.push({ id, tags, members });
       continue;
     }
     const ids = [], xs = [], ys = [];
@@ -93,7 +112,7 @@ export function parseOpl(text) {
       }
     ways.push({ id, tags: parseTags(tagsF), ids, xs, ys });
   }
-  return { ways, signals };
+  return { ways, signals, restrictions };
 }
 
 // ------------------------------------------------------------------------------------------ tags
@@ -124,6 +143,20 @@ export function maxspeedOf(tags) {
   if (!m) return 0;
   const k = parseFloat(m[1]) * (m[2] && m[2].toLowerCase() === 'mph' ? 1.609 : 1);
   return k >= 5 && k <= 200 ? Math.round(k) : 0;
+}
+
+/**
+ * What a type=restriction relation means for cars: 'no' (no_left_turn, no_right_turn, no_straight_on,
+ * no_u_turn, no_entry, no_exit), 'only' (only_*), or null: not a turn restriction, not for cars
+ * (restriction:hgv=* alone, except=motorcar) or only at times (restriction:conditional, hour_on ...).
+ */
+export function restrictionOf(tags) {
+  if (tags.type !== 'restriction') return null;
+  const except = (tags.except ?? '').split(';').map((s) => s.trim());
+  if (except.includes('motorcar') || except.includes('motor_vehicle') || except.includes('vehicle')) return null;
+  if (tags.day_on || tags.day_off || tags.hour_on || tags.hour_off) return null;
+  const m = /^(no|only)_(left_turn|right_turn|straight_on|u_turn|entry|exit)$/.exec((tags['restriction:motorcar'] ?? tags.restriction ?? '').trim());
+  return m ? m[1] : null;
 }
 
 const named = (tags) => !!(tags.name || tags['name:en'] || tags.ref);
@@ -226,10 +259,11 @@ const flip = (d) => (d & FWD ? BWD : 0) | (d & BWD ? FWD : 0);
  * Build the routable graph from parsed OPL. Returns { graph, stats }: `graph` is what encodeGraph
  * takes (header without the stream sizes), `stats` the counts reported by the CLI.
  */
-export function buildGraph({ ways, signals }, opts = {}) {
+export function buildGraph({ ways, signals, restrictions = [] }, opts = {}) {
   const bbox = opts.bbox ?? DEFAULT_BBOX;
   const nLandmarks = opts.landmarks ?? DEFAULT_LANDMARKS;
-  const stats = { waysRead: ways.length, dropped: {}, coreWays: 0, serviceWays: 0, serviceJoins: 0 };
+  const stats = { waysRead: ways.length, dropped: {}, coreWays: 0, serviceWays: 0, serviceJoins: 0, turnsRead: restrictions.length, turnsSkipped: {} };
+  const skipTurn = (why) => (stats.turnsSkipped[why] = (stats.turnsSkipped[why] ?? 0) + 1);
 
   // ---- 1. which ways
   const core = [], svc = [];
@@ -353,6 +387,28 @@ export function buildGraph({ ways, signals }, opts = {}) {
   const refs = new Int32Array(N);
   for (const p of sel) for (const u of p.nodes) refs[u]++;
   const pinned = new Uint8Array(N);
+  // car turn restrictions (step 5): their via nodes and the ends of via ways are never merged through
+  const rels = [];
+  const wayNodes = new Map(); // OSM way id -> its OSM node ids, for the ways restrictions name
+  for (const r of restrictions) {
+    const kind = restrictionOf(r.tags);
+    if (!kind) {
+      skipTurn('not-car');
+      continue;
+    }
+    rels.push({ r, only: kind === 'only' ? 1 : 0 });
+    for (const x of r.members) if (x.type === 'w') wayNodes.set(x.ref, null);
+  }
+  if (rels.length) for (const w of ways) if (wayNodes.has(w.id)) wayNodes.set(w.id, w.ids);
+  for (const { r } of rels)
+    for (const x of r.members) {
+      if (x.role !== 'via') continue;
+      const ids = x.type === 'n' ? [x.ref] : x.type === 'w' && wayNodes.get(x.ref) ? [wayNodes.get(x.ref)[0], wayNodes.get(x.ref).at(-1)] : [];
+      for (const id of ids) {
+        const d = dense.get(id);
+        if (d !== undefined) pinned[d] = 1;
+      }
+    }
   const sA = [], sB = [], sAttr = [], sDir = [], sWay = [], sOff = [0], sNodes = [];
   const addSeg = (p, i0, i1) => {
     const a = p.nodes[i0], b = p.nodes[i1];
@@ -657,6 +713,131 @@ export function buildGraph({ ways, signals }, opts = {}) {
   });
   stats.landmarks = landmarks.length;
 
+  // ---- 5. turn restrictions -> arc sequences (an arc is 2 * edge, + 1 when driven v -> u)
+  const nOff = new Int32Array(n + 1);
+  for (let e = 0; e < m; e++) {
+    nOff[eU[e] + 1]++;
+    nOff[eV[e] + 1]++;
+  }
+  for (let i = 0; i < n; i++) nOff[i + 1] += nOff[i];
+  const nEdge = new Int32Array(nOff[n]);
+  {
+    const f = Int32Array.from(nOff);
+    for (let e = 0; e < m; e++) {
+      nEdge[f[eU[e]]++] = e;
+      nEdge[f[eV[e]]++] = e;
+    }
+  }
+  const gnode = (osmId) => {
+    const d = dense.get(osmId);
+    return d === undefined ? -1 : newId[d];
+  };
+  const headOf = (a) => (a & 1 ? eU[a >> 1] : eV[a >> 1]);
+  /** arcs into (into) or out of graph node x on edges whose OSM way at x is `way` */
+  const arcsAt = (x, way, into) => {
+    const out = [];
+    for (let j = nOff[x]; j < nOff[x + 1]; j++) {
+      const e = nEdge[j];
+      const atU = eU[e] === x;
+      if (wayId[atU ? wayOff[e] : wayOff[e + 1] - 1] !== way) continue;
+      const back = atU === into ? 1 : 0; // driven u -> v, an edge leaves u and arrives at v
+      if (eFlags[e] & (back ? BWD : FWD)) out.push(2 * e + back);
+    }
+    return out;
+  };
+  // why a restriction is dropped: 'missing' (the via node or a via way, or with via ways the from way,
+  // is not in the extract or not in the graph: outside the bbox, not drivable, cut off), 'no-arc' (a
+  // member way gives no arc at the via node: it does not reach it, is not drivable, or not in that
+  // direction), 'ambiguous' (it passes through the via node, drivable on both sides), 'invalid'
+  // (malformed: no from / to, via ways that do not chain), 'not-car' (step 2)
+  const one = (arcs) => (arcs.length === 1 ? arcs[0] : arcs.length ? 'ambiguous' : 'no-arc');
+  /** arcs from way F through `via` (one node, or ways in order) onto way T, or why there are none */
+  const resolve = (F, via, T) => {
+    let x, y;
+    const viaArcs = [];
+    if (via.length === 1 && via[0].type === 'n') {
+      x = y = gnode(via[0].ref);
+      if (x < 0) return 'missing';
+    } else if (via.length && via.every((v) => v.type === 'w')) {
+      const ends = (id) => (wayNodes.get(id) ? [wayNodes.get(id)[0], wayNodes.get(id).at(-1)] : null);
+      const fn = wayNodes.get(F), e0 = ends(via[0].ref);
+      if (!fn || !e0) return 'missing';
+      // the via chain starts at the end of the first via way that lies on the from way
+      const onF = e0.filter((id) => fn.includes(id));
+      if (onF.length !== 1) return 'invalid';
+      let at = onF[0];
+      x = y = gnode(at);
+      if (x < 0) return 'missing';
+      for (const v of via) {
+        const ev = ends(v.ref);
+        if (!ev) return 'missing';
+        if (ev[0] === ev[1] || (at !== ev[0] && at !== ev[1])) return 'invalid';
+        at = at === ev[0] ? ev[1] : ev[0];
+        const to = gnode(at);
+        if (to < 0) return 'missing';
+        // along the via way's edges to its far end
+        let prev = -1;
+        for (let guard = 0; y !== to; guard++) {
+          const a = one(arcsAt(y, v.ref, false).filter((c) => c >> 1 !== prev));
+          if (typeof a === 'string') return a;
+          if (guard > 64) return 'invalid';
+          viaArcs.push(a);
+          prev = a >> 1;
+          y = headOf(a);
+        }
+      }
+    } else return 'invalid';
+    const fa = one(arcsAt(x, F, true)), ta = one(arcsAt(y, T, false));
+    if (typeof fa === 'string') return fa;
+    if (typeof ta === 'string') return ta;
+    return [fa, ...viaArcs, ta];
+  };
+  const seen = new Set();
+  const turns = [];
+  let viaWays = 0;
+  for (const { r, only } of rels) {
+    const role = (k) => r.members.filter((x) => x.role === k);
+    const from = role('from').filter((x) => x.type === 'w'), via = role('via'), to = role('to').filter((x) => x.type === 'w');
+    // no_entry / no_exit may list several from / to ways; only_* names exactly one of each
+    if (!from.length || !to.length || (only && from.length + to.length > 2)) {
+      skipTurn('invalid');
+      continue;
+    }
+    let why = '', kept = 0;
+    for (const f of from)
+      for (const t of to) {
+        const arcs = resolve(f.ref, via, t.ref);
+        if (typeof arcs === 'string') {
+          why ||= arcs;
+          continue;
+        }
+        const key = `${only}|${arcs.join(',')}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          turns.push({ only, arcs });
+        }
+        kept++;
+      }
+    if (!kept) skipTurn(why);
+    else {
+      stats.turns = (stats.turns ?? 0) + 1;
+      if (via[0].type === 'w') viaWays++;
+    }
+  }
+  turns.sort((a, b) => {
+    for (let i = 0; i < Math.min(a.arcs.length, b.arcs.length); i++) if (a.arcs[i] !== b.arcs[i]) return a.arcs[i] - b.arcs[i];
+    return a.arcs.length - b.arcs.length || a.only - b.only;
+  });
+  const turnOff = new Int32Array(turns.length + 1), turnArc = [], turnOnly = new Uint8Array(turns.length);
+  turns.forEach((t, i) => {
+    turnOff[i] = turnArc.length;
+    turnArc.push(...t.arcs);
+    turnOnly[i] = t.only;
+  });
+  turnOff[turns.length] = turnArc.length;
+  stats.turns ??= 0;
+  stats.turnsViaWay = viaWays;
+
   const graph = {
     header: {
       built: opts.built ?? new Date().toISOString(),
@@ -672,6 +853,7 @@ export function buildGraph({ ways, signals }, opts = {}) {
         coreWays: stats.coreWays,
         serviceWays: stats.serviceWays,
         nodesDroppedScc: stats.nodesDroppedScc,
+        turns: stats.turns,
       },
     },
     nodeLng,
@@ -694,6 +876,9 @@ export function buildGraph({ ways, signals }, opts = {}) {
     geoLat: Float64Array.from(geoLat),
     names,
     lm,
+    turnOff,
+    turnArc: Int32Array.from(turnArc),
+    turnOnly,
   };
   return { graph, stats };
 }
@@ -731,10 +916,11 @@ export function writeGraph(graph, out) {
 function osmiumOpl(pbf, bbox, tmp) {
   const run = (args) => execFileSync('osmium', args, { stdio: ['ignore', 'ignore', 'inherit'] });
   const hw = path.join(tmp, 'hw.osm.pbf'), clip = path.join(tmp, 'clip.osm.pbf'), opl = path.join(tmp, 'roads.opl');
-  run(['tags-filter', pbf, `w/highway=${ROAD_CLASSES.join(',')}`, '-o', hw, '--overwrite']);
+  run(['tags-filter', pbf, `w/highway=${ROAD_CLASSES.join(',')}`, 'r/type=restriction', '-o', hw, '--overwrite']);
   // complete_ways: a way crossing the bbox keeps all its nodes; buildGraph trims it to one past the edge
+  // (a relation with any member in the bbox is kept too, with its full member list)
   run(['extract', '-b', bbox.join(','), '-s', 'complete_ways', hw, '-o', clip, '--overwrite']);
-  // tagged nodes (traffic signals) stay in the output next to the ways
+  // tagged nodes (traffic signals) and the relations stay in the output next to the ways
   run(['add-locations-to-ways', clip, '-f', 'opl,add_metadata=false', '-o', opl, '--overwrite']);
   return fs.readFileSync(opl, 'utf8');
 }
@@ -781,6 +967,9 @@ function main() {
   );
   console.log(
     `[roads] ${stats.segments} segments -> ${stats.edgesMerged} edges; strongly connected: ${stats.nodes} nodes (${stats.nodesDroppedScc} of ${stats.nodesBeforeScc} dropped), ${stats.edges} edges, ${stats.lengthKm} km, ${stats.polylinePoints} polyline points, ${stats.signals} signals, ${stats.landmarks} landmarks`,
+  );
+  console.log(
+    `[roads] turn restrictions: ${stats.turns} of ${stats.turnsRead} kept (${stats.turns - stats.turnsViaWay} via a node, ${stats.turnsViaWay} via ways); dropped ${JSON.stringify(stats.turnsSkipped)}`,
   );
   console.log(
     `[roads] ${path.relative(root, out)}/${index.file}: ${(index.bytes / 1e6).toFixed(2)} MB raw, ${(index.gzipBytes / 1e6).toFixed(2)} MB gzipped (osmium ${((t1 - t0) / 1000).toFixed(1)} s, build ${((t2 - t1) / 1000).toFixed(1)} s, write ${((Date.now() - t2) / 1000).toFixed(1)} s)`,

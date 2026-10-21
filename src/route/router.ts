@@ -5,7 +5,14 @@
 // Weights: seconds at typical peak-hour speed (./config.ts table, read from the graph header), plus
 // SIGNAL_S per mapped traffic signal passed. Search: A* with ALT potentials (landmark lower bounds
 // stored in the graph) combined with the straight-line bound at the fastest class speed; settled
-// nodes may reopen, so the slightly inconsistent floored bounds still give exact shortest paths.
+// states may reopen, so the slightly inconsistent floored bounds still give exact shortest paths.
+// Turns: no U-turns except at a dead end, and the OSM turn restrictions in the graph (no_* / only_*,
+// via a node or via ways) are obeyed. A search over nodes runs first; its path never turns back on
+// itself, so when it makes no restricted turn (most trips) it is the answer. Otherwise an edge-based
+// search (a state is the arc a car arrived by; ./turns.ts) finds the fastest legal path. Both rules
+// only take paths away, so the landmark bounds, built without them, stay lower bounds. Where the
+// restrictions leave no way at all (OSM seals off a few road ends with them), the route ignores them
+// rather than fail.
 // Points snap onto the nearest edge (flyover decks and motorways are only taken when nothing else is
 // near), and a route starts and ends mid-edge, honouring one-way streets on those edges too.
 // Alternatives: the penalty method. Each round multiplies the weight of the edges on the routes found
@@ -16,6 +23,7 @@ import type { LngLat } from '../commute/spots.ts';
 import type { RouteCandidate } from '../commute/types.ts';
 import { edgeSpeedMps } from './config.ts';
 import { BRIDGE, BWD, FWD, TUNNEL, type RawGraph } from './format.ts';
+import { compileTurns, type TurnRules } from './turns.ts';
 
 const M_LAT = 110574;
 const mLng = (lat: number) => 111320 * Math.cos((lat * Math.PI) / 180);
@@ -69,7 +77,7 @@ export interface Snap {
 }
 
 export interface RouteStats {
-  /** nodes taken off the heap, summed over every search of the request */
+  /** nodes (states, in an edge-based search) taken off the heap, summed over every search of the request */
   settled: number;
   searches: number;
   ms: number;
@@ -79,6 +87,17 @@ interface Piece {
   e: number;
   t0: number;
   t1: number;
+}
+
+/** A path found: pieces in travel order, the arcs driven (the first from the source point, the last
+ *  to the target point; one arc when both lie on one edge), its weighted cost and states settled. */
+interface Path {
+  pieces: Piece[];
+  arcs: number[];
+  cost: number;
+  settled: number;
+  /** false when the turn restrictions leave no way at all and this path ignores them */
+  legal: boolean;
 }
 
 class Heap {
@@ -143,6 +162,13 @@ export class Router {
   readonly outEdge: Int32Array;
   readonly outAlong: Uint8Array;
   readonly outW: Float64Array;
+  /** arc of edge e driven u -> v (arcFwd) or v -> u (arcBwd), -1 where that way is closed */
+  readonly arcFwd: Int32Array;
+  readonly arcBwd: Int32Array;
+  /** turn restrictions as search states and rules (./turns.ts) */
+  readonly turns: TurnRules;
+  /** search states: the arcs, then the extra states of via-way restrictions */
+  readonly states: number;
   /** landmark lower bounds, node-major: lmN[v * K + l] */
   readonly lmN: Uint16Array;
   /** fastest speed in the table, m/s (straight-line bound) */
@@ -155,12 +181,16 @@ export class Router {
   private readonly rows: number;
   private readonly cellOff: Int32Array;
   private readonly cellEdge: Int32Array;
-  // search scratch, reused across queries
-  private readonly dist: Float64Array;
+  // search scratch, reused across queries: the bound per node; the node search's labels (parN = the
+  // arc a node was reached by, -1 = a start); the edge-based search's, per state (made on first use)
   private readonly hv: Float64Array;
-  private readonly par: Int32Array;
+  private readonly hstamp: Uint32Array;
+  private readonly distN: Float64Array;
   private readonly parN: Int32Array;
-  private readonly stamp: Uint32Array;
+  private readonly stampN: Uint32Array;
+  private labels: { dist: Float64Array; par: Int32Array; stamp: Uint32Array } | null = null;
+  /** states the last edge-based search settled (for the stats when it finds no path) */
+  private arcsSettled = 0;
   private gen = 0;
   private readonly heap = new Heap();
   private wayEdges: Map<number, number[]> | null = null;
@@ -194,24 +224,28 @@ export class Router {
     this.outEdge = new Int32Array(A);
     this.outAlong = new Uint8Array(A);
     this.outW = new Float64Array(A);
+    this.arcFwd = new Int32Array(m).fill(-1);
+    this.arcBwd = new Int32Array(m).fill(-1);
     const fill = Int32Array.from(outOff);
     for (let e = 0; e < m; e++) {
       const base = g.eLen[e] * spm[e];
       if (g.eFlags[e] & FWD) {
-        const j = fill[g.eU[e]]++;
+        const j = (this.arcFwd[e] = fill[g.eU[e]]++);
         this.outHead[j] = g.eV[e];
         this.outEdge[j] = e;
         this.outAlong[j] = 1;
         this.outW[j] = base + g.nodeSignal[g.eV[e]] * sp.signalS;
       }
       if (g.eFlags[e] & BWD) {
-        const j = fill[g.eV[e]]++;
+        const j = (this.arcBwd[e] = fill[g.eV[e]]++);
         this.outHead[j] = g.eU[e];
         this.outEdge[j] = e;
         this.outAlong[j] = 0;
         this.outW[j] = base + g.nodeSignal[g.eU[e]] * sp.signalS;
       }
     }
+    this.turns = compileTurns(g, this);
+    this.states = A + this.turns.extraArc.length;
 
     this.lmN = g.lm;
 
@@ -246,11 +280,11 @@ export class Router {
     const cf = Int32Array.from(count);
     visit((c, e) => (this.cellEdge[cf[c]++] = e));
 
-    this.dist = new Float64Array(n);
     this.hv = new Float64Array(n);
-    this.par = new Int32Array(n);
+    this.hstamp = new Uint32Array(n);
+    this.distN = new Float64Array(n);
     this.parN = new Int32Array(n);
-    this.stamp = new Uint32Array(n);
+    this.stampN = new Uint32Array(n);
   }
 
   private cx(lng: number) {
@@ -343,83 +377,76 @@ export class Router {
   }
 
   /**
-   * Fastest path between two snapped points. `mult` scales edge weights (alternatives), `avoid`
-   * flags edges that cost `avoidS` extra. Returns the pieces in travel order and the weighted cost.
+   * Fastest path a car may drive between two snapped points. `mult` scales edge weights
+   * (alternatives), `avoid` flags edges that cost `avoidS` extra. The search over nodes runs first:
+   * its path never turns back on itself, so unless a turn restriction rules it out (rare: most trips
+   * meet none) it is also the fastest legal one. Otherwise the edge-based search runs. When it finds
+   * no way at all (a road the restrictions seal off), the path over nodes is the answer, `legal`
+   * false; `strict` false goes straight to it (a later round of a trip known to have no legal way).
    */
-  search(s: Snap, t: Snap, mult: Float32Array | null, avoid: Uint8Array | null, avoidS: number): { pieces: Piece[]; cost: number; settled: number } | null {
-    const g = this.g, K = this.K, S = this.signalS;
-    const gen = ++this.gen;
-    if (gen === 0xffffffff) {
-      this.stamp.fill(0);
-      this.gen = 1;
+  search(s: Snap, t: Snap, mult: Float32Array | null, avoid: Uint8Array | null, avoidS: number, strict = true): Path | null {
+    const r = this.searchNodes(s, t, mult, avoid, avoidS);
+    if (!r || this.turns.count === 0 || this.legal(r.arcs)) return r;
+    const q = strict ? this.searchArcs(s, t, mult, avoid, avoidS) : null;
+    if (q) {
+      q.settled += r.settled;
+      return q;
     }
-    const { dist, hv, par, parN, stamp, lmN, outOff, outHead, outEdge, outW } = this;
+    if (strict) r.settled += this.arcsSettled;
+    r.legal = false;
+    return r;
+  }
+
+  /** Whether a car may drive these arcs one after another: no U-turn but at a dead end, and no turn a
+   *  restriction forbids. */
+  legal(arcs: number[]): boolean {
+    const A = this.outHead.length;
+    const { extraArc, row, rowOff, rule } = this.turns;
+    let x = arcs[0];
+    for (let i = 1; i < arcs.length; i++) {
+      const ax = x < A ? x : extraArc[x - A], u = this.outHead[ax], j = arcs[i];
+      const j0 = this.outOff[u], j1 = this.outOff[u + 1];
+      if (j < j0 || j >= j1) return false; // does not go on from where the last arc ends
+      const rj = row[x] < 0 ? 2 * j : rule[rowOff[row[x]] + j - j0];
+      if (rj < 0 || (j1 - j0 > 1 && this.outEdge[j] === this.outEdge[ax] && !(rj & 1))) return false;
+      x = rj >> 1;
+    }
+    return true;
+  }
+
+  /** Fastest path over nodes, turn restrictions aside (it never comes back to a node, so never U-turns). */
+  searchNodes(s: Snap, t: Snap, mult: Float32Array | null, avoid: Uint8Array | null, avoidS: number): Path | null {
+    const g = this.g, S = this.signalS;
+    const gen = this.nextGen();
+    const { hv, hstamp, distN: dist, parN: par, stampN: stamp, outOff, outHead, outEdge, outW } = this;
+    const { tNode, tCost, tArc, h } = this.target(t);
+    const nT = tNode.length;
     const heap = this.heap;
     heap.size = 0;
-
-    // target: reached from its edge's ends
-    const tNode: number[] = [], tCost: number[] = [];
-    const Lt = g.eLen[t.e];
-    if (g.eFlags[t.e] & FWD) {
-      tNode.push(g.eU[t.e]);
-      tCost.push(t.t * this.spm[t.e]);
-    }
-    if (g.eFlags[t.e] & BWD) {
-      tNode.push(g.eV[t.e]);
-      tCost.push((Lt - t.t) * this.spm[t.e]);
-    }
-    const tD = new Float64Array(tNode.length * K);
-    tNode.forEach((x, a) => {
-      for (let l = 0; l < K; l++) tD[a * K + l] = lmN[x * K + l];
-    });
-    const tx = t.p[0], ty = t.p[1], kx = this.kx, vmax = this.vmax;
-    const nT = tNode.length;
-    const h = (v: number) => {
-      let lb = Infinity;
-      for (let a = 0; a < nT; a++) {
-        let mx = 0;
-        const bv = v * K, ba = a * K;
-        for (let l = 0; l < K; l++) {
-          const d = tD[ba + l] - lmN[bv + l];
-          if (d > mx) mx = d;
-          else if (-d > mx) mx = -d;
-        }
-        if (mx < lb) lb = mx;
-      }
-      lb -= 1; // bounds are whole seconds rounded down
-      const dx = (g.nodeLng[v] - tx) * kx, dy = (g.nodeLat[v] - ty) * M_LAT;
-      const eu = Math.sqrt(dx * dx + dy * dy) / vmax;
-      return eu > lb ? eu : lb > 0 ? lb : 0;
-    };
     const touch = (v: number) => {
-      if (stamp[v] !== gen) {
-        stamp[v] = gen;
-        dist[v] = Infinity;
+      stamp[v] = gen;
+      dist[v] = Infinity;
+      if (hstamp[v] !== gen) {
+        hstamp[v] = gen;
         hv[v] = h(v);
       }
     };
 
     // source: leaves along its edge in each allowed direction
-    let best = Infinity, bestA = -2;
     const Ls = g.eLen[s.e];
     const starts: [number, number][] = [];
     if (g.eFlags[s.e] & FWD) starts.push([g.eV[s.e], (Ls - s.t) * this.spm[s.e] + g.nodeSignal[g.eV[s.e]] * S]);
     if (g.eFlags[s.e] & BWD) starts.push([g.eU[s.e], s.t * this.spm[s.e] + g.nodeSignal[g.eU[s.e]] * S]);
     for (const [v, c] of starts) {
-      touch(v);
+      if (stamp[v] !== gen) touch(v);
       if (c < dist[v]) {
         dist[v] = c;
         par[v] = -1;
-        parN[v] = -1;
         heap.push(c + hv[v], v);
       }
     }
-    if (s.e === t.e) {
-      // straight along the shared edge, when its direction allows
-      if (g.eFlags[s.e] & FWD && s.t <= t.t) best = (t.t - s.t) * this.spm[s.e];
-      if (g.eFlags[s.e] & BWD && s.t >= t.t) best = Math.min(best, (s.t - t.t) * this.spm[s.e]);
-      if (Number.isFinite(best)) bestA = -1;
-    }
+    const d = this.direct(s, t);
+    let best = d.best, bestA = -1;
 
     let settled = 0;
     while (heap.size) {
@@ -445,29 +472,199 @@ export class Router {
         if (nd < dist[v]) {
           dist[v] = nd;
           par[v] = j;
-          parN[v] = u;
           heap.push(nd + hv[v], v);
         }
       }
     }
-    if (bestA === -2) return null;
-    if (bestA === -1) return { pieces: [{ e: s.e, t0: s.t, t1: t.t }], cost: best, settled };
-
-    const pieces: Piece[] = [];
-    const x = tNode[bestA];
-    pieces.push({ e: t.e, t0: x === g.eU[t.e] ? 0 : Lt, t1: t.t });
-    let v = x;
-    for (let guard = 0; guard <= this.n; guard++) {
+    if (bestA < 0) return d.arc < 0 ? null : this.path(s, t, [d.arc], best, settled);
+    const arcs = [tArc[bestA]];
+    let v = tNode[bestA];
+    for (let guard = 0; guard <= this.n && par[v] >= 0; guard++) {
       const j = par[v];
-      if (j < 0) break;
-      const e = outEdge[j];
-      pieces.push(this.outAlong[j] ? { e, t0: 0, t1: g.eLen[e] } : { e, t0: g.eLen[e], t1: 0 });
-      v = parN[v];
+      arcs.push(j);
+      v = this.outAlong[j] ? g.eU[outEdge[j]] : g.eV[outEdge[j]];
     }
     // v is now the node the source left by
-    pieces.push({ e: s.e, t0: s.t, t1: v === g.eV[s.e] ? Ls : 0 });
-    pieces.reverse();
-    return { pieces, cost: best, settled };
+    arcs.push(v === g.eV[s.e] ? this.arcFwd[s.e] : this.arcBwd[s.e]);
+    return this.path(s, t, arcs.reverse(), best, settled);
+  }
+
+  /**
+   * Fastest legal path, edge-based: a state is the arc a car arrived by (or an extra state of a
+   * via-way restriction), and each turn obeys the U-turn rule and the turn restrictions (./turns.ts).
+   */
+  searchArcs(s: Snap, t: Snap, mult: Float32Array | null, avoid: Uint8Array | null, avoidS: number): Path | null {
+    const g = this.g, S = this.signalS, A = this.outHead.length;
+    const gen = this.nextGen();
+    this.labels ??= { dist: new Float64Array(this.states), par: new Int32Array(this.states), stamp: new Uint32Array(this.states) };
+    const { dist, par, stamp } = this.labels;
+    const { hv, hstamp, outOff, outHead, outEdge, outW } = this;
+    const { extraArc, row, rowOff, rule } = this.turns;
+    const { tNode, tCost, tArc, h } = this.target(t);
+    const nT = tNode.length;
+    const heap = this.heap;
+    heap.size = 0;
+    const touchH = (v: number) => {
+      hstamp[v] = gen;
+      hv[v] = h(v);
+    };
+
+    // source: leaves along its edge in each allowed direction; each start is that arc, partly driven
+    const Ls = g.eLen[s.e];
+    const starts: [number, number][] = [];
+    if (g.eFlags[s.e] & FWD) starts.push([this.arcFwd[s.e], (Ls - s.t) * this.spm[s.e] + g.nodeSignal[g.eV[s.e]] * S]);
+    if (g.eFlags[s.e] & BWD) starts.push([this.arcBwd[s.e], s.t * this.spm[s.e] + g.nodeSignal[g.eU[s.e]] * S]);
+    for (const [x, c] of starts) {
+      const v = outHead[x];
+      if (hstamp[v] !== gen) touchH(v);
+      stamp[x] = gen;
+      dist[x] = c;
+      par[x] = -1;
+      heap.push(c + hv[v], x);
+    }
+    const d = this.direct(s, t);
+    let best = d.best, bestX = -1, bestA = -1;
+
+    let settled = 0;
+    while (heap.size) {
+      const f = heap.k[0];
+      if (f >= best) break;
+      const x = heap.pop();
+      const ax = x < A ? x : extraArc[x - A];
+      const u = outHead[ax];
+      const gx = dist[x];
+      if (f - hv[u] > gx + 1e-7) continue; // stale entry
+      settled++;
+      const j0 = outOff[u], j1 = outOff[u + 1];
+      // the edge a U-turn would go back along (none at a dead end, where it is the only way on)
+      const back = j1 - j0 > 1 ? outEdge[ax] : -1;
+      // this state's turn rules (if any), indexed by out arc: rule[r0 + j]
+      const rx = row[x], r0 = rx < 0 ? 0 : rowOff[rx] - j0;
+      for (let a = 0; a < nT; a++) {
+        if (tNode[a] !== u || gx + tCost[a] >= best) continue;
+        const j = tArc[a], rj = rx < 0 ? 2 * j : rule[r0 + j];
+        if (rj < 0 || (outEdge[j] === back && !(rj & 1))) continue;
+        best = gx + tCost[a];
+        bestX = x;
+        bestA = a;
+      }
+      for (let j = j0; j < j1; j++) {
+        const e = outEdge[j];
+        let y = j;
+        if (rx >= 0) {
+          const rj = rule[r0 + j];
+          if (rj < 0 || (e === back && !(rj & 1))) continue;
+          y = rj >> 1;
+        } else if (e === back) continue;
+        let w = outW[j];
+        if (mult !== null) w *= mult[e];
+        if (avoid !== null && avoid[e]) w += avoidS;
+        const nd = gx + w;
+        if (stamp[y] !== gen) {
+          stamp[y] = gen;
+          dist[y] = Infinity;
+        }
+        if (nd < dist[y]) {
+          const v = outHead[j];
+          if (hstamp[v] !== gen) touchH(v);
+          dist[y] = nd;
+          par[y] = x;
+          heap.push(nd + hv[v], y);
+        }
+      }
+    }
+    this.arcsSettled = settled;
+    if (bestX < 0) return d.arc < 0 ? null : this.path(s, t, [d.arc], best, settled);
+    const arcs = [tArc[bestA]];
+    for (let x = bestX, guard = 0; guard <= this.states; guard++) {
+      arcs.push(x < A ? x : extraArc[x - A]);
+      if (par[x] < 0) break; // a start: the arc the source left along
+      x = par[x];
+    }
+    return this.path(s, t, arcs.reverse(), best, settled);
+  }
+
+  private nextGen(): number {
+    if (++this.gen === 0xffffffff) {
+      this.hstamp.fill(0);
+      this.stampN.fill(0);
+      this.labels?.stamp.fill(0);
+      this.gen = 1;
+    }
+    return this.gen;
+  }
+
+  /** Straight along the edge both points lie on, when its direction allows: cost and arc (-1 = no). */
+  private direct(s: Snap, t: Snap): { best: number; arc: number } {
+    const g = this.g;
+    let best = Infinity, arc = -1;
+    if (s.e !== t.e) return { best, arc };
+    if (g.eFlags[s.e] & FWD && s.t <= t.t) {
+      best = (t.t - s.t) * this.spm[s.e];
+      arc = this.arcFwd[s.e];
+    }
+    if (g.eFlags[s.e] & BWD && s.t >= t.t && (s.t - t.t) * this.spm[s.e] < best) {
+      best = (s.t - t.t) * this.spm[s.e];
+      arc = this.arcBwd[s.e];
+    }
+    return { best, arc };
+  }
+
+  /**
+   * The target's ends: from each, the cost on to the point and the arc driven there; and h(v), a lower
+   * bound on the time from node v to the target (landmarks and the straight line).
+   */
+  private target(t: Snap) {
+    const g = this.g, K = this.K, lmN = this.lmN;
+    const tNode: number[] = [], tCost: number[] = [], tArc: number[] = [];
+    const Lt = g.eLen[t.e];
+    if (g.eFlags[t.e] & FWD) {
+      tNode.push(g.eU[t.e]);
+      tCost.push(t.t * this.spm[t.e]);
+      tArc.push(this.arcFwd[t.e]);
+    }
+    if (g.eFlags[t.e] & BWD) {
+      tNode.push(g.eV[t.e]);
+      tCost.push((Lt - t.t) * this.spm[t.e]);
+      tArc.push(this.arcBwd[t.e]);
+    }
+    const tD = new Float64Array(tNode.length * K);
+    tNode.forEach((x, a) => {
+      for (let l = 0; l < K; l++) tD[a * K + l] = lmN[x * K + l];
+    });
+    const tx = t.p[0], ty = t.p[1], kx = this.kx, vmax = this.vmax;
+    const nT = tNode.length;
+    const h = (v: number) => {
+      let lb = Infinity;
+      for (let a = 0; a < nT; a++) {
+        let mx = 0;
+        const bv = v * K, ba = a * K;
+        for (let l = 0; l < K; l++) {
+          const d = tD[ba + l] - lmN[bv + l];
+          if (d > mx) mx = d;
+          else if (-d > mx) mx = -d;
+        }
+        if (mx < lb) lb = mx;
+      }
+      lb -= 1; // bounds are whole seconds rounded down
+      const dx = (g.nodeLng[v] - tx) * kx, dy = (g.nodeLat[v] - ty) * M_LAT;
+      const eu = Math.sqrt(dx * dx + dy * dy) / vmax;
+      return eu > lb ? eu : lb > 0 ? lb : 0;
+    };
+    return { tNode, tCost, tArc, h };
+  }
+
+  /** A Path from the arcs it drives (see Path). */
+  private path(s: Snap, t: Snap, arcs: number[], cost: number, settled: number): Path {
+    const g = this.g;
+    if (arcs.length === 1) return { pieces: [{ e: s.e, t0: s.t, t1: t.t }], arcs, cost, settled, legal: true };
+    const pieces: Piece[] = [{ e: s.e, t0: s.t, t1: this.outAlong[arcs[0]] ? g.eLen[s.e] : 0 }];
+    for (let i = 1; i + 1 < arcs.length; i++) {
+      const e = this.outEdge[arcs[i]];
+      pieces.push(this.outAlong[arcs[i]] ? { e, t0: 0, t1: g.eLen[e] } : { e, t0: g.eLen[e], t1: 0 });
+    }
+    pieces.push({ e: t.e, t0: this.outAlong[arcs[arcs.length - 1]] ? 0 : g.eLen[t.e], t1: t.t });
+    return { pieces, arcs, cost, settled, legal: true };
   }
 
   // ------------------------------------------------------------------------------------ routes
@@ -491,10 +688,16 @@ export class Router {
         avoid[t.e] = 0;
       }
     }
+    // once a search finds that the turn restrictions leave this trip no legal way, the later rounds
+    // skip the edge-based search: their weights differ, but not which ways exist
+    let strict = true;
     const run = (mult: Float32Array | null) => {
-      const r = this.search(s, t, mult, avoid, avoidS);
+      const r = this.search(s, t, mult, avoid, avoidS, strict);
       this.lastStats.searches++;
-      if (r) this.lastStats.settled += r.settled;
+      if (r) {
+        this.lastStats.settled += r.settled;
+        if (!r.legal) strict = false;
+      }
       return r;
     };
     const first = run(null);

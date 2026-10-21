@@ -2,7 +2,8 @@
 // number of flood days reported; underpasses get a white ring. Tap a circle for "Flooded in
 // reports N times, 2017–2024" and up to three linked sources. Used in a pincode (Map layers,
 // off by default), in the city overview, and for the spots on a commute route (always shown there).
-import maplibregl, { type GeoJSONSource, type Map as MLMap, type MapLayerMouseEvent } from 'maplibre-gl';
+// The sidebar's "Reported flood spots" list (src/ui/spotList.ts) opens the same card from the keyboard.
+import maplibregl, { type GeoJSONSource, type Map as MLMap, type MapLayerMouseEvent, type PointLike } from 'maplibre-gl';
 import type { NewsSpot } from '../commute/spots';
 import type { Verdict } from '../commute/verdict';
 import { loadNewsSpots } from '../commute/data';
@@ -57,11 +58,8 @@ class SpotLayer {
     // a tap on an HTML marker drawn over this spot (a curated hotspot) opens that marker's own
     // popup; opening ours as well would stack two cards on the same place
     if ((e.originalEvent?.target as Element | null)?.closest?.('.maplibregl-marker')) return;
-    const i = Number(e.features?.[0]?.properties?.i);
-    const s = this.spots[i];
-    if (!s) return;
-    this.popup?.remove();
-    this.popup = new maplibregl.Popup({ offset: 12, maxWidth: '320px', className: 'glass-popup' }).setLngLat(s.coord).setHTML(this.html(s)).addTo(this.map);
+    const s = this.spots[Number(e.features?.[0]?.properties?.i)];
+    if (s) this.open(s);
   };
   private onEnter = () => (this.map.getCanvas().style.cursor = 'pointer');
   private onLeave = () => (this.map.getCanvas().style.cursor = '');
@@ -79,6 +77,18 @@ class SpotLayer {
 
   protected html(s: NewsSpot) {
     return spotPopupHtml(s);
+  }
+
+  /** A spot's card, as a tap on its circle opens it; `focus: false` leaves keyboard focus where it is (the sidebar list) */
+  open(s: NewsSpot, focus = true) {
+    this.popup?.remove();
+    this.popup = new maplibregl.Popup({ offset: 12, maxWidth: '320px', className: 'glass-popup', focusAfterOpen: focus }).setLngLat(s.coord).setHTML(this.html(s)).addTo(this.map);
+  }
+
+  /** Whether a circle is drawn at this screen point: a tap there opens its card, so layers beneath let it go */
+  hit(point: PointLike): boolean {
+    const dot = `${this.id}-dot`;
+    return !!this.map.getLayer(dot) && this.map.queryRenderedFeatures(point, { layers: [dot] }).length > 0;
   }
 
   protected data(): GeoJSON.FeatureCollection {
