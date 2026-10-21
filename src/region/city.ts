@@ -149,9 +149,15 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
       ${p ? `<dt>Area</dt><dd>${p.areaKm2.toFixed(1)} km²</dd>` : ''}
       <dt>3D flood model</dt><dd class="${p?.pack ? 'wet' : ''}">${p?.pack ? 'Click to open' : 'Not built yet'}</dd></dl>`;
   };
+  // a news circle drawn over a pincode takes the pointer: a tap on it opens only its card
   map.on('mousemove', 'pins-fill', (e: MapLayerMouseEvent) => {
     const f = e.features?.[0];
     if (!f) return;
+    if (news.hit(e.point)) {
+      setHover(-1);
+      tip.hide();
+      return;
+    }
     setHover(f.id as number);
     map.getCanvas().style.cursor = 'pointer';
     tip.show(e.point.x, e.point.y, tipHtml(String(f.properties?.code)));
@@ -163,6 +169,7 @@ export async function openCity(shell: Shell, city: CityData): Promise<Region> {
   });
   map.on('movestart', () => tip.hide());
   map.on('click', 'pins-fill', (e: MapLayerMouseEvent) => {
+    if (news.hit(e.point)) return; // the news layer opens that circle's card
     const code = String(e.features?.[0]?.properties?.code ?? '');
     if (code) choose(code, false);
   });
