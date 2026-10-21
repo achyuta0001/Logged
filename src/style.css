@@ -706,6 +706,11 @@ body.sb-rail .sidebar {
 .rail-btn[data-rail='story'] {
   --tint: #bf5af2;
 }
+/* NEWS_COLOR (src/map/newsLayer.ts): the news circles on the map */
+.sb-sec[data-sec='spots'] .sb-ico,
+.rail-btn[data-rail='spots'] {
+  --tint: #ffb340;
+}
 .sb-sec[data-sec='drainage'] .sb-ico,
 .rail-btn[data-rail='drainage'] {
   --tint: var(--accent);
@@ -2481,6 +2486,78 @@ body.mode-phone .tour-btn {
   cursor: pointer;
 }
 .city-more[hidden] {
+  display: none;
+}
+
+/* ---------- reported flood spots (src/ui/spotList.ts) ---------- */
+.spots .sec-lede {
+  margin-bottom: 8px;
+}
+.spot-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.spot-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--label-1);
+  text-align: left;
+  cursor: pointer;
+}
+.spot-row:hover,
+.spot-row:focus-visible {
+  background: var(--fill-2);
+}
+.spot-dot {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  margin: 0 2px;
+  border-radius: 50%;
+  background: var(--c);
+}
+/* underpass: a white ring, as on the map */
+.spot-dot.ring {
+  box-shadow: 0 0 0 1.5px var(--label-1);
+}
+.spot-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.spot-name b,
+.spot-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spot-name b {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.spot-name span {
+  color: var(--label-2);
+  font-size: 12px;
+}
+.spot-more {
+  margin-top: 4px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+}
+.spot-more[hidden] {
   display: none;
 }
 
