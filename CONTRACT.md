@@ -1,4 +1,4 @@
-# Flood prototype — module contract (pincode 560098, RR Nagar, Bengaluru)
+# Flood prototype — module contract (Bengaluru Urban)
 
 Shared types: `src/types.ts` (source of truth). Stack: Vite + vanilla TS + maplibre-gl v5. No React.
 
@@ -80,7 +80,7 @@ A pack is one pincode's data, in one folder:
 | `hotspots.json` | optional, `Hotspot[]` with source URLs: the `public/data/hotspots-city.json` spots inside the grid bbox |
 | `pack.json` | written by the build: `{ code, format, cellSizeM, bytes, gzipBytes, built, files, sources }` |
 
-Locations: every pack is in `<packs root>/<code>/`. The packs root defaults to `public/data/pins`, and `?packs=<url>` or `VITE_PACKS_URL` can point it at a hosted copy. The 560098 reference pack is a format-2 pack bundled at `public/data/pins/560098/`; an index entry with `pack.path: "."` (older indexes) means that bundled pack.
+Locations: every pack is in `<packs root>/<code>/`. The packs root defaults to `public/data/pins`, and `?packs=<url>` (same origin or an https host in `PACK_HOSTS` / `VITE_PACK_HOSTS` only) or `VITE_PACKS_URL` can point it at a hosted copy. The 560098 reference pack is a format-2 pack bundled at `public/data/pins/560098/`; an index entry with `pack.path: "."` (older indexes) means that bundled pack.
 
 Flood reports: `public/data/hotspots-city.json` holds every sourced report in the district (`Hotspot` plus an `osm` id of the named OSM object the spot is pinned to). A pack shows the ones inside its grid bbox, then any of its own `hotspots.json` entries not already listed (same name or within 25 m counts once). One rule for the build, `calibrate.mjs` and the app: `hotspotsInBBox` / `mergeHotspots` in `src/region/packs.ts`.
 
