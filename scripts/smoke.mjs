@@ -45,8 +45,6 @@ const GL_ARGS = GL === 'swiftshader' ? ['--use-angle=swiftshader', '--enable-uns
 const NO_TILES = process.argv.includes('--no-tiles');
 const TILE_HOSTS = /^https:\/\/(tiles\.openfreemap\.org|s3\.amazonaws\.com\/elevation-tiles-prod|tiles\.maps\.eox\.at|fonts\.(googleapis|gstatic)\.com)\//;
 const SIM_LINE = /^\[sim\] \d+ h in \d+ ms/;
-/** .gz probes at the old bundled-pack path (pack.path "." in older indexes; src/pack/fetch.ts falls back) */
-const KNOWN_404 = /\/data\/(osm\.geojson|depressions\.json)\.gz$/;
 const log = (...a) => console.log('[smoke]', ...a);
 
 let server = null;
@@ -78,7 +76,7 @@ log(`${base} (WebGL: ${GL}), screenshots in ${path.relative(ROOT, OUT) || '.'}`)
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHROME_PATH || undefined, args: GL_ARGS });
 const results = [];
 const line = (r) =>
-  `${r.errors.length ? 'FAIL' : 'ok  '} ${r.name.padEnd(6)} ${r.readyS != null ? `ready in ${r.readyS.toFixed(1)} s` : 'not ready'}${r.sim ? `, ${r.sim}` : ''}${r.external.length ? `, ${r.external.length} third-party failures ignored` : ''}${r.known ? `, ${r.known} known .gz probe 404s` : ''}`;
+  `${r.errors.length ? 'FAIL' : 'ok  '} ${r.name.padEnd(6)} ${r.readyS != null ? `ready in ${r.readyS.toFixed(1)} s` : 'not ready'}${r.sim ? `, ${r.sim}` : ''}${r.external.length ? `, ${r.external.length} third-party failures ignored` : ''}`;
 try {
   for (const v of VIEWS) {
     const r = await check(v);
@@ -99,7 +97,7 @@ process.exit(failed.length ? 1 : 0);
 
 /** Open one view in a fresh browser context and collect what went wrong. */
 async function check(v) {
-  const r = { name: v.name, errors: [], external: [], known: 0, warnings: 0, readyS: null, sim: '' };
+  const r = { name: v.name, errors: [], external: [], warnings: 0, readyS: null, sim: '' };
   const ctx = await browser.newContext({ viewport: { width: 1024, height: 640 }, deviceScaleFactor: 1, reducedMotion: 'reduce', serviceWorkers: 'block' });
   if (NO_TILES) await ctx.route(TILE_HOSTS, (route) => route.abort('blockedbyclient'));
   const page = await ctx.newPage();
@@ -113,7 +111,6 @@ async function check(v) {
     const at = m.location()?.url ?? '';
     if (/^Failed to load resource/.test(text)) {
       if (!own(at)) r.external.push(`${text} ${at}`);
-      else if (/status of 404/.test(text) && KNOWN_404.test(new URL(at).pathname)) r.known++;
       else r.errors.push(`console: ${text} ${at}`);
       return;
     }
@@ -129,7 +126,7 @@ async function check(v) {
   });
   page.on('response', (s) => {
     // Chromium also logs these as console errors, which the console handler sorts; this catches the rest
-    if (s.status() >= 400 && own(s.url()) && !(s.status() === 404 && KNOWN_404.test(new URL(s.url()).pathname)) && !s.request().isNavigationRequest()) {
+    if (s.status() >= 400 && own(s.url()) && !s.request().isNavigationRequest()) {
       const msg = `HTTP ${s.status()} ${s.url()}`;
       if (!r.errors.some((e) => e.includes(s.url()))) r.errors.push(msg);
     }
