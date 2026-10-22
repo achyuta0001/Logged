@@ -272,6 +272,21 @@ const isHotspot = (h: unknown): h is Hotspot => {
   return !!x && typeof x.name === 'string' && Array.isArray(x.coord) && x.coord.length === 2 && x.coord.every(isNum) && Array.isArray(x.events);
 };
 
+const httpUrl = (u: unknown): boolean => {
+  try {
+    return typeof u === 'string' && /^https?:$/.test(new URL(u).protocol);
+  } catch {
+    return false;
+  }
+};
+
+/** A plain Hotspot (build-only fields such as `osm` dropped); a source that is not an http(s) URL becomes '' (no link). */
+const cleanSpot = ({ name, coord, events }: Hotspot): Hotspot => ({
+  name,
+  coord,
+  events: events.filter((e) => !!e && typeof e === 'object').map((e) => ({ ...e, source: httpUrl(e.source) ? e.source : '' })),
+});
+
 /** [lon, lat] inside bbox [west, south, east, north], edges included */
 export const inBBox = ([lon, lat]: readonly number[], [w, s, e, n]: readonly number[]): boolean => lon >= w && lon <= e && lat >= s && lat <= n;
 
@@ -281,7 +296,7 @@ export const inBBox = ([lon, lat]: readonly number[], [w, s, e, n]: readonly num
  * Hotspots (build-only fields such as `osm` dropped), in file order.
  */
 export function hotspotsInBBox(spots: readonly unknown[], bbox: readonly number[]): Hotspot[] {
-  return spots.filter(isHotspot).filter((h) => inBBox(h.coord, bbox)).map(({ name, coord, events }) => ({ name, coord, events }));
+  return spots.filter(isHotspot).filter((h) => inBBox(h.coord, bbox)).map(cleanSpot);
 }
 
 const metres = (a: readonly number[], b: readonly number[]) => {
@@ -298,7 +313,7 @@ export function mergeHotspots(own: readonly Hotspot[], city: readonly unknown[],
   const here = hotspotsInBBox(city, bbox);
   const key = (s: string) => norm(s);
   const same = (a: Hotspot, b: Hotspot) => key(a.name) === key(b.name) || metres(a.coord, b.coord) < 25;
-  return [...here, ...own.filter((o) => isHotspot(o) && !here.some((c) => same(o, c)))];
+  return [...here, ...own.filter((o) => isHotspot(o) && !here.some((c) => same(o, c))).map(cleanSpot)];
 }
 
 /** Load the district-wide reports (empty when unavailable: the packs' own hotspots.json still work). */
@@ -309,7 +324,7 @@ export async function loadCityHotspots(url: string = CITY_HOTSPOTS_URL, fetchFn:
     if ((r.headers.get('content-type') ?? '').includes('text/html')) throw new Error('missing'); // dev-server SPA fallback
     const all = (await r.json()) as unknown;
     if (!Array.isArray(all)) throw new Error('not an array');
-    return all.filter(isHotspot);
+    return all.filter(isHotspot).map(cleanSpot);
   } catch (e) {
     console.warn('[packs] city-wide flood reports unavailable', e);
     return [];
