@@ -87,14 +87,14 @@ export class Sidebar {
         <nav class="sb-tabs" aria-label="View"><a href="?" data-tab="explore" aria-current="page">Explore</a><a href="?commute=1" data-tab="commute">Commute</a></nav>
         <button class="sb-back" id="sb-back" type="button" hidden aria-label="Back to the Bengaluru Urban overview">${iconSvg('chevron', 12, 2)}<span>Bengaluru Urban</span></button>
         <div class="sb-top">
-          <div class="sb-pin" title="Pincode 560098">560098</div>
+          <div class="sb-pin word" title="Bengaluru Urban district">Bengaluru</div>
           <div class="sb-tools">
             <button class="capsule-btn tinted tour-btn" id="tour-btn" type="button" aria-label="Start the guided tour">${iconSvg('play', 11)}<span>Tour</span></button>
             <button class="icon-btn" id="focus-btn" type="button" aria-label="Focus on the map (H)" aria-keyshortcuts="H" data-tip="Focus on the map · H">${iconSvg('focus', 16)}</button>
             <button class="icon-btn" id="sb-min" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="Minimise the sidebar ([)" aria-keyshortcuts="[" data-tip="Minimise · [">${iconSvg('panel_close', 17)}</button>
           </div>
         </div>
-        <div class="sb-name">Rajarajeshwari Nagar, Bengaluru</div>
+        <div class="sb-name">Bengaluru Urban</div>
         <button class="sb-status" id="sb-status" type="button" data-sev="none" disabled>
           <i class="sb-dot" aria-hidden="true"></i><span class="sb-answer">Working out the flood outlook</span>
         </button>
