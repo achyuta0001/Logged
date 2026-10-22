@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
-import { allowedPacksUrl, fallbackIndex, inflowCaveat, loadPinIndex, packBase, packsRoot, searchPins, validateMeta, validatePinIndex } from '../packs.ts';
+import { allowedPacksUrl, fallbackIndex, hotspotsInBBox, inflowCaveat, loadPinIndex, mergeHotspots, packBase, packsRoot, searchPins, validateMeta, validatePinIndex } from '../packs.ts';
 import { terrainFromBuffer } from '../../terrain.ts';
 import { SimCore } from '../../sim/core.ts';
 import { bowlAndChannel, noisyTerrain } from '../../sim/__tests__/synthetic.ts';
@@ -225,4 +225,15 @@ test('?packs= is honoured only for this origin or an allowed https host', () => 
     assert.equal(allowedPacksUrl(q, site), false, q);
     assert.equal(packsRoot(`?packs=${encodeURIComponent(q)}`, site), '/data/pins', q);
   }
+});
+
+test('hotspot sources that are not http(s) lose their link on load', () => {
+  const bbox = [77, 12, 78, 13];
+  const ev = (source) => ({ date: '2024-10-20', summary: 's', source });
+  const spot = { name: 'A', coord: [77.5, 12.5], events: [ev('https://example.org/a'), ev('javascript:alert(1)'), ev('data:text/html,x'), ev(42)] };
+  const [h] = hotspotsInBBox([spot], bbox);
+  assert.deepEqual(h.events.map((e) => e.source), ['https://example.org/a', '', '', '']);
+  const own = { name: 'B', coord: [77.9, 12.9], events: [ev('javascript:alert(1)')] };
+  const merged = mergeHotspots([own], [], bbox);
+  assert.equal(merged[0].events[0].source, '');
 });
