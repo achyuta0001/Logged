@@ -1,12 +1,15 @@
 // Standalone harness for story.ts / tour.ts (story-demo.html). Not part of the app.
 // URL params: ?tour=<i> start tour at stop i · ?model=1 fake model depths · ?orbit=1
 import '../style.css';
-import maplibregl from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { Depression, Hotspot, TerrainMeta } from '../types';
 import { mountStoryPanel } from './story';
 import { createTour, orbit } from './tour';
 import { fetchPackJson } from '../pack/fetch';
+
+maplibregl.setWorkerUrl(workerUrl); // as src/map/mapView.ts: maplibre-gl 6 needs the bundled worker
 
 const q = new URLSearchParams(location.search);
 // the 560098 reference pack (format 2: depressions.json is stored gzipped)

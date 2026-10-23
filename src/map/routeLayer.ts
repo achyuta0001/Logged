@@ -1,7 +1,8 @@
 // "Your place" map overlay: pinned-place marker (pulsing ring), escape route coloured by
 // passability (dry teal, wet amber, impassable red), the usual route when we detour around a
 // blockage (dashed), and markers for the destination and the first blockage.
-import maplibregl, { type GeoJSONSource, type Map as MLMap } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import type { GeoJSONSource, Map as MLMap } from 'maplibre-gl';
 import type { LngLat, RouteResult } from '../place/route';
 import { beforeLabels } from './mapView';
 import '../ui/place.css';

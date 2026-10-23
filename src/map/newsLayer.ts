@@ -3,7 +3,8 @@
 // reports N times, 2017–2024" and up to three linked sources. Used in a pincode (Map layers,
 // off by default), in the city overview, and for the spots on a commute route (always shown there).
 // The sidebar's "Reported flood spots" list (src/ui/spotList.ts) opens the same card from the keyboard.
-import maplibregl, { type GeoJSONSource, type Map as MLMap, type MapLayerMouseEvent, type PointLike } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import type { GeoJSONSource, Map as MLMap, MapLayerMouseEvent, PointLike } from 'maplibre-gl';
 import type { NewsSpot } from '../commute/spots';
 import type { Verdict } from '../commute/verdict';
 import { loadNewsSpots } from '../commute/data';

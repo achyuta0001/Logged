@@ -1,6 +1,7 @@
 // Static terrain-analysis layers: depression heatmap, HAND low-lying zones,
 // D8 flow-accumulation streams, drains, lakes, historical hotspots.
-import maplibregl, { type Map as MLMap } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import type { Map as MLMap } from 'maplibre-gl';
 import type { Hotspot, Terrain } from '../types';
 import type { NewsSpot } from '../commute/spots';
 import type { OsmFC } from '../ui/api';
