@@ -1,7 +1,13 @@
 // Map construction: open basemaps (OpenFreeMap vector dark, EOX Sentinel-2 cloudless),
 // AWS terrarium 3D terrain, hillshade, sky/fog, pincode boundary glow and outside mask.
-import maplibregl, { type Map as MLMap, type StyleSpecification, type LayerSpecification } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import type { Map as MLMap, StyleSpecification, LayerSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
+// maplibre-gl 6 is ESM-only and finds its worker from import.meta.url, which a bundler rewrites:
+// hand it Vite's bundled, self-contained worker file instead (one call, before the first map)
+import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+
+maplibregl.setWorkerUrl(workerUrl);
 
 export const CENTER: [number, number] = [77.5157, 12.9157];
 
