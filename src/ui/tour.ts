@@ -1,7 +1,8 @@
 // Cinematic guided flythrough of a pincode (hand-written script for 560098, data-driven elsewhere)
 // + idle "attract mode" orbit.
 // Every claim in a caption comes from public/data (model output) or a linked news/BBMP source.
-import maplibregl, { type Map as MLMap } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import type { Map as MLMap } from 'maplibre-gl';
 import type { Depression, Hotspot } from '../types';
 import { esc, fmtArea, safeHref } from './format';
 import { iconSvg } from './icons';
