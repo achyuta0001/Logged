@@ -1,7 +1,8 @@
 // Commute map layers: every hotspot as a pin coloured by its waterlogging level (in the style of the
 // news-report circles: bigger = reported more often, white ring = underpass), the candidate routes
 // with the chosen one coloured by level where it meets a hotspot, and the home, office and saved-place markers.
-import maplibregl, { type GeoJSONSource, type Map as MLMap, type MapLayerMouseEvent } from 'maplibre-gl';
+import * as maplibregl from 'maplibre-gl';
+import type { GeoJSONSource, Map as MLMap, MapLayerMouseEvent } from 'maplibre-gl';
 import type { LngLat } from '../../commute/spots';
 import type { CommuteHotspot, RiskLevel, RouteCandidate, RouteRisk } from '../../commute/types';
 import { iconSvg } from '../icons';
